@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  bookingHorizon,
   isWithinSeason,
   parseSeasonStartYear,
   seasonOf,
@@ -68,6 +69,67 @@ describe("seasonRange", () => {
     const { start, end } = seasonRange("2025-26");
     expect(seasonOfDateKey(start)).toBe("2025-26");
     expect(seasonOfDateKey(end)).toBe("2025-26");
+  });
+});
+
+describe("bookingHorizon", () => {
+  it("covers the rest of the season when we are in it", () => {
+    expect(bookingHorizon("2026-01-08")).toEqual({
+      from: "2026-01-08",
+      to: "2026-05-01",
+      season: "2025-26",
+      upcoming: false,
+    });
+  });
+
+  it("offers the whole of the next season during the summer", () => {
+    // The bug this exists to prevent: a flat 120-day lookahead from July ends
+    // in November, so the calendar was empty with nothing to explain why.
+    expect(bookingHorizon("2026-07-21")).toEqual({
+      from: "2026-12-01",
+      to: "2027-05-01",
+      season: "2026-27",
+      upcoming: true,
+    });
+  });
+
+  it("lets a coach in October open December dates", () => {
+    expect(bookingHorizon("2026-10-15")).toMatchObject({
+      from: "2026-12-01",
+      season: "2026-27",
+      upcoming: true,
+    });
+  });
+
+  it("rolls to the next season the day after one closes", () => {
+    expect(bookingHorizon("2026-05-01")).toMatchObject({
+      season: "2025-26",
+      upcoming: false,
+    });
+    expect(bookingHorizon("2026-05-02")).toMatchObject({
+      from: "2026-12-01",
+      season: "2026-27",
+      upcoming: true,
+    });
+  });
+
+  it("treats the last day of November as looking forward one day", () => {
+    expect(bookingHorizon("2026-11-30")).toMatchObject({
+      from: "2026-12-01",
+      upcoming: true,
+    });
+    expect(bookingHorizon("2026-12-01")).toMatchObject({
+      from: "2026-12-01",
+      upcoming: false,
+    });
+  });
+
+  it("always returns a range whose ends belong to the reported season", () => {
+    for (const day of ["2026-01-08", "2026-07-21", "2026-10-15", "2026-12-20"]) {
+      const h = bookingHorizon(day);
+      expect(seasonOfDateKey(h.from)).toBe(h.season);
+      expect(seasonOfDateKey(h.to)).toBe(h.season);
+    }
   });
 });
 

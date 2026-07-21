@@ -49,6 +49,10 @@ const COPY = {
       past: "已过时",
       "lead-time": "太临近",
     },
+    // An hour that is itself free but has no room for a full lesson before
+    // lunch or closing. Saying "可选" on a disabled button would contradict
+    // itself, so it gets its own wording.
+    tooShort: "时长不够",
     otherTimes: "想约其他时间?微信联系教练",
     handoverNote:
       "首尾各留 5 分钟与下一位学员交接,因此实际授课比预定时段少 10 分钟。",
@@ -75,6 +79,7 @@ const COPY = {
       past: "Past",
       "lead-time": "Too soon",
     },
+    tooShort: "Not enough time",
     otherTimes: "Want a different time? Message the coach on WeChat",
     handoverNote:
       "Five minutes at each end are the handover to the next student, so teaching time is 10 minutes shorter than the booked block.",
@@ -238,6 +243,7 @@ export function SlotPicker({
               selected={startHour}
               onSelect={selectStart}
               legend={c.legend}
+              tooShortLabel={c.tooShort}
             />
 
             {day.startOptions.length === 0 && (
@@ -342,12 +348,14 @@ function HourGrid({
   selected,
   onSelect,
   legend,
+  tooShortLabel,
 }: {
   day: Day;
   locale: Locale;
   selected: number | null;
   onSelect: (hour: number) => void;
   legend: Record<HourStatus, string>;
+  tooShortLabel: string;
 }) {
   const bookable = new Set(day.startOptions.map((o) => o.hour));
 
@@ -381,7 +389,13 @@ function HourGrid({
             >
               <span className="font-medium">{label}</span>
               {!selectable && (
-                <span className="text-[11px]">{legend[cell.status]}</span>
+                <span className="text-[11px]">
+                  {/* "available but unbookable" needs its own wording, or the
+                      cell reads as free while being greyed out. */}
+                  {cell.status === "available"
+                    ? tooShortLabel
+                    : legend[cell.status]}
+                </span>
               )}
             </button>
           );

@@ -6,7 +6,8 @@ import { getAvailability } from "@/lib/availability";
 import { canAcceptBookings } from "@/lib/coach";
 import { SlotPicker } from "@/components/booking/slot-picker";
 import { toLocale } from "@/i18n/routing";
-import { dbDateToDateKey, toDateKey, addDaysToDateKey } from "@/lib/time";
+import { dbDateToDateKey, toDateKey } from "@/lib/time";
+import { bookingHorizon } from "@/lib/season";
 import { isMinorAt } from "@/lib/waiver/validity";
 
 export default async function PickSlotPage({
@@ -26,11 +27,14 @@ export default async function PickSlotPage({
   ]);
   if (!resort?.isActive || !profile || !canAcceptBookings(profile)) notFound();
 
-  const today = toDateKey(new Date());
+  // Runs to the end of the season rather than a fixed number of days, so
+  // December dates are visible during the autumn rather than falling off the
+  // end of a rolling window.
+  const horizon = bookingHorizon(toDateKey(new Date()));
   const days = await getAvailability({
     coachId,
-    from: today,
-    to: addDaysToDateKey(today, 120),
+    from: horizon.from,
+    to: horizon.to,
   });
 
   // Only this resort's days; a coach is at one resort per day.

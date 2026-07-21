@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { getAvailability } from "@/lib/availability";
 import { CoachBookingForm } from "@/components/coach/coach-booking-form";
 import { toLocale } from "@/i18n/routing";
-import { addDaysToDateKey, toDateKey } from "@/lib/time";
+import { toDateKey } from "@/lib/time";
+import { bookingHorizon } from "@/lib/season";
 
 export default async function CoachNewBookingPage({
   params,
@@ -18,11 +19,11 @@ export default async function CoachNewBookingPage({
     where: { userId: user.id },
   });
 
-  const today = toDateKey(new Date());
+  const horizon = bookingHorizon(toDateKey(new Date()));
   const days = await getAvailability({
     coachId: user.id,
-    from: today,
-    to: addDaysToDateKey(today, 120),
+    from: horizon.from,
+    to: horizon.to,
   });
 
   return (

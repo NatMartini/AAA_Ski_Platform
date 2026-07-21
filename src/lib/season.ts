@@ -63,6 +63,43 @@ export function seasonRange(season: Season): { start: DateKey; end: DateKey } {
   };
 }
 
+/**
+ * The range of dates a student should be offered, given today.
+ *
+ * A fixed lookahead of N days does not work here. In July nothing at all is
+ * bookable, so the site would show an empty calendar with no explanation; and
+ * a coach opening December dates in October would find students could not see
+ * them. Instead the horizon always runs to the end of a whole season:
+ *
+ *   in season  → today .. 1 May (the rest of this season)
+ *   off season → 1 Dec .. 1 May (the whole of the next one)
+ */
+export function bookingHorizon(today: DateKey): {
+  from: DateKey;
+  to: DateKey;
+  season: Season;
+  /** True when the season has not started yet, so bookings are advance ones. */
+  upcoming: boolean;
+} {
+  const current = seasonOfDateKey(today);
+  if (current) {
+    return {
+      from: today,
+      to: seasonRange(current).end,
+      season: current,
+      upcoming: false,
+    };
+  }
+
+  // Off-season: everything on offer belongs to the season that opens next.
+  const [year, month] = parseDateKey(today).split("-").map(Number);
+  // May 2 – Nov 30 all look forward to the December of the same year.
+  const startYear = month >= SEASON_END_MONTH ? year : year - 1;
+  const season = `${startYear}-${twoDigit(startYear + 1)}`;
+  const range = seasonRange(season);
+  return { from: range.start, to: range.end, season, upcoming: true };
+}
+
 export function parseSeasonStartYear(season: Season): number {
   const match = /^(\d{4})-(\d{2})$/.exec(season);
   if (!match) throw new Error(`Invalid season: ${season}`);

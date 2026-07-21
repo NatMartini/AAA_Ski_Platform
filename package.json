@@ -20,6 +20,7 @@
     "check:overlap": "tsx scripts/check-overlap-constraint.ts",
     "sample:waiver": "tsx scripts/render-sample-waiver.ts",
     "check:flow": "tsx scripts/check-booking-flow.ts",
+    "dev:demo": "tsx scripts/dev-demo.ts",
     "prisma:generate": "prisma generate"
   },
   "dependencies": {

@@ -35,6 +35,14 @@ type UserStatus =
 const MAX_TOKEN_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 async function inspect(): Promise<UserStatus> {
+  // Development-only bypass. Compiled out of production builds entirely; see
+  // dev-bypass.ts for why it is safe to have this branch here at all.
+  if (process.env.NODE_ENV !== "production") {
+    const { devBypassUser } = await import("./dev-bypass");
+    const stand_in = await devBypassUser();
+    if (stand_in) return { kind: "ok", user: stand_in };
+  }
+
   const session = await auth();
   if (!session?.user?.id) return { kind: "anon" };
 
