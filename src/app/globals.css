@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+/*
+ * Cold, high-contrast palette. Booking decisions get made on a phone in a car
+ * park, so contrast and tap targets matter more than subtlety.
+ */
+@theme {
+  --color-ice-50: #f2f7fb;
+  --color-ice-100: #e3edf6;
+  --color-ice-200: #c6dbec;
+  --color-ice-300: #99c0dc;
+  --color-ice-400: #659fc8;
+  --color-ice-500: #4382b1;
+  --color-ice-600: #326895;
+  --color-ice-700: #2a5479;
+  --color-ice-800: #274865;
+  --color-ice-900: #253d55;
+  --color-ice-950: #182739;
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+:root {
+  --background: #ffffff;
+  --surface: #ffffff;
+  --surface-muted: #f6f8fa;
+  --border: #dfe5eb;
+  --foreground: #12202e;
+  --muted-foreground: #56677a;
+  --accent: #2a5479;
+  --accent-foreground: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0e1620;
+    --surface: #16212e;
+    --surface-muted: #1b2836;
+    --border: #2a3949;
+    --foreground: #e8eef4;
+    --muted-foreground: #9cadbe;
+    --accent: #659fc8;
+    --accent-foreground: #0e1620;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+/*
+ * Visible focus everywhere. The hour grid is a wall of buttons — without this
+ * it is unusable by keyboard, which is the easiest accessibility win here.
+ */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-ice-500);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  ::selection {
+    background: var(--color-ice-200);
+    color: var(--color-ice-950);
+  }
+}
+
+/* Signature pad: never let a touch drag scroll the page mid-stroke. */
+.signature-pad {
+  touch-action: none;
+  cursor: crosshair;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}

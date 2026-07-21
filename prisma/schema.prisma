@@ -1,0 +1,457 @@
+// AAA Ski Platform — data model
+//
+// Design notes that are easy to get wrong later:
+//
+//  * All DateTimes are stored in UTC. Every business decision (which hour grid
+//    a day has, which ski season a lesson falls in, whether a participant is a
+//    minor) is made in America/Toronto via src/lib/time.ts. The season spans a
+//    DST boundary in March, so never construct dates from bare strings.
+//
+//  * Money is integer cents. No floats anywhere.
+//
+//  * A Waiver hangs off a Participant, never off a User account. One parent
+//    account can have several participants (themselves + each child), and each
+//    needs their own waiver. See src/lib/waiver/validity.ts.
+//
+//  * Waiver rows are append-only. There is no update path: a correction means
+//    signing a new one and setting revokedAt on the old. This is what makes the
+//    signed PDF defensible as an electronic record.
+//
+//  * Uploaded files are referenced by a storage *key* (relative path), never a
+//    URL. They live outside public/ and are streamed by authenticated routes.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────── Auth ───────────────────────────
+
+enum UserRole {
+  CUSTOMER
+  COACH
+  ADMIN
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          UserRole  @default(CUSTOMER)
+  phone         String?
+  wechatId      String?
+
+  // Kill switches. Checked against fresh DB state on every protected request,
+  // because a JWT keeps asserting the old values until it expires.
+  disabledAt         DateTime?
+  tokenInvalidatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts     Account[]
+  sessions     Session[]
+  coachProfile CoachProfile?
+  participants Participant[]
+  bookings     Booking[]     @relation("BookingAccount")
+  coachDays    CoachDay[]
+  coachBooking Booking[]     @relation("BookingCoach")
+  reviewed     Booking[]     @relation("BookingReviewer")
+  waivers      Waiver[]      @relation("WaiverSigner")
+  coachWaivers Waiver[]      @relation("WaiverCoach")
+}
+
+model Account {
+  id                       String  @id @default(cuid())
+  userId                   String
+  type                     String
+  provider                 String
+  providerAccountId        String
+  refresh_token            String? @db.Text
+  access_token             String? @db.Text
+  expires_at               Int?
+  token_type               String?
+  scope                    String?
+  id_token                 String? @db.Text
+  session_state            String?
+  refresh_token_expires_in Int?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─────────────────────── Resorts & coaches ───────────────────────
+
+model Resort {
+  id       String  @id @default(cuid())
+  slug     String  @unique // "msl" | "blue-mountain"
+  nameEn   String
+  nameZh   String
+  timezone String  @default("America/Toronto")
+  address  String?
+  isActive Boolean @default(true)
+  order    Int     @default(0)
+
+  coachDays CoachDay[]
+  bookings  Booking[]
+}
+
+model CoachProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  displayName String
+  bioEn       String? @db.Text
+  bioZh       String? @db.Text
+  avatarUrl   String?
+
+  // Pricing. handoverDiscountCents is deducted ONCE per booking, regardless of
+  // length: the 5 minutes at each end only happen once per lesson.
+  hourlyRateCents       Int @default(8000)
+  handoverDiscountCents Int @default(1500)
+  minHours              Int @default(2)
+  maxHours              Int @default(8)
+  leadTimeHours         Int @default(24)
+
+  // Payment. Money goes directly to each coach — the platform never pools it.
+  emtEnabled       Boolean @default(true)
+  emtEmail         String?
+  emtName          String?
+  wechatPayEnabled Boolean @default(false)
+  wechatPayQrKey   String?
+  alipayEnabled    Boolean @default(false)
+  alipayQrKey      String?
+
+  wechatId     String?
+  contactEmail String?
+  contactPhone String?
+
+  // Shown on the review page before a booking is created, and snapshotted onto
+  // the booking. Must be non-empty before the coach can accept bookings.
+  cancellationPolicyEn String? @db.Text
+  cancellationPolicyZh String? @db.Text
+
+  // Secret token for the read-only ICS subscription feed.
+  icsToken String @unique
+
+  isPublished Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// One coach, one resort, one day, one availability window.
+/// `date` is the Toronto calendar date; hours are Toronto wall-clock hours.
+model CoachDay {
+  id       String   @id @default(cuid())
+  coachId  String
+  resortId String
+  date     DateTime @db.Date
+
+  startHour Int // e.g. 9
+  endHour   Int // e.g. 16 (exclusive)
+
+  // Lunch defaults to 13:00-14:00 and is auto-blocked. Null disables it.
+  breakStartHour Int? @default(13)
+  breakEndHour   Int? @default(14)
+
+  hourlyRateCentsOverride Int?
+  note                    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  coach    User      @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  resort   Resort    @relation(fields: [resortId], references: [id], onDelete: Restrict)
+  bookings Booking[]
+
+  @@unique([coachId, date]) // a coach is at one resort per day
+  @@index([date])
+}
+
+// ───────────────────────── Participants ─────────────────────────
+
+enum SkillLevel {
+  FIRST_TIME
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+/// The person actually taking the lesson. Waivers hang off this, not off User,
+/// so a parent booking for two children keeps three separate waiver records.
+model Participant {
+  id        String @id @default(cuid())
+  accountId String
+
+  fullName  String
+  birthDate DateTime @db.Date
+
+  /// normalize(fullName) + birthDate. Stops one account from creating the same
+  /// child twice and thereby side-stepping an existing signed waiver.
+  identityKey String
+
+  /// true when this participant is the account holder. Adults who are not the
+  /// account holder cannot be created through self-serve booking: nobody can
+  /// sign a waiver on behalf of another adult.
+  isSelf Boolean @default(false)
+
+  email      String?
+  phone      String?
+  wechatId   String?
+  skillLevel SkillLevel?
+
+  emergencyContactName  String?
+  emergencyContactPhone String?
+
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  account  User      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  bookings Booking[]
+  waivers  Waiver[]
+
+  @@unique([accountId, identityKey])
+  @@index([accountId])
+}
+
+// ─────────────────────────── Bookings ───────────────────────────
+
+enum BookingStatus {
+  /// Self-serve booking; slot is held until holdExpiresAt then auto-released.
+  HOLD
+  /// Coach created this for a student; waiting on the signing link. No timeout.
+  AWAITING_WAIVER
+  /// Waiver done, waiting on payment + proof.
+  AWAITING_PAYMENT
+  /// Proof uploaded, waiting on the coach.
+  PENDING_PAYMENT_REVIEW
+  /// Coach rejected the proof. Slot is kept; customer may re-upload.
+  PAYMENT_REJECTED
+  CONFIRMED
+  EXPIRED
+  CANCELLED
+  COMPLETED
+}
+
+enum PaymentMethod {
+  EMT
+  WECHAT
+  ALIPAY
+}
+
+enum UploadedBy {
+  CUSTOMER
+  COACH
+}
+
+model Booking {
+  id   String @id @default(cuid())
+  code String @unique // short human-facing reference, e.g. SKI-8F3K2M
+
+  // Null until a coach-created booking's signing link is used.
+  accountId     String?
+  participantId String?
+
+  coachId    String
+  resortId   String
+  coachDayId String
+
+  createdByCoach Boolean @default(false)
+
+  // Booked block, on the hour, UTC.
+  startAt DateTime
+  endAt   DateTime
+  hours   Int
+
+  // Actual teaching window: startAt + 5min, endAt - 5min. The 10 minutes are
+  // the handover to the next student, and are why totalCents is discounted.
+  lessonStartAt DateTime
+  lessonEndAt   DateTime
+
+  // Price snapshot taken at booking time so later rate changes never rewrite
+  // an existing booking.
+  hourlyRateCents       Int
+  subtotalCents         Int
+  handoverDiscountCents Int
+  totalCents            Int
+  currency              String @default("CAD")
+
+  /// Exactly what was shown on the review page (price breakdown, cancellation
+  /// policy, contact details). Frozen so editing the policy later cannot
+  /// retroactively change the terms of an existing booking.
+  disclosureSnapshot Json?
+
+  confirmationSentAt DateTime?
+
+  // Placeholders for coach-created bookings, before the student has signed in.
+  inviteName      String?
+  inviteEmail     String?
+  inviteBirthDate DateTime? @db.Date
+
+  participantNameSnapshot String?
+  notes                   String? @db.Text
+
+  status        BookingStatus @default(HOLD)
+  holdExpiresAt DateTime? // null for coach-created bookings
+
+  /// The waiver covering this booking. Not unique: one waiver covers every
+  /// booking with that coach for the rest of the season.
+  waiverId String?
+
+  paymentMethod      PaymentMethod?
+  paymentProofKey    String?
+  paymentReference   String?
+  paymentSubmittedAt DateTime?
+  proofUploadedBy    UploadedBy?
+
+  reviewedById String?
+  reviewedAt   DateTime?
+  reviewNote   String?
+
+  cancelledAt  DateTime?
+  cancelReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  account      User?         @relation("BookingAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  participant  Participant?  @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  coach        User          @relation("BookingCoach", fields: [coachId], references: [id], onDelete: Cascade)
+  resort       Resort        @relation(fields: [resortId], references: [id], onDelete: Restrict)
+  coachDay     CoachDay      @relation(fields: [coachDayId], references: [id], onDelete: Cascade)
+  reviewedBy   User?         @relation("BookingReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  waiver       Waiver?       @relation(fields: [waiverId], references: [id], onDelete: SetNull)
+  waiverInvite WaiverInvite?
+
+  @@index([coachId, startAt])
+  @@index([status, holdExpiresAt])
+  @@index([accountId])
+  @@index([coachDayId])
+  @@index([waiverId])
+}
+
+/// One-time signing link for a coach-created booking. The plaintext token only
+/// ever exists in the URL; the DB stores its SHA-256.
+model WaiverInvite {
+  id        String @id @default(cuid())
+  bookingId String @unique
+  tokenHash String @unique
+
+  /// Who the link was issued to. The signer must sign in with this exact
+  /// address — that binding is the identity evidence behind the signature.
+  email String
+
+  expiresAt   DateTime
+  usedAt      DateTime?
+  sentAt      DateTime?
+  resentCount Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+}
+
+// ──────────────────────────── Waivers ────────────────────────────
+
+enum SignerRole {
+  PARTICIPANT
+  GUARDIAN
+}
+
+/// One per participant × coach × season × template major version.
+/// Append-only: never updated, only superseded via revokedAt.
+model Waiver {
+  id            String @id @default(cuid())
+  participantId String
+  coachId       String
+
+  /// "2025-26" — the season containing the lesson date (Dec 1 → May 1).
+  season String
+
+  /// Bumping the major version invalidates existing waivers and forces a
+  /// re-sign; the revision is for typo fixes and does not.
+  templateVersion  Int
+  templateRevision Int
+  templateHash     String
+
+  signerUserId String
+  signerRole   SignerRole
+  signerName   String
+  typedName    String
+
+  /// PNG data URL from the signature canvas.
+  signatureImage String @db.Text
+
+  /// Whether the participant was under 18 at the lesson date when signed. Once
+  /// they turn 18 the guardian-signed waiver stops applying.
+  participantWasMinor Boolean
+
+  guardianName         String?
+  guardianEmail        String?
+  guardianPhone        String?
+  guardianRelationship String?
+
+  /// Ontario's Electronic Commerce Act requires express consent to sign
+  /// electronically — a separate box, not folded into "I have read this".
+  consentToElectronic Boolean
+
+  /// Which individual clauses were ticked, so we can show exactly what was
+  /// agreed to rather than one blanket acknowledgement.
+  agreedCheckboxes Json
+
+  // Audit trail. All server-generated; client-supplied values are never used.
+  signedAt  DateTime
+  ipAddress String
+  userAgent String   @db.Text
+
+  signedPdfKey    String
+  signedPdfSha256 String
+
+  revokedAt    DateTime?
+  revokeReason String?
+
+  createdAt DateTime @default(now())
+
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  coach       User        @relation("WaiverCoach", fields: [coachId], references: [id], onDelete: Cascade)
+  signer      User        @relation("WaiverSigner", fields: [signerUserId], references: [id], onDelete: Restrict)
+  bookings    Booking[]
+
+  @@unique([participantId, coachId, season, templateVersion])
+  @@index([coachId, season])
+  @@index([participantId])
+}

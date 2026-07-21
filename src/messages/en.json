@@ -1,0 +1,143 @@
+{
+  "brand": {
+    "name": "AAA Ski Lessons",
+    "tagline": "Private ski lesson booking"
+  },
+  "nav": {
+    "book": "Book a lesson",
+    "myBookings": "My bookings",
+    "participants": "Participants",
+    "coach": "Coach area",
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "language": "Language"
+  },
+  "home": {
+    "signedOutTitle": "AAA Ski Lesson Booking",
+    "signedOutBody": "This site is for students who have already been in touch with a coach. Sign in with Google to book a lesson.",
+    "signedInTitle": "Welcome back, {name}",
+    "startBooking": "Start booking",
+    "viewBookings": "View my bookings",
+    "coachArea": "Go to coach area"
+  },
+  "signIn": {
+    "title": "Sign in",
+    "body": "Sign in with Google. We only read your email address and name.",
+    "google": "Continue with Google",
+    "unavailable": "Google sign-in is not configured yet. Please contact the administrator.",
+    "reasonSessionInvalid": "Your session is no longer valid. Please sign in again.",
+    "reasonExpired": "For security, sessions are re-verified every 7 days.",
+    "reasonError": "Sign-in failed. Please try again."
+  },
+  "booking": {
+    "stepResort": "Choose a resort",
+    "stepCoach": "Choose a coach",
+    "stepTime": "Choose a time",
+    "stepReview": "Review your booking",
+    "stepWaiver": "Sign the waiver",
+    "stepPayment": "Payment",
+    "hours": "{count} hours",
+    "lessonWindow": "Lesson runs {start} – {end} ({minutes} min)",
+    "handoverNote": "Each lesson starts 5 minutes late and ends 5 minutes early so the coach can hand over to the next student, so teaching time is 10 minutes shorter than the booked block.",
+    "minimum": "Minimum booking is {count} hours",
+    "noSlots": "No times available on this day.",
+    "offSeason": "The season runs 1 December to 1 May. This date is outside it.",
+    "otherTimes": "Want a different time? Message the coach on WeChat at {wechat}.",
+    "slotTaken": "Sorry — someone just took that slot. Please pick another time.",
+    "holdCountdown": "Finish signing and payment within {minutes} minutes or the slot is released.",
+    "code": "Booking reference"
+  },
+  "price": {
+    "rateLine": "{rate} / hour × {hours} hours",
+    "handover": "Handover credit (10 min per booking)",
+    "total": "Total (CAD)",
+    "breakdown": "Price breakdown"
+  },
+  "waiver": {
+    "title": "Liability waiver",
+    "seasonNote": "Signed once per coach per season. Later bookings with the same coach this season will not ask again.",
+    "reusedFrom": "Covered by the waiver signed on {date}",
+    "mustScroll": "Please read to the end before signing",
+    "consentElectronic": "I agree to sign this agreement electronically",
+    "typeName": "Type your full name",
+    "drawSignature": "Sign below",
+    "clearSignature": "Clear",
+    "submit": "Sign and continue",
+    "signedAt": "Signed {date}",
+    "minorNotice": "This participant is under 18, so a parent or legal guardian must sign. Please note: in Ontario, a guardian's signature generally does not prevent the child themselves from bringing a claim later.",
+    "adultOnly": "Adult participants must sign for themselves; nobody can sign on their behalf."
+  },
+  "payment": {
+    "title": "Payment",
+    "emt": "Interac e-Transfer",
+    "emtTo": "Send to",
+    "emtName": "Recipient name",
+    "wechat": "WeChat Pay",
+    "alipay": "Alipay",
+    "scanQr": "Scan to pay",
+    "amount": "Amount",
+    "uploadProof": "Upload payment screenshot",
+    "redactNote": "Please cover your balance and any details you do not want shared. Only your coach can see this screenshot.",
+    "reference": "Transfer reference (optional)",
+    "submit": "Submit payment proof",
+    "awaitingReview": "We have your screenshot. Your booking is confirmed once the coach checks it.",
+    "rejected": "The coach did not accept this payment. Reason: {reason}. Please upload again."
+  },
+  "participants": {
+    "title": "Participants",
+    "self": "Myself",
+    "add": "Add participant",
+    "fullName": "Full name",
+    "birthDate": "Date of birth",
+    "emergencyContact": "Emergency contact",
+    "emergencyPhone": "Emergency phone",
+    "skillLevel": "Ability",
+    "adultNotSelf": "Adult students must book and sign with their own Google account, so they cannot be added here.",
+    "duplicate": "A participant with that name and date of birth already exists.",
+    "waiverStatus": "Waiver status",
+    "waiverSigned": "Signed this season",
+    "waiverNeeded": "Not yet signed"
+  },
+  "coach": {
+    "title": "Coach area",
+    "today": "Today",
+    "schedule": "Schedule",
+    "availability": "Availability",
+    "bookings": "Bookings",
+    "settings": "Settings",
+    "newBooking": "Book for a student",
+    "icsFeed": "Calendar subscription URL",
+    "icsHelp": "In Google Calendar choose 'Other calendars → From URL' and paste this address to sync every lesson automatically. Keep it private.",
+    "addToGoogle": "Add to Google Calendar",
+    "confirmPayment": "Confirm payment",
+    "rejectPayment": "Reject payment",
+    "downloadWaiver": "Download waiver",
+    "uploadForStudent": "Upload screenshot for student",
+    "signingLink": "Signing link",
+    "copyLink": "Copy link",
+    "resend": "Resend"
+  },
+  "common": {
+    "back": "Back",
+    "confirm": "Confirm booking",
+    "cancel": "Cancel",
+    "save": "Save",
+    "loading": "Loading…",
+    "required": "Required",
+    "optional": "Optional",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "legal": {
+    "terms": "Terms of service",
+    "privacy": "Privacy policy",
+    "accessibility": "Accessibility",
+    "cancellationPolicy": "Cancellation and refund policy"
+  },
+  "errors": {
+    "generic": "Something went wrong. Please try again.",
+    "forbidden": "You do not have permission to do that.",
+    "notFound": "Not found.",
+    "rateLimited": "Too many attempts. Please wait a moment."
+  }
+}

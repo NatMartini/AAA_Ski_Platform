@@ -1,0 +1,143 @@
+{
+  "brand": {
+    "name": "AAA 滑雪课程",
+    "tagline": "私人滑雪教学预定"
+  },
+  "nav": {
+    "book": "预定课程",
+    "myBookings": "我的预定",
+    "participants": "学员管理",
+    "coach": "教练后台",
+    "signIn": "登录",
+    "signOut": "退出登录",
+    "language": "语言"
+  },
+  "home": {
+    "signedOutTitle": "AAA 滑雪课程预定",
+    "signedOutBody": "本站仅供已联系过教练的学员使用。请用 Google 账号登录后预定课程。",
+    "signedInTitle": "欢迎回来,{name}",
+    "startBooking": "开始预定",
+    "viewBookings": "查看我的预定",
+    "coachArea": "进入教练后台"
+  },
+  "signIn": {
+    "title": "登录",
+    "body": "使用 Google 账号登录。我们只读取你的邮箱和姓名。",
+    "google": "使用 Google 账号登录",
+    "unavailable": "尚未配置 Google 登录,请联系管理员。",
+    "reasonSessionInvalid": "登录状态已失效,请重新登录。",
+    "reasonExpired": "为安全起见,登录状态每 7 天需要重新验证一次。",
+    "reasonError": "登录失败,请重试。"
+  },
+  "booking": {
+    "stepResort": "选择雪场",
+    "stepCoach": "选择教练",
+    "stepTime": "选择时间",
+    "stepReview": "确认订单",
+    "stepWaiver": "签署免责协议",
+    "stepPayment": "付款",
+    "hours": "{count} 小时",
+    "lessonWindow": "实际授课 {start} – {end}({minutes} 分钟)",
+    "handoverNote": "每节课首尾各留 5 分钟用于与下一位学员交接,因此实际授课比预定时段少 10 分钟。",
+    "minimum": "最少预定 {count} 小时",
+    "noSlots": "该日暂无可预定时段。",
+    "offSeason": "雪季为每年 12 月 1 日至次年 5 月 1 日,该日期不在雪季内。",
+    "otherTimes": "想约其他时间?请微信联系教练 {wechat}。",
+    "slotTaken": "抱歉,该时段刚被他人预定,请另选时间。",
+    "holdCountdown": "请在 {minutes} 分钟内完成签署与付款,否则时段将自动释放。",
+    "code": "订单号"
+  },
+  "price": {
+    "rateLine": "{rate} / 小时 × {hours} 小时",
+    "handover": "交接扣减(每单 10 分钟)",
+    "total": "实付(加元 CAD)",
+    "breakdown": "价格明细"
+  },
+  "waiver": {
+    "title": "免责协议",
+    "seasonNote": "本雪季内首次预定该教练需签署一次,之后再约同一教练无需重签。",
+    "reusedFrom": "沿用 {date} 签署的免责协议",
+    "mustScroll": "请阅读到底部后再签署",
+    "consentElectronic": "我同意以电子方式签署本协议",
+    "typeName": "请输入你的全名",
+    "drawSignature": "请在下方手写签名",
+    "clearSignature": "重写",
+    "submit": "确认签署",
+    "signedAt": "签署于 {date}",
+    "minorNotice": "该学员未满 18 周岁,须由父母或法定监护人签署。请注意:在安大略省,监护人代签通常无法阻止该未成年人本人日后提出索赔。",
+    "adultOnly": "成年学员须由本人签署,不可由他人代签。"
+  },
+  "payment": {
+    "title": "付款",
+    "emt": "Interac e-Transfer 转账",
+    "emtTo": "收款邮箱",
+    "emtName": "收款人",
+    "wechat": "微信支付",
+    "alipay": "支付宝",
+    "scanQr": "请扫码支付",
+    "amount": "金额",
+    "uploadProof": "上传付款截图",
+    "redactNote": "上传前请遮挡账号余额等无关信息。截图仅教练本人可见。",
+    "reference": "转账备注 / 参考号(可选)",
+    "submit": "提交付款凭证",
+    "awaitingReview": "已收到你的付款截图,教练确认后即预定成功。",
+    "rejected": "教练未通过本次付款,原因:{reason}。请重新上传。"
+  },
+  "participants": {
+    "title": "学员管理",
+    "self": "我自己",
+    "add": "添加学员",
+    "fullName": "姓名",
+    "birthDate": "出生日期",
+    "emergencyContact": "紧急联系人",
+    "emergencyPhone": "紧急联系电话",
+    "skillLevel": "水平",
+    "adultNotSelf": "成年学员需使用本人的 Google 账号预定并签署免责协议,无法代为添加。",
+    "duplicate": "已存在同名同生日的学员。",
+    "waiverStatus": "免责协议状态",
+    "waiverSigned": "本季已签",
+    "waiverNeeded": "待签署"
+  },
+  "coach": {
+    "title": "教练后台",
+    "today": "今日课表",
+    "schedule": "课表",
+    "availability": "可用日",
+    "bookings": "订单",
+    "settings": "设置",
+    "newBooking": "代学员建课",
+    "icsFeed": "日历订阅地址",
+    "icsHelp": "在 Google 日历中选择「其他日历 → 通过网址添加」,粘贴此地址即可自动同步全部课程。请勿外传。",
+    "addToGoogle": "加入 Google 日历",
+    "confirmPayment": "确认收款",
+    "rejectPayment": "驳回付款",
+    "downloadWaiver": "下载免责协议",
+    "uploadForStudent": "代学员上传截图",
+    "signingLink": "签字链接",
+    "copyLink": "复制链接",
+    "resend": "重新发送"
+  },
+  "common": {
+    "back": "返回修改",
+    "confirm": "确认预定",
+    "cancel": "取消",
+    "save": "保存",
+    "loading": "加载中…",
+    "required": "必填",
+    "optional": "选填",
+    "yes": "是",
+    "no": "否"
+  },
+  "legal": {
+    "terms": "服务条款",
+    "privacy": "隐私政策",
+    "accessibility": "无障碍服务",
+    "cancellationPolicy": "取消与退款政策"
+  },
+  "errors": {
+    "generic": "出错了,请稍后重试。",
+    "forbidden": "你没有权限执行此操作。",
+    "notFound": "未找到相关内容。",
+    "rateLimited": "操作过于频繁,请稍后再试。"
+  }
+}
