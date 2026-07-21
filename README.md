@@ -13,19 +13,21 @@ visitor cannot learn which coach teaches where, when, or for how much.
 
 ## Getting started
 
-Requires Node 20.9+ and PostgreSQL 17 with the `btree_gist` extension.
+Requires Node 20.9+ and Docker (or a native PostgreSQL 17 — see `.env.example`).
 
 ```bash
-# Database (native Postgres on 5432 — docker-compose.yml is an alternative)
-createdb -U postgres ski
-psql -U postgres -d ski -c "CREATE EXTENSION IF NOT EXISTS btree_gist;"
-
 cp .env.example .env.local     # then fill in AUTH_SECRET and Google OAuth
 npm install
+npm run db:up                  # Postgres 17 container on host port 5434
 npm run db:migrate
 npm run db:seed                # creates the two resorts
 npm run dev                    # http://localhost:3000
 ```
+
+The `booking_no_overlap` constraint needs the `btree_gist` extension. The
+container image ships it and the migration enables it; on a native install
+create it once with
+`psql -U postgres -d ski -c "CREATE EXTENSION IF NOT EXISTS btree_gist;"`.
 
 Coaches are not seeded. Put their addresses in `COACH_EMAILS` and they are
 promoted to `COACH` with a profile the first time they sign in with Google —
