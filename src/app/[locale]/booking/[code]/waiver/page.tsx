@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { redirect } from "@/i18n/navigation";
 import { requireUserPage } from "@/lib/auth/require-user";
 import { accessFor, loadBooking } from "@/lib/booking/access";
-import { clausesFor } from "@/lib/waiver/template-v1";
+import { clausesFor, WARNING } from "@/lib/waiver/template-v1";
 import { isMinorAt } from "@/lib/waiver/validity";
 import { WaiverForm } from "@/components/waiver/waiver-form";
 import { toLocale } from "@/i18n/routing";
@@ -67,6 +67,7 @@ export default async function SignWaiverPage({
         clauses={clauses}
         isGuardian={isMinor}
         minorNotice={isMinor ? t("minorNotice") : null}
+        warning={zh ? WARNING.zh : WARNING.en}
         postTo={`/api/bookings/${booking.code}/waiver`}
         redirectTo={`/booking/${booking.code}/payment`}
       />

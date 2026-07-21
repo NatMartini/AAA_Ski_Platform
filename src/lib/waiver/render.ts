@@ -9,6 +9,7 @@ import {
   TEMPLATE_REVISION,
   TEMPLATE_VERSION,
   TITLE,
+  WARNING,
   type WaiverVariant,
 } from "./template-v1";
 import { formatAuditTimestamp, formatTorontoDateTime } from "../time";
@@ -92,9 +93,16 @@ export async function renderWaiverPdf(
 
   const writer = new Writer(doc, font);
 
-  writer.heading(TITLE.en, 15);
-  writer.heading(TITLE.zh, 13, MUTED);
+  writer.heading(TITLE.en, 14);
+  writer.heading(TITLE.zh, 11, MUTED);
   writer.gap(6);
+
+  // The "you are giving up rights" warning goes above everything, boxed, as it
+  // was on last season's paper version. Being conspicuous is the point: a
+  // release is only enforceable if reasonable steps were taken to bring it to
+  // the signer's attention.
+  writer.notice(WARNING.en, WARNING.zh);
+  writer.gap(8);
   writer.rule();
   writer.gap(10);
 
@@ -285,16 +293,67 @@ class Writer {
     });
   }
 
-  heading(text: string, size: number, color = INK): void {
-    this.ensure(size + 8);
-    this.moveDown(size);
-    this.page.drawText(text, {
+  /** Boxed, tinted callout for the conspicuous rights-waiver warning. */
+  notice(en: string, zh: string): void {
+    const size = 8.5;
+    const pad = 8;
+    const inner = CONTENT_WIDTH - pad * 2;
+    const enLines = wrap(en, this.font, size, inner);
+    const zhLines = wrap(zh, this.font, size, inner);
+    const height =
+      (enLines.length + zhLines.length) * size * 1.45 + pad * 2 + 6;
+
+    this.ensure(height + 6);
+    const top = this.y;
+    this.page.drawRectangle({
       x: MARGIN,
-      y: this.y,
-      size,
-      font: this.font,
-      color,
+      y: top - height,
+      width: CONTENT_WIDTH,
+      height,
+      color: rgb(0.99, 0.96, 0.9),
+      borderColor: rgb(0.85, 0.6, 0.25),
+      borderWidth: 1,
     });
+
+    this.moveDown(pad);
+    for (const line of enLines) {
+      this.moveDown(size * 1.45);
+      this.page.drawText(line, {
+        x: MARGIN + pad,
+        y: this.y,
+        size,
+        font: this.font,
+        color: rgb(0.35, 0.2, 0.02),
+      });
+    }
+    this.moveDown(6);
+    for (const line of zhLines) {
+      this.moveDown(size * 1.45);
+      this.page.drawText(line, {
+        x: MARGIN + pad,
+        y: this.y,
+        size,
+        font: this.font,
+        color: rgb(0.45, 0.32, 0.12),
+      });
+    }
+    this.y = top - height;
+  }
+
+  heading(text: string, size: number, color = INK): void {
+    // Wraps: the formal title is long enough to run off the page otherwise,
+    // and a silently clipped heading on a legal document is not acceptable.
+    for (const line of wrap(text, this.font, size, CONTENT_WIDTH)) {
+      this.ensure(size + 8);
+      this.moveDown(size * 1.25);
+      this.page.drawText(line, {
+        x: MARGIN,
+        y: this.y,
+        size,
+        font: this.font,
+        color,
+      });
+    }
     this.moveDown(4);
   }
 

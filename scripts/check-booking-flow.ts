@@ -13,6 +13,7 @@ import { PrismaClient } from "@prisma/client";
 import { createBooking } from "../src/lib/booking/create";
 import { signWaiver } from "../src/lib/waiver/sign";
 import { resolveWaiver } from "../src/lib/waiver/validity";
+import { acknowledgementIds } from "../src/lib/waiver/template-v1";
 import { identityKey } from "../src/lib/participants";
 import { dateKeyToDbDate, torontoWallTimeToUtc } from "../src/lib/time";
 import { readObject } from "../src/lib/storage";
@@ -224,11 +225,9 @@ async function main() {
     typedName: "张伟",
     signatureImage: SIG,
     consentToElectronic: true,
-    agreedCheckboxes: {
-      risks: true,
-      assumption: true,
-      "release-adult": true,
-    },
+    agreedCheckboxes: Object.fromEntries(
+      acknowledgementIds("adult").map((id) => [id, true]),
+    ) as Record<string, true>,
     guardianName: null,
     guardianPhone: null,
     guardianRelationship: null,
@@ -265,7 +264,10 @@ async function main() {
     typedName: "张伟",
     signatureImage: SIG,
     consentToElectronic: true,
-    agreedCheckboxes: { risks: true }, // release clause not ticked
+    // Every required tick except the last one.
+    agreedCheckboxes: Object.fromEntries(
+      acknowledgementIds("adult").slice(0, -1).map((id) => [id, true]),
+    ) as Record<string, true>,
     guardianName: null,
     guardianPhone: null,
     guardianRelationship: null,
@@ -344,12 +346,9 @@ async function main() {
     typedName: "张丽",
     signatureImage: SIG,
     consentToElectronic: true,
-    agreedCheckboxes: {
-      risks: true,
-      assumption: true,
-      "release-guardian": true,
-      "minor-notice": true,
-    },
+    agreedCheckboxes: Object.fromEntries(
+      acknowledgementIds("guardian").map((id) => [id, true]),
+    ) as Record<string, true>,
     guardianName: "张丽",
     guardianPhone: "+1 416 555 0134",
     guardianRelationship: "Mother",

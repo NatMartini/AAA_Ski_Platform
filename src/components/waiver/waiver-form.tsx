@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { FieldError, Input, Label } from "@/components/ui/field";
 import { SignaturePad } from "./signature-pad";
 import type { Locale } from "@/i18n/routing";
-import { Loader2, ShieldAlert } from "lucide-react";
+import { AlertTriangle, Loader2, ShieldAlert } from "lucide-react";
 
 export type ClauseView = {
   id: string;
@@ -70,6 +70,7 @@ export function WaiverForm({
   clauses,
   isGuardian,
   minorNotice,
+  warning,
   postTo,
   redirectTo,
 }: {
@@ -78,6 +79,8 @@ export function WaiverForm({
   clauses: ClauseView[];
   isGuardian: boolean;
   minorNotice: string | null;
+  /** Conspicuous "you are giving up rights" banner, shown above everything. */
+  warning: string;
   /** Differs between the normal flow and a coach-issued signing link. */
   postTo: string;
   redirectTo: string;
@@ -168,6 +171,14 @@ export function WaiverForm({
 
   return (
     <div className="space-y-5">
+      {/* Above everything, before the agreement itself. A release is only
+          enforceable if reasonable steps were taken to bring it to the
+          signer's attention, and burying this would defeat that. */}
+      <p className="flex items-start gap-2 rounded-lg border border-amber-500/60 bg-amber-500/10 p-4 text-sm font-medium text-amber-900 dark:text-amber-100">
+        <AlertTriangle className="mt-0.5 size-5 shrink-0" aria-hidden />
+        {warning}
+      </p>
+
       {minorNotice && (
         <p className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-100">
           <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden />

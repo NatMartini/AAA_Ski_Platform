@@ -2,7 +2,7 @@ import { setRequestLocale, getTranslations } from "next-intl/server";
 import { requireUserPage } from "@/lib/auth/require-user";
 import { checkInvite } from "@/lib/waiver/invite";
 import { loadBooking } from "@/lib/booking/access";
-import { clausesFor } from "@/lib/waiver/template-v1";
+import { clausesFor, WARNING } from "@/lib/waiver/template-v1";
 import { isMinorAt } from "@/lib/waiver/validity";
 import { WaiverForm } from "@/components/waiver/waiver-form";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
@@ -126,6 +126,7 @@ export default async function SigningLinkPage({
         clauses={clauses}
         isGuardian={isMinor}
         minorNotice={isMinor ? t("minorNotice") : null}
+        warning={zh ? WARNING.zh : WARNING.en}
         postTo={`/api/waiver-invites/${token}`}
         redirectTo={`/booking/${booking.code}`}
       />
