@@ -3,6 +3,15 @@
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
+/**
+ * Kept outside the component: the compiler's immutability rule objects to
+ * assigning `document.cookie` inside a render function, and this is a plain
+ * side effect rather than component state.
+ */
+function setDevUser(email: string): void {
+  document.cookie = `dev-as=${encodeURIComponent(email)}; path=/; SameSite=Lax`;
+}
+
 /** Flips the `dev-as` cookie so both sides of the app can be inspected. */
 export function DevUserSwitch({
   choices,
@@ -17,7 +26,7 @@ export function DevUserSwitch({
   if (choices.length === 0) return null;
 
   function switchTo(email: string) {
-    document.cookie = `dev-as=${encodeURIComponent(email)}; path=/; SameSite=Lax`;
+    setDevUser(email);
     startTransition(() => router.refresh());
   }
 
