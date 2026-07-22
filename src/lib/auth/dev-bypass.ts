@@ -23,8 +23,14 @@ import type { ActiveUser } from "./require-user";
  * fail loudly instead of silently serving everything to everyone.
  */
 
-/** Which demo account to act as. Overridden per-browser by the `dev-as` cookie. */
-const DEFAULT_EMAIL = "student.demo@example.com";
+/**
+ * Cookie holding the email of the account being impersonated.
+ *
+ * There is deliberately no default: with no cookie you are signed out and get
+ * the sign-in page, exactly as a real visitor would. Auto-signing-in would hide
+ * the signed-out state, which is the one a stranger who finds the URL sees.
+ */
+export const DEV_AS_COOKIE = "dev-as";
 
 export function devBypassEnabled(): boolean {
   if (process.env.NODE_ENV === "production") return false;
@@ -50,7 +56,8 @@ export async function devBypassUser(): Promise<ActiveUser | null> {
   if (!devBypassEnabled()) return null;
 
   const jar = await cookies();
-  const email = jar.get("dev-as")?.value?.trim() || DEFAULT_EMAIL;
+  const email = jar.get(DEV_AS_COOKIE)?.value?.trim();
+  if (!email) return null; // signed out until an account is chosen
 
   const user = await prisma.user.findUnique({
     where: { email },
@@ -81,12 +88,19 @@ export async function devBypassUser(): Promise<ActiveUser | null> {
   };
 }
 
-/** Accounts offered in the dev switcher. */
+/**
+ * Accounts offered on the dev sign-in page and in the banner switcher.
+ *
+ * Every account, not just the seeded demo ones, so a coach or student created
+ * through the real flow can also be inspected. Disabled accounts are excluded
+ * to match what signing in would actually do.
+ */
 export async function devBypassChoices() {
   if (!devBypassEnabled()) return [];
   return prisma.user.findMany({
-    where: { email: { endsWith: ".demo@example.com" } },
+    where: { disabledAt: null },
     select: { email: true, name: true, role: true },
-    orderBy: { role: "asc" },
+    orderBy: [{ role: "asc" }, { email: "asc" }],
+    take: 25,
   });
 }

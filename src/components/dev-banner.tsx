@@ -3,11 +3,11 @@ import type { ActiveUser } from "@/lib/auth/require-user";
 import { DevUserSwitch } from "./dev-user-switch";
 
 /**
- * Loud, unmissable banner shown whenever the auth bypass is active.
+ * Loud, unmissable banner shown whenever the sign-in bypass is active.
  *
- * The point is that nobody can look at a screenshot of this site and mistake
- * it for a real signed-in session. It renders nothing at all in production,
- * where the bypass cannot be enabled.
+ * The point is that nobody can look at a screenshot of this site and mistake it
+ * for a real signed-in session. It renders nothing in production, where the
+ * bypass cannot be enabled.
  */
 export async function DevBanner({ user }: { user: ActiveUser | null }) {
   if (!devBypassEnabled()) return null;
@@ -20,13 +20,19 @@ export async function DevBanner({ user }: { user: ActiveUser | null }) {
           Dev mode · sign-in bypassed
         </span>
         <span className="opacity-80">
-          Everyone is signed in as{" "}
-          <strong>
-            {user ? `${user.name ?? user.email} (${user.role})` : "nobody"}
-          </strong>
-          . Never run this with real student data.
+          {user ? (
+            <>
+              Acting as{" "}
+              <strong>
+                {user.name ?? user.email} ({user.role})
+              </strong>
+              . Never run this with real student data.
+            </>
+          ) : (
+            <>Signed out — pick an account on the sign-in page.</>
+          )}
         </span>
-        <DevUserSwitch choices={choices} current={user?.email ?? ""} />
+        {user && <DevUserSwitch choices={choices} current={user.email} />}
       </div>
     </div>
   );

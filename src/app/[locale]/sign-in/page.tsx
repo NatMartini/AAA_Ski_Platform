@@ -4,6 +4,9 @@ import { googleEnabled } from "@/auth";
 import { getUser } from "@/lib/auth/require-user";
 import { Card } from "@/components/ui/card";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
+import { DevSignIn } from "@/components/dev-sign-in";
+import { devBypassChoices, devBypassEnabled } from "@/lib/auth/dev-bypass";
+import { toLocale } from "@/i18n/routing";
 import { Snowflake, TriangleAlert } from "lucide-react";
 
 export default async function SignInPage({
@@ -49,15 +52,29 @@ export default async function SignInPage({
           </p>
         )}
 
-        {googleEnabled ? (
+        {googleEnabled && (
           <GoogleSignInButton
             label={t("google")}
             callbackUrl={typeof callbackUrl === "string" ? callbackUrl : `/${locale}`}
           />
+        )}
+
+        {/* Development sign-in. Renders only when DEV_AUTH_BYPASS=1, which is
+            impossible in production — see lib/auth/dev-bypass.ts. */}
+        {devBypassEnabled() ? (
+          <DevSignIn
+            locale={toLocale(locale)}
+            accounts={await devBypassChoices()}
+            callbackUrl={
+              typeof callbackUrl === "string" ? callbackUrl : `/${locale}`
+            }
+          />
         ) : (
-          <p className="rounded-lg border border-border bg-surface-muted p-3 text-sm text-muted-foreground">
-            {t("unavailable")}
-          </p>
+          !googleEnabled && (
+            <p className="rounded-lg border border-border bg-surface-muted p-3 text-sm text-muted-foreground">
+              {t("unavailable")}
+            </p>
+          )
         )}
       </Card>
     </div>

@@ -5,6 +5,7 @@ import type { ActiveUser } from "@/lib/auth/require-user";
 import type { Locale } from "@/i18n/routing";
 import { LocaleSwitch } from "./locale-switch";
 import { SignOutButton } from "./sign-out-button";
+import { devBypassEnabled } from "@/lib/auth/dev-bypass";
 
 /**
  * Signed-out visitors see the brand and a sign-in link and nothing else — no
@@ -60,7 +61,9 @@ export async function SiteHeader({
 
         <div className={user ? "flex items-center gap-2" : "ml-auto flex items-center gap-2"}>
           <LocaleSwitch current={locale} />
-          {user && <SignOutButton label={t("signOut")} />}
+          {user && (
+            <SignOutButton label={t("signOut")} devMode={devBypassEnabled()} />
+          )}
         </div>
       </div>
     </header>
