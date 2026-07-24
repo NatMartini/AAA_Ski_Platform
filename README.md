@@ -13,6 +13,23 @@ visitor cannot learn which coach teaches where, when, or for how much.
 
 ## Getting started
 
+### One click (for testing)
+
+Double-click **`start.bat`** (Windows), or run:
+
+```bash
+npm run launch
+```
+
+This finds a working Postgres (an already-running one, or it starts the
+container, or falls back to a native install), applies migrations, seeds a demo
+coach and student, turns on the development sign-in bypass, starts the dev
+server and opens the browser. No Google OAuth or account setup needed — the
+sign-in page lets you pick **Kevin** (coach) or **Wei Zhang** (student).
+`stop.bat` shuts it all down.
+
+### Manual
+
 Requires Node 20.9+ and Docker (or a native PostgreSQL 17 — see `.env.example`).
 
 ```bash
