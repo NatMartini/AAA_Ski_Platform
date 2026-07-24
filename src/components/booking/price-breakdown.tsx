@@ -5,12 +5,16 @@ const COPY = {
   zh: {
     perHour: "/ 小时",
     hours: "小时",
+    group: "人数",
+    oneOnN: "1 对 {n}",
     handover: "交接扣减(每单 10 分钟)",
     total: "实付(加元 CAD)",
   },
   en: {
     perHour: "/ hour",
     hours: "hours",
+    group: "Students",
+    oneOnN: "1-on-{n}",
     handover: "Handover credit (10 min per booking)",
     total: "Total (CAD)",
   },
@@ -32,8 +36,15 @@ export function PriceBreakdown({
 
   return (
     <dl className="rounded-lg border border-border text-sm">
+      {quote.headcount > 1 && (
+        <Row
+          term={c.group}
+          value={c.oneOnN.replace("{n}", String(quote.headcount))}
+          muted
+        />
+      )}
       <Row
-        term={`${formatMoneyShort(quote.hourlyRateCents)} ${c.perHour} × ${quote.hours} ${c.hours}`}
+        term={`${formatMoneyShort(quote.perHourCents)} ${c.perHour} × ${quote.hours} ${c.hours}`}
         value={formatMoneyShort(quote.subtotalCents)}
       />
       <Row

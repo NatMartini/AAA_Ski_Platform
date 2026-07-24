@@ -50,17 +50,20 @@ export default async function PickSlotPage({
       locale={toLocale(locale)}
       coachId={coachId}
       coachName={profile.displayName}
+      coachBio={locale === "zh" ? profile.bioZh : profile.bioEn}
+      coachAvatarUrl={profile.avatarUrl}
       coachWechat={profile.wechatId}
       resortName={locale === "zh" ? resort.nameZh : resort.nameEn}
       minHours={profile.minHours}
+      maxGroupSize={profile.maxGroupSize}
       days={forResort.map((day) => ({
         dateKey: day.dateKey,
         hourlyRateCents: day.hourlyRateCents,
         handoverDiscountCents: day.handoverDiscountCents,
+        extraPersonCents: day.extraPersonCents,
         note: day.note,
         cells: day.cells.map((c) => ({
           hour: c.hour,
-          status: c.status,
           startIso: c.startAt.toISOString(),
         })),
         startOptions: day.startOptions.map((o) => ({

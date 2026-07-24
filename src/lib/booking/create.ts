@@ -30,6 +30,8 @@ type CreateInput = {
   dateKey: DateKey;
   startHour: number;
   hours: number;
+  /** Number of students; defaults to 1. Capped at the coach's maxGroupSize. */
+  headcount?: number;
   locale: Locale;
   /** Self-serve booking by the account holder. */
   account?: { id: string; participantId: string; participantName: string };
@@ -80,11 +82,20 @@ export async function createBooking(
   const endAt = torontoWallTimeToUtc(input.dateKey, input.startHour + input.hours);
   const { lessonStartAt, lessonEndAt } = lessonWindow(startAt, endAt);
 
+  // Clamp the group size to what this coach allows rather than trusting the
+  // client; a maxGroupSize of 1 means no group bookings.
+  const headcount = Math.min(
+    Math.max(1, input.headcount ?? 1),
+    profile.maxGroupSize,
+  );
+
   const rate = day.hourlyRateCentsOverride ?? profile.hourlyRateCents;
   const priced = quote({
     hours: input.hours,
     hourlyRateCents: rate,
     handoverDiscountCents: profile.handoverDiscountCents,
+    headcount,
+    extraPersonCents: profile.extraPersonCents,
   });
 
   const disclosure = buildDisclosure({
@@ -160,9 +171,13 @@ export async function createBooking(
           startAt,
           endAt,
           hours: input.hours,
+          headcount,
           lessonStartAt,
           lessonEndAt,
+          // hourlyRateCents is the base (one-student) rate; the surcharge is
+          // stored separately so the effective rate stays re-derivable.
           hourlyRateCents: priced.hourlyRateCents,
+          extraPersonCents: priced.extraPersonCents,
           subtotalCents: priced.subtotalCents,
           handoverDiscountCents: priced.handoverDiscountCents,
           totalCents: priced.totalCents,

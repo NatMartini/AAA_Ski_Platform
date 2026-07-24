@@ -33,6 +33,9 @@ export type DisclosureSnapshot = {
   };
   price: {
     hourlyRateCents: number;
+    /** Effective per-hour rate charged (base + group surcharge). */
+    perHourCents?: number;
+    headcount?: number;
     subtotalCents: number;
     handoverDiscountCents: number;
     totalCents: number;
@@ -78,6 +81,8 @@ export function buildDisclosure(input: {
     },
     price: {
       hourlyRateCents: input.quote.hourlyRateCents,
+      perHourCents: input.quote.perHourCents,
+      headcount: input.quote.headcount,
       subtotalCents: input.quote.subtotalCents,
       handoverDiscountCents: input.quote.handoverDiscountCents,
       totalCents: input.quote.totalCents,
@@ -123,7 +128,14 @@ export function renderDisclosureText(
       : `Lesson runs: ${formatTorontoTime(start, "en")} – ${formatTorontoTime(end, "en")} (${snapshot.lesson.lessonMinutes} min)`,
     "",
     zh ? "价格明细" : "Price breakdown",
-    `  ${formatMoneyShort(p.hourlyRateCents)} ${zh ? "/ 小时 ×" : "/ hour ×"} ${snapshot.lesson.hours} ${zh ? "小时" : "hours"} = ${formatMoneyShort(p.subtotalCents)}`,
+    ...((p.headcount ?? 1) > 1
+      ? [
+          zh
+            ? `  人数:1 对 ${p.headcount}`
+            : `  Group of ${p.headcount}`,
+        ]
+      : []),
+    `  ${formatMoneyShort(p.perHourCents ?? p.hourlyRateCents)} ${zh ? "/ 小时 ×" : "/ hour ×"} ${snapshot.lesson.hours} ${zh ? "小时" : "hours"} = ${formatMoneyShort(p.subtotalCents)}`,
     `  ${zh ? "交接扣减(每单 10 分钟)" : "Handover credit (10 min per booking)"} = -${formatMoneyShort(p.handoverDiscountCents)}`,
     `  ${zh ? "实付" : "Total"} = ${formatMoneyShort(p.totalCents)} ${p.currency}`,
     "",

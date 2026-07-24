@@ -14,6 +14,8 @@ export type CoachSettings = {
   displayName: string;
   hourlyRateCents: number;
   handoverDiscountCents: number;
+  extraPersonCents: number;
+  maxGroupSize: number;
   minHours: number;
   maxHours: number;
   leadTimeHours: number;
@@ -42,6 +44,10 @@ const COPY = {
     handover: "每单交接扣减(加元)",
     handoverHelp:
       "每张订单固定扣一次,不随时长增加。首尾各留 5 分钟交接,共 10 分钟。",
+    extraPerson: "每增加一人每小时加价(加元)",
+    extraPersonHelp: "多人课时,每多一名学员每小时加收此金额。",
+    maxGroupSize: "最多人数",
+    maxGroupHelp: "设为 1 则不接受多人课。",
     minHours: "最少小时数",
     maxHours: "最多小时数",
     leadTime: "最少提前预定小时数",
@@ -76,6 +82,10 @@ const COPY = {
     handover: "Handover credit per booking (CAD)",
     handoverHelp:
       "Deducted once per booking, not per hour. Five minutes at each end, ten in total.",
+    extraPerson: "Extra per additional student per hour (CAD)",
+    extraPersonHelp: "For group lessons, each extra student adds this per hour.",
+    maxGroupSize: "Maximum group size",
+    maxGroupHelp: "Set to 1 to not accept group lessons.",
     minHours: "Minimum hours",
     maxHours: "Maximum hours",
     leadTime: "Minimum notice (hours)",
@@ -134,6 +144,8 @@ export function CoachSettingsForm({
         displayName: form.displayName,
         hourlyRateCents: form.hourlyRateCents,
         handoverDiscountCents: form.handoverDiscountCents,
+        extraPersonCents: form.extraPersonCents,
+        maxGroupSize: form.maxGroupSize,
         minHours: form.minHours,
         maxHours: form.maxHours,
         leadTimeHours: form.leadTimeHours,
@@ -208,6 +220,24 @@ export function CoachSettingsForm({
             {formatMoneyShort(exampleTotal)}
           </strong>
         </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <MoneyField
+            id="extraPersonCents"
+            label={c.extraPerson}
+            cents={form.extraPersonCents}
+            onChange={(v) => set("extraPersonCents", v)}
+            hint={c.extraPersonHelp}
+            error={errors.extraPersonCents}
+          />
+          <NumberField
+            id="maxGroupSize"
+            label={c.maxGroupSize}
+            value={form.maxGroupSize}
+            onChange={(v) => set("maxGroupSize", v)}
+            hint={c.maxGroupHelp}
+            error={errors.maxGroupSize}
+          />
+        </div>
         <div className="grid gap-4 sm:grid-cols-3">
           <NumberField
             id="minHours"
@@ -431,12 +461,14 @@ function NumberField({
   label,
   value,
   onChange,
+  hint,
   error,
 }: {
   id: string;
   label: string;
   value: number;
   onChange: (value: number) => void;
+  hint?: string;
   error?: string;
 }) {
   return (
@@ -451,6 +483,7 @@ function NumberField({
         value={value}
         onChange={(e) => onChange(Math.max(0, Math.round(Number(e.target.value || 0))))}
       />
+      <Hint>{hint}</Hint>
       <FieldError>{error}</FieldError>
     </div>
   );

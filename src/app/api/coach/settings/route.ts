@@ -41,6 +41,8 @@ export async function PATCH(req: Request) {
       displayName: d.displayName,
       hourlyRateCents: d.hourlyRateCents,
       handoverDiscountCents: d.handoverDiscountCents,
+      extraPersonCents: d.extraPersonCents,
+      maxGroupSize: d.maxGroupSize,
       minHours: d.minHours,
       maxHours: d.maxHours,
       leadTimeHours: d.leadTimeHours,

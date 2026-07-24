@@ -140,6 +140,12 @@ model CoachProfile {
   maxHours              Int @default(8)
   leadTimeHours         Int @default(24)
 
+  // Group lessons: each additional student adds this much per hour on top of
+  // the base rate. $30 default → 1-on-2 is base+30/h, 1-on-3 base+60/h.
+  extraPersonCents      Int @default(3000)
+  // Largest group a single booking may be for. 1 disables group bookings.
+  maxGroupSize          Int @default(3)
+
   // Payment. Money goes directly to each coach — the platform never pools it.
   emtEnabled       Boolean @default(true)
   emtEmail         String?
@@ -294,14 +300,20 @@ model Booking {
   endAt   DateTime
   hours   Int
 
+  // How many students this lesson is for. Drives the per-hour rate.
+  headcount Int @default(1)
+
   // Actual teaching window: startAt + 5min, endAt - 5min. The 10 minutes are
   // the handover to the next student, and are why totalCents is discounted.
   lessonStartAt DateTime
   lessonEndAt   DateTime
 
   // Price snapshot taken at booking time so later rate changes never rewrite
-  // an existing booking.
+  // an existing booking. hourlyRateCents is the BASE (one-student) rate;
+  // extraPersonCents is the per-extra-student surcharge as it stood then, so
+  // the effective per-hour rate is re-derivable: base + (headcount-1) × extra.
   hourlyRateCents       Int
+  extraPersonCents      Int @default(0)
   subtotalCents         Int
   handoverDiscountCents Int
   totalCents            Int

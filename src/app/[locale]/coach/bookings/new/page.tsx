@@ -30,11 +30,13 @@ export default async function CoachNewBookingPage({
     <CoachBookingForm
       locale={toLocale(locale)}
       minHours={profile?.minHours ?? 2}
+      maxGroupSize={profile?.maxGroupSize ?? 3}
       days={days.map((day) => ({
         dateKey: day.dateKey,
         resortName: locale === "zh" ? day.resort.nameZh : day.resort.nameEn,
         hourlyRateCents: day.hourlyRateCents,
         handoverDiscountCents: day.handoverDiscountCents,
+        extraPersonCents: day.extraPersonCents,
         startOptions: day.startOptions.map((o) => ({
           hour: o.hour,
           durations: o.durations,

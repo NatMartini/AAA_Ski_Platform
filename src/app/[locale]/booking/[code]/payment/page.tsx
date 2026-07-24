@@ -5,6 +5,7 @@ import { requireUserPage } from "@/lib/auth/require-user";
 import { accessFor, loadBooking } from "@/lib/booking/access";
 import { prisma } from "@/lib/prisma";
 import { PaymentPanel } from "@/components/booking/payment-panel";
+import { quoteFromBooking } from "@/lib/pricing";
 import { toLocale } from "@/i18n/routing";
 
 export default async function PaymentPage({
@@ -47,18 +48,7 @@ export default async function PaymentPage({
         rejectedNote={
           booking.status === "PAYMENT_REJECTED" ? booking.reviewNote : null
         }
-        quote={{
-          hours: booking.hours,
-          hourlyRateCents: booking.hourlyRateCents,
-          subtotalCents: booking.subtotalCents,
-          handoverDiscountCents: booking.handoverDiscountCents,
-          totalCents: booking.totalCents,
-          currency: booking.currency,
-          lessonMinutes: Math.round(
-            (booking.lessonEndAt.getTime() - booking.lessonStartAt.getTime()) /
-              60000,
-          ),
-        }}
+        quote={quoteFromBooking(booking)}
         methods={{
           emt:
             profile.emtEnabled && profile.emtEmail

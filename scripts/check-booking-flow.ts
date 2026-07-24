@@ -199,6 +199,34 @@ async function main() {
   });
   check("an out-of-season date is refused", !offSeason.ok && offSeason.reason === "off-season");
 
+  console.log("\ngroup lesson pricing");
+  const group = await createBooking({
+    coachId: COACH,
+    dateKey: DAY,
+    startHour: 14,
+    hours: 2,
+    headcount: 3, // 1-on-3
+    locale: "zh",
+    account: { id: ADULT, participantId: adult.id, participantName: "张伟" },
+    now,
+  });
+  check("a 1-on-3 group booking is accepted", group.ok);
+  const groupRow = group.ok
+    ? await prisma.booking.findUnique({ where: { code: group.code } })
+    : null;
+  // base 8000 + 2 × 3000 = 14000/h; × 2h = 28000; less 1500 = 26500.
+  check(
+    "1-on-3 for 2h is $140/h × 2 − $15 = $265",
+    groupRow?.headcount === 3 &&
+      groupRow?.subtotalCents === 28000 &&
+      groupRow?.totalCents === 26500,
+    `total=${groupRow?.totalCents}`,
+  );
+  // Release the slot so it does not collide with the reuse test below.
+  if (groupRow) {
+    await prisma.booking.delete({ where: { id: groupRow.id } });
+  }
+
   console.log("\nwaiver signing (adult)");
 
   const bookingRow = await prisma.booking.findUnique({

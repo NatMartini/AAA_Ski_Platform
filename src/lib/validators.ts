@@ -52,6 +52,8 @@ export const coachSettingsSchema = z.object({
   displayName: z.string().trim().min(1).max(80),
   hourlyRateCents: z.number().int().min(0).max(1_000_000),
   handoverDiscountCents: z.number().int().min(0).max(1_000_000),
+  extraPersonCents: z.number().int().min(0).max(1_000_000),
+  maxGroupSize: z.number().int().min(1).max(20),
   minHours: z.number().int().min(1).max(12),
   maxHours: z.number().int().min(1).max(12),
   leadTimeHours: z.number().int().min(0).max(720),
@@ -107,11 +109,15 @@ export const participantSchema = z.object({
   emergencyContactPhone: z.string().trim().max(40).nullable().optional(),
 });
 
+/** Upper bound; the coach's own maxGroupSize is enforced at booking time. */
+const headcountSchema = z.number().int().min(1).max(20).default(1);
+
 export const createBookingSchema = z.object({
   coachId: z.string().min(1),
   date: seasonDateSchema,
   startHour: hourSchema,
   hours: z.number().int().min(1).max(12),
+  headcount: headcountSchema,
   participantId: z.string().min(1),
   notes: z.string().trim().max(1000).nullable().optional(),
 });
@@ -127,6 +133,7 @@ export const coachCreateBookingSchema = z.object({
   date: seasonDateSchema,
   startHour: hourSchema,
   hours: z.number().int().min(1).max(12),
+  headcount: headcountSchema,
   studentName: z.string().trim().min(1).max(120),
   /** The signing link is issued to this address and only it can sign. */
   studentEmail: z.string().trim().email(),

@@ -6,6 +6,7 @@ import { accessFor, loadBooking } from "@/lib/booking/access";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PriceBreakdown } from "@/components/booking/price-breakdown";
+import { quoteFromBooking } from "@/lib/pricing";
 import { HoldCountdown } from "@/components/booking/hold-countdown";
 import { CoachReviewPanel } from "@/components/coach/coach-review-panel";
 import { statusLabel, statusTone } from "@/lib/booking/state";
@@ -103,18 +104,7 @@ export default async function BookingPage({
 
       <Card className="space-y-3">
         <CardTitle>{zh ? "价格明细" : "Price breakdown"}</CardTitle>
-        <PriceBreakdown
-          locale={loc}
-          quote={{
-            hours: booking.hours,
-            hourlyRateCents: booking.hourlyRateCents,
-            subtotalCents: booking.subtotalCents,
-            handoverDiscountCents: booking.handoverDiscountCents,
-            totalCents: booking.totalCents,
-            currency: booking.currency,
-            lessonMinutes,
-          }}
-        />
+        <PriceBreakdown locale={loc} quote={quoteFromBooking(booking)} />
       </Card>
 
       {/* Next action for the customer */}

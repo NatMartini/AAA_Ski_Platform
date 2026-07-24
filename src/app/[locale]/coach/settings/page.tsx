@@ -31,6 +31,8 @@ export default async function CoachSettingsPage({
         displayName: profile.displayName,
         hourlyRateCents: profile.hourlyRateCents,
         handoverDiscountCents: profile.handoverDiscountCents,
+        extraPersonCents: profile.extraPersonCents,
+        maxGroupSize: profile.maxGroupSize,
         minHours: profile.minHours,
         maxHours: profile.maxHours,
         leadTimeHours: profile.leadTimeHours,

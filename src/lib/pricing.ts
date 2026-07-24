@@ -9,6 +9,11 @@ import { addMinutes } from "./time";
  * not per hour — because the handover only happens once no matter how long the
  * lesson is. $80/h for 2h is $160, less $15, so $145.
  *
+ * Group lessons: the per-hour rate rises by a fixed amount for each additional
+ * student. With a $80 base and a $30 per-extra-person rate, one-on-one is
+ * $80/h, one-on-two $110/h, one-on-three $140/h. The handover credit is still
+ * deducted once per booking, not per person.
+ *
  * No tax is calculated or displayed anywhere. Showing a tax line while not
  * registered would be worse than showing none.
  */
@@ -20,9 +25,19 @@ export const HANDOVER_TOTAL_MINUTES =
 
 export const CURRENCY = "CAD";
 
+/** Default extra charge per additional student per hour ($30). */
+export const DEFAULT_EXTRA_PERSON_CENTS = 3000;
+
 export type Quote = {
   hours: number;
+  /** How many students the lesson is for. */
+  headcount: number;
+  /** Base per-hour rate for one student. */
   hourlyRateCents: number;
+  /** Extra per additional student per hour, snapshotted. */
+  extraPersonCents: number;
+  /** Effective per-hour rate charged: base + (headcount-1) × extra. */
+  perHourCents: number;
   subtotalCents: number;
   handoverDiscountCents: number;
   totalCents: number;
@@ -31,12 +46,29 @@ export type Quote = {
   lessonMinutes: number;
 };
 
+/** Effective per-hour rate for a group of `headcount` students. */
+export function perHourRateCents(
+  hourlyRateCents: number,
+  headcount: number,
+  extraPersonCents: number,
+): number {
+  return hourlyRateCents + Math.max(0, headcount - 1) * extraPersonCents;
+}
+
 export function quote(input: {
   hours: number;
   hourlyRateCents: number;
   handoverDiscountCents: number;
+  headcount?: number;
+  extraPersonCents?: number;
 }): Quote {
-  const { hours, hourlyRateCents, handoverDiscountCents } = input;
+  const {
+    hours,
+    hourlyRateCents,
+    handoverDiscountCents,
+    headcount = 1,
+    extraPersonCents = 0,
+  } = input;
 
   if (!Number.isInteger(hours) || hours <= 0) {
     throw new Error(`hours must be a positive integer, got ${hours}`);
@@ -47,19 +79,69 @@ export function quote(input: {
   if (!Number.isInteger(handoverDiscountCents) || handoverDiscountCents < 0) {
     throw new Error(`handoverDiscountCents must be a non-negative integer`);
   }
+  if (!Number.isInteger(headcount) || headcount < 1) {
+    throw new Error(`headcount must be a positive integer, got ${headcount}`);
+  }
+  if (!Number.isInteger(extraPersonCents) || extraPersonCents < 0) {
+    throw new Error(`extraPersonCents must be a non-negative integer`);
+  }
 
-  const subtotalCents = hours * hourlyRateCents;
+  const perHourCents = perHourRateCents(
+    hourlyRateCents,
+    headcount,
+    extraPersonCents,
+  );
+  const subtotalCents = hours * perHourCents;
   // Clamp so a misconfigured discount can never produce a negative total.
   const discount = Math.min(handoverDiscountCents, subtotalCents);
 
   return {
     hours,
+    headcount,
     hourlyRateCents,
+    extraPersonCents,
+    perHourCents,
     subtotalCents,
     handoverDiscountCents: discount,
     totalCents: subtotalCents - discount,
     currency: CURRENCY,
     lessonMinutes: hours * 60 - HANDOVER_TOTAL_MINUTES,
+  };
+}
+
+/**
+ * Rebuilds a Quote for display from a booking's frozen price snapshot.
+ *
+ * Uses the stored totals verbatim rather than recomputing, so what is shown is
+ * exactly what was charged even if the coach's rates have since changed. The
+ * effective per-hour rate is recovered from the stored subtotal, which is an
+ * exact multiple of the hours.
+ */
+export function quoteFromBooking(b: {
+  hours: number;
+  headcount: number;
+  hourlyRateCents: number;
+  extraPersonCents: number;
+  subtotalCents: number;
+  handoverDiscountCents: number;
+  totalCents: number;
+  currency: string;
+  lessonStartAt: Date;
+  lessonEndAt: Date;
+}): Quote {
+  return {
+    hours: b.hours,
+    headcount: b.headcount,
+    hourlyRateCents: b.hourlyRateCents,
+    extraPersonCents: b.extraPersonCents,
+    perHourCents: Math.round(b.subtotalCents / b.hours),
+    subtotalCents: b.subtotalCents,
+    handoverDiscountCents: b.handoverDiscountCents,
+    totalCents: b.totalCents,
+    currency: b.currency,
+    lessonMinutes: Math.round(
+      (b.lessonEndAt.getTime() - b.lessonStartAt.getTime()) / 60000,
+    ),
   };
 }
 

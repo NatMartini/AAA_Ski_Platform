@@ -1,0 +1,7 @@
+-- AlterTable
+ALTER TABLE "Booking" ADD COLUMN     "extraPersonCents" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "headcount" INTEGER NOT NULL DEFAULT 1;
+
+-- AlterTable
+ALTER TABLE "CoachProfile" ADD COLUMN     "extraPersonCents" INTEGER NOT NULL DEFAULT 3000,
+ADD COLUMN     "maxGroupSize" INTEGER NOT NULL DEFAULT 3;

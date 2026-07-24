@@ -15,6 +15,7 @@ type Day = {
   resortName: string;
   hourlyRateCents: number;
   handoverDiscountCents: number;
+  extraPersonCents: number;
   startOptions: { hour: number; durations: number[] }[];
 };
 
@@ -27,6 +28,8 @@ const COPY = {
     start: "开始时间",
     duration: "时长",
     hours: "小时",
+    headcount: "人数",
+    people: "人",
     student: "学员信息",
     name: "学员姓名",
     email: "学员邮箱",
@@ -53,6 +56,8 @@ const COPY = {
     day: "Day",
     start: "Start time",
     duration: "Duration",
+    headcount: "Students",
+    people: "students",
     hours: "hours",
     student: "Student details",
     name: "Student's name",
@@ -81,16 +86,19 @@ export function CoachBookingForm({
   locale,
   days,
   minHours,
+  maxGroupSize,
 }: {
   locale: Locale;
   days: Day[];
   minHours: number;
+  maxGroupSize: number;
 }) {
   const c = COPY[locale];
 
   const [dateKey, setDateKey] = useState(days[0]?.dateKey ?? "");
   const [startHour, setStartHour] = useState<number | null>(null);
   const [hours, setHours] = useState(minHours);
+  const [headcount, setHeadcount] = useState(1);
   const [studentName, setStudentName] = useState("");
   const [studentEmail, setStudentEmail] = useState("");
   const [studentBirthDate, setStudentBirthDate] = useState("");
@@ -114,6 +122,8 @@ export function CoachBookingForm({
           hours,
           hourlyRateCents: day.hourlyRateCents,
           handoverDiscountCents: day.handoverDiscountCents,
+          headcount,
+          extraPersonCents: day.extraPersonCents,
         })
       : null;
 
@@ -129,6 +139,7 @@ export function CoachBookingForm({
         date: day.dateKey,
         startHour,
         hours,
+        headcount,
         studentName,
         studentEmail,
         studentBirthDate,
@@ -276,6 +287,25 @@ export function CoachBookingForm({
               ))}
             </Select>
           </div>
+
+          {maxGroupSize > 1 && (
+            <div className="space-y-1.5">
+              <Label htmlFor="headcount">{c.headcount}</Label>
+              <Select
+                id="headcount"
+                value={headcount}
+                onChange={(e) => setHeadcount(Number(e.target.value))}
+              >
+                {Array.from({ length: maxGroupSize }, (_, i) => i + 1).map(
+                  (n) => (
+                    <option key={n} value={n}>
+                      {n} {c.people}
+                    </option>
+                  ),
+                )}
+              </Select>
+            </div>
+          )}
         </div>
 
         {priced && <PriceBreakdown quote={priced} locale={locale} />}

@@ -56,6 +56,55 @@ describe("quote", () => {
     ).toThrow();
   });
 
+  it("charges a group at base + $30 per extra student per hour", () => {
+    // 1-on-1 $80/h, 1-on-2 $110/h, 1-on-3 $140/h.
+    const two = quote({
+      hours: 2,
+      hourlyRateCents: RATE,
+      handoverDiscountCents: HANDOVER,
+      headcount: 2,
+      extraPersonCents: 3000,
+    });
+    expect(two.perHourCents).toBe(11000);
+    expect(two.subtotalCents).toBe(22000); // 110 × 2
+    expect(two.totalCents).toBe(20500); // less 15
+
+    const three = quote({
+      hours: 2,
+      hourlyRateCents: RATE,
+      handoverDiscountCents: HANDOVER,
+      headcount: 3,
+      extraPersonCents: 3000,
+    });
+    expect(three.perHourCents).toBe(14000);
+    expect(three.subtotalCents).toBe(28000); // 140 × 2
+    expect(three.totalCents).toBe(26500);
+  });
+
+  it("treats a single student as no surcharge", () => {
+    const q = quote({
+      hours: 2,
+      hourlyRateCents: RATE,
+      handoverDiscountCents: HANDOVER,
+      headcount: 1,
+      extraPersonCents: 3000,
+    });
+    expect(q.perHourCents).toBe(RATE);
+    expect(q.totalCents).toBe(14500);
+  });
+
+  it("defaults to one student with no surcharge", () => {
+    const q = quote({ hours: 2, hourlyRateCents: RATE, handoverDiscountCents: HANDOVER });
+    expect(q.headcount).toBe(1);
+    expect(q.perHourCents).toBe(RATE);
+  });
+
+  it("rejects a headcount below one", () => {
+    expect(() =>
+      quote({ hours: 2, hourlyRateCents: RATE, handoverDiscountCents: HANDOVER, headcount: 0 }),
+    ).toThrow();
+  });
+
   it("stays in integer cents for awkward rates", () => {
     const q = quote({
       hours: 3,

@@ -10,6 +10,8 @@ export type AvailableDay = DaySlots & {
   resort: { id: string; slug: string; nameEn: string; nameZh: string };
   hourlyRateCents: number;
   handoverDiscountCents: number;
+  extraPersonCents: number;
+  maxGroupSize: number;
   note: string | null;
 };
 
@@ -83,16 +85,20 @@ export async function getAvailability(opts: {
       resort: day.resort,
       hourlyRateCents: day.hourlyRateCentsOverride ?? profile.hourlyRateCents,
       handoverDiscountCents: profile.handoverDiscountCents,
+      extraPersonCents: profile.extraPersonCents,
+      maxGroupSize: profile.maxGroupSize,
       note: day.note,
     };
   });
 }
 
 /** Price for one candidate booking, using that day's rate override if set. */
-export function quoteForDay(day: AvailableDay, hours: number) {
+export function quoteForDay(day: AvailableDay, hours: number, headcount = 1) {
   return quote({
     hours,
     hourlyRateCents: day.hourlyRateCents,
     handoverDiscountCents: day.handoverDiscountCents,
+    headcount,
+    extraPersonCents: day.extraPersonCents,
   });
 }

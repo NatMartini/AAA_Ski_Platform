@@ -7,18 +7,18 @@ import { Button } from "@/components/ui/button";
 import { FieldError, Label, Select } from "@/components/ui/field";
 import { PriceBreakdown } from "./price-breakdown";
 import { AddParticipantDialog } from "./add-participant-dialog";
-import { quote, lessonWindow } from "@/lib/pricing";
+import { quote, lessonWindow, formatMoneyShort } from "@/lib/pricing";
 import { formatTorontoDate, formatTorontoTime } from "@/lib/time";
 import type { Locale } from "@/i18n/routing";
-import type { HourStatus } from "@/lib/slots";
 import { cn } from "@/lib/utils";
 import { Loader2, MessageCircle } from "lucide-react";
 
-type Cell = { hour: number; status: HourStatus; startIso: string };
+type Cell = { hour: number; startIso: string };
 type Day = {
   dateKey: string;
   hourlyRateCents: number;
   handoverDiscountCents: number;
+  extraPersonCents: number;
   note: string | null;
   cells: Cell[];
   startOptions: { hour: number; durations: number[] }[];
@@ -37,22 +37,15 @@ const COPY = {
     pickTime: "选择开始时间",
     duration: "时长",
     hours: "小时",
+    headcount: "上课人数",
+    people: "人",
+    oneOnN: "1 对 {n}",
+    groupNote: "多人课每增加一人,每小时加 {extra}。",
     participant: "上课学员",
     addParticipant: "添加学员",
     noDays: "该雪场暂时没有可预定的日子。",
     noSlots: "这一天已经约满了。",
     review: "确认并预定",
-    legend: {
-      available: "可选",
-      booked: "已约满",
-      break: "午休",
-      past: "已过时",
-      "lead-time": "太临近",
-    },
-    // An hour that is itself free but has no room for a full lesson before
-    // lunch or closing. Saying "可选" on a disabled button would contradict
-    // itself, so it gets its own wording.
-    tooShort: "时长不够",
     otherTimes: "想约其他时间?微信联系教练",
     handoverNote:
       "首尾各留 5 分钟与下一位学员交接,因此实际授课比预定时段少 10 分钟。",
@@ -67,19 +60,15 @@ const COPY = {
     pickTime: "Choose a start time",
     duration: "Duration",
     hours: "hours",
+    headcount: "How many students",
+    people: "students",
+    oneOnN: "1-on-{n}",
+    groupNote: "Each extra student adds {extra} per hour.",
     participant: "Who is taking the lesson",
     addParticipant: "Add participant",
     noDays: "No days are open at this resort yet.",
     noSlots: "This day is fully booked.",
     review: "Review and book",
-    legend: {
-      available: "Available",
-      booked: "Booked",
-      break: "Lunch",
-      past: "Past",
-      "lead-time": "Too soon",
-    },
-    tooShort: "Not enough time",
     otherTimes: "Want a different time? Message the coach on WeChat",
     handoverNote:
       "Five minutes at each end are the handover to the next student, so teaching time is 10 minutes shorter than the booked block.",
@@ -95,18 +84,24 @@ export function SlotPicker({
   locale,
   coachId,
   coachName,
+  coachBio,
+  coachAvatarUrl,
   coachWechat,
   resortName,
   minHours,
+  maxGroupSize,
   days,
   participants: initialParticipants,
 }: {
   locale: Locale;
   coachId: string;
   coachName: string;
+  coachBio: string | null;
+  coachAvatarUrl: string | null;
   coachWechat: string | null;
   resortName: string;
   minHours: number;
+  maxGroupSize: number;
   days: Day[];
   participants: Participant[];
 }) {
@@ -117,6 +112,7 @@ export function SlotPicker({
   const [dateKey, setDateKey] = useState(days[0]?.dateKey ?? "");
   const [startHour, setStartHour] = useState<number | null>(null);
   const [hours, setHours] = useState<number>(minHours);
+  const [headcount, setHeadcount] = useState(1);
   const [participantId, setParticipantId] = useState(
     initialParticipants.find((p) => p.isSelf)?.id ?? "",
   );
@@ -135,6 +131,8 @@ export function SlotPicker({
           hours,
           hourlyRateCents: day.hourlyRateCents,
           handoverDiscountCents: day.handoverDiscountCents,
+          headcount,
+          extraPersonCents: day.extraPersonCents,
         })
       : null;
 
@@ -177,6 +175,7 @@ export function SlotPicker({
         date: day.dateKey,
         startHour,
         hours,
+        headcount,
         participantId,
       }),
     });
@@ -216,6 +215,16 @@ export function SlotPicker({
         <h1 className="text-2xl font-semibold tracking-tight">{c.pickTime}</h1>
       </div>
 
+      {/* Coach introduction. Fed from the coach's bio; the content is set in
+          coach settings and shown here at the top of the booking page. */}
+      {(coachBio || coachAvatarUrl) && (
+        <CoachIntro
+          name={coachName}
+          bio={coachBio}
+          avatarUrl={coachAvatarUrl}
+        />
+      )}
+
       <Card className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="day">{c.pickDay}</Label>
@@ -237,33 +246,61 @@ export function SlotPicker({
 
         {day && (
           <>
-            <HourGrid
-              day={day}
-              locale={locale}
-              selected={startHour}
-              onSelect={selectStart}
-              legend={c.legend}
-              tooShortLabel={c.tooShort}
-            />
-
-            {day.startOptions.length === 0 && (
+            {day.startOptions.length === 0 ? (
               <p className="text-sm text-muted-foreground">{c.noSlots}</p>
+            ) : (
+              <HourGrid
+                day={day}
+                locale={locale}
+                selected={startHour}
+                onSelect={selectStart}
+              />
             )}
 
             {option && (
-              <div className="space-y-1.5">
-                <Label htmlFor="hours">{c.duration}</Label>
-                <Select
-                  id="hours"
-                  value={hours}
-                  onChange={(e) => setHours(Number(e.target.value))}
-                >
-                  {option.durations.map((d) => (
-                    <option key={d} value={d}>
-                      {d} {c.hours}
-                    </option>
-                  ))}
-                </Select>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="hours">{c.duration}</Label>
+                  <Select
+                    id="hours"
+                    value={hours}
+                    onChange={(e) => setHours(Number(e.target.value))}
+                  >
+                    {option.durations.map((d) => (
+                      <option key={d} value={d}>
+                        {d} {c.hours}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+
+                {maxGroupSize > 1 && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="headcount">{c.headcount}</Label>
+                    <Select
+                      id="headcount"
+                      value={headcount}
+                      onChange={(e) => setHeadcount(Number(e.target.value))}
+                    >
+                      {Array.from({ length: maxGroupSize }, (_, i) => i + 1).map(
+                        (n) => (
+                          <option key={n} value={n}>
+                            {n} {c.people}
+                            {n > 1 ? ` · ${c.oneOnN.replace("{n}", String(n))}` : ""}
+                          </option>
+                        ),
+                      )}
+                    </Select>
+                    {day.extraPersonCents > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {c.groupNote.replace(
+                          "{extra}",
+                          formatMoneyShort(day.extraPersonCents),
+                        )}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -339,25 +376,24 @@ export function SlotPicker({
 
 /**
  * The hour grid is a radio group of buttons, not a table of divs: it has to be
- * reachable and operable by keyboard, and screen readers need to hear which
- * hours are unavailable and why.
+ * reachable and operable by keyboard.
+ *
+ * Only hours that can actually start a lesson are shown — past hours, lunch,
+ * booked hours and hours with no room for a full lesson simply do not appear,
+ * rather than showing as greyed-out cells.
  */
 function HourGrid({
   day,
   locale,
   selected,
   onSelect,
-  legend,
-  tooShortLabel,
 }: {
   day: Day;
   locale: Locale;
   selected: number | null;
   onSelect: (hour: number) => void;
-  legend: Record<HourStatus, string>;
-  tooShortLabel: string;
 }) {
-  const bookable = new Set(day.startOptions.map((o) => o.hour));
+  const byHour = new Map(day.cells.map((cell) => [cell.hour, cell]));
 
   return (
     <div className="space-y-2">
@@ -366,37 +402,25 @@ function HourGrid({
         aria-label={locale === "zh" ? "可选时段" : "Available start times"}
         className="grid grid-cols-3 gap-2 sm:grid-cols-4"
       >
-        {day.cells.map((cell) => {
-          const selectable = bookable.has(cell.hour);
-          const isSelected = selected === cell.hour;
-          const label = `${String(cell.hour).padStart(2, "0")}:00`;
+        {day.startOptions.map((opt) => {
+          const isSelected = selected === opt.hour;
+          const label = `${String(opt.hour).padStart(2, "0")}:00`;
+          if (!byHour.has(opt.hour)) return null;
 
           return (
             <button
-              key={cell.hour}
+              key={opt.hour}
               type="button"
-              disabled={!selectable}
               aria-pressed={isSelected}
-              onClick={() => onSelect(cell.hour)}
+              onClick={() => onSelect(opt.hour)}
               className={cn(
-                "flex min-h-14 flex-col items-center justify-center rounded-lg border text-sm transition-colors",
+                "flex min-h-14 items-center justify-center rounded-lg border text-sm font-medium transition-colors",
                 isSelected
                   ? "border-accent bg-accent text-accent-foreground"
-                  : selectable
-                    ? "border-border bg-surface hover:border-ice-400"
-                    : "cursor-not-allowed border-border bg-surface-muted text-muted-foreground",
+                  : "border-border bg-surface hover:border-ice-400",
               )}
             >
-              <span className="font-medium">{label}</span>
-              {!selectable && (
-                <span className="text-[11px]">
-                  {/* "available but unbookable" needs its own wording, or the
-                      cell reads as free while being greyed out. */}
-                  {cell.status === "available"
-                    ? tooShortLabel
-                    : legend[cell.status]}
-                </span>
-              )}
+              {label}
             </button>
           );
         })}
@@ -405,5 +429,40 @@ function HourGrid({
         <p className="text-xs text-muted-foreground">{day.note}</p>
       )}
     </div>
+  );
+}
+
+/** Coach introduction card shown above the calendar. */
+function CoachIntro({
+  name,
+  bio,
+  avatarUrl,
+}: {
+  name: string;
+  bio: string | null;
+  avatarUrl: string | null;
+}) {
+  return (
+    <Card className="flex gap-4">
+      {avatarUrl && (
+        // Coach photo from an arbitrary host; next/image config is not worth it.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={avatarUrl}
+          alt={name}
+          className="size-16 shrink-0 rounded-full border border-border object-cover"
+        />
+      )}
+      <div className="min-w-0 space-y-1">
+        <CardTitle>{name}</CardTitle>
+        {bio && (
+          <div className="space-y-1 text-sm leading-relaxed text-muted-foreground">
+            {bio.split(/\n+/).map((para, i) => (
+              <p key={i}>{para}</p>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }

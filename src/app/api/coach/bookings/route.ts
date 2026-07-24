@@ -52,6 +52,7 @@ export async function POST(req: Request) {
     dateKey: d.date,
     startHour: d.startHour,
     hours: d.hours,
+    headcount: d.headcount,
     locale,
     invite: {
       name: d.studentName,
