@@ -30,7 +30,7 @@ export function SignOutButton({
     <button
       type="button"
       onClick={handleSignOut}
-      className="flex items-center gap-1.5 rounded-lg px-2 py-2 text-sm text-muted-foreground hover:text-foreground"
+      className="press flex min-h-9 items-center gap-1.5 rounded-lg border border-transparent px-2.5 text-sm font-semibold text-ink-2 hover:border-border hover:bg-surface hover:text-ink"
     >
       <LogOut className="size-4" aria-hidden />
       <span className="sr-only sm:not-sr-only">{label}</span>

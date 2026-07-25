@@ -1,5 +1,5 @@
 import { Link } from "@/i18n/navigation";
-import { statusLabel, statusTone } from "@/lib/booking/state";
+import { StatusPill } from "@/components/ui/status-pill";
 import { formatMoneyShort } from "@/lib/pricing";
 import { formatTorontoDate, formatTorontoTime } from "@/lib/time";
 import type { BookingStatus } from "@prisma/client";
@@ -32,34 +32,37 @@ export function BookingRow({
   return (
     <Link
       href={href}
-      className="flex items-center gap-3 rounded-lg border border-border bg-surface p-4 transition-colors hover:border-ice-400"
+      className="lift flex items-center gap-3 rounded-2xl border border-border bg-surface p-4 shadow-[var(--shadow-sm)] hover:border-accent/40 hover:shadow-[var(--shadow)]"
     >
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-medium">
+          <span className="font-bold">
             {formatTorontoDate(booking.startAt, locale)}
           </span>
-          <span
-            className={`rounded-full border px-2 py-0.5 text-xs ${statusTone(booking.status)}`}
-          >
-            {statusLabel(booking.status, locale)}
-          </span>
+          <StatusPill status={booking.status} locale={locale} />
           {!booking.hasWaiver && (
-            <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-700 dark:text-amber-300">
+            <span
+              className="rounded-full border px-2.5 py-1 text-xs font-bold"
+              style={{
+                background: "var(--pill-waiver-bg)",
+                borderColor: "var(--pill-waiver-br)",
+                color: "var(--pill-waiver-fg)",
+              }}
+            >
               {zh ? "待签协议" : "waiver needed"}
             </span>
           )}
         </div>
-        <p className="truncate text-sm text-muted-foreground">
+        <p className="truncate text-sm text-ink-2">
           {formatTorontoTime(booking.lessonStartAt, locale)} –{" "}
           {formatTorontoTime(booking.lessonEndAt, locale)} · {booking.resortName}{" "}
           · {booking.otherPartyName}
         </p>
-        <p className="font-mono text-xs text-muted-foreground">
+        <p className="font-mono text-xs text-ink-3">
           {booking.code} · {formatMoneyShort(booking.totalCents)}
         </p>
       </div>
-      <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+      <ChevronRight className="size-4 shrink-0 text-ink-3" aria-hidden />
     </Link>
   );
 }

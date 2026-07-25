@@ -17,12 +17,12 @@ export default async function CoachLayout({
   const t = await getTranslations("coach");
 
   return (
-    <div className="space-y-6">
+    <div className="stagger space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+        <h1 className="text-3xl">{t("title")}</h1>
         <Link
           href="/coach/bookings/new"
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground"
+          className="press rounded-xl bg-accent px-5 py-2.5 text-sm font-bold text-accent-foreground shadow-[var(--shadow-sm)] hover:bg-accent-strong"
         >
           {t("newBooking")}
         </Link>

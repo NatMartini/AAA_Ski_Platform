@@ -174,13 +174,27 @@ export function WaiverForm({
       {/* Above everything, before the agreement itself. A release is only
           enforceable if reasonable steps were taken to bring it to the
           signer's attention, and burying this would defeat that. */}
-      <p className="flex items-start gap-2 rounded-lg border border-amber-500/60 bg-amber-500/10 p-4 text-sm font-medium text-amber-900 dark:text-amber-100">
+      <p
+        className="animate-fade-up flex items-start gap-3 rounded-xl border p-4 text-sm font-semibold leading-relaxed"
+        style={{
+          background: "var(--amber-bg)",
+          borderColor: "var(--amber-border)",
+          color: "var(--amber)",
+        }}
+      >
         <AlertTriangle className="mt-0.5 size-5 shrink-0" aria-hidden />
         {warning}
       </p>
 
       {minorNotice && (
-        <p className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-100">
+        <p
+          className="flex items-start gap-2.5 rounded-xl border p-4 text-sm leading-relaxed"
+          style={{
+            background: "var(--amber-bg)",
+            borderColor: "var(--amber-border)",
+            color: "var(--amber)",
+          }}
+        >
           <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
           {minorNotice}
         </p>
@@ -197,7 +211,7 @@ export function WaiverForm({
           tabIndex={0}
           role="region"
           aria-label="Agreement text"
-          className="max-h-96 space-y-4 overflow-y-auto rounded-lg border border-border bg-surface-muted p-4 text-sm leading-relaxed"
+          className="max-h-96 space-y-4 overflow-y-auto rounded-xl border border-border bg-surface-3 p-4 text-sm leading-relaxed"
         >
           {clauses.map((clause) => (
             <section key={clause.id} className="space-y-1.5">
@@ -213,19 +227,21 @@ export function WaiverForm({
               <p className={clause.acknowledge ? "font-medium" : undefined}>
                 {clause.body}
               </p>
-              <p className="text-muted-foreground">{clause.bodyAlt}</p>
+              <p className="text-ink-2">{clause.bodyAlt}</p>
             </section>
           ))}
         </div>
 
         <p
           aria-live="polite"
-          className={
-            scrolledToEnd
-              ? "text-xs text-emerald-600 dark:text-emerald-400"
-              : "text-xs text-amber-700 dark:text-amber-300"
-          }
+          className="flex items-center gap-1.5 text-xs font-bold transition-colors"
+          style={{ color: scrolledToEnd ? "var(--success)" : "var(--amber)" }}
         >
+          <span
+            aria-hidden
+            className="size-1.5 rounded-full"
+            style={{ background: "currentColor" }}
+          />
           {scrolledToEnd ? c.scrolled : c.scrollGate}
         </p>
       </Card>
@@ -316,7 +332,12 @@ export function WaiverForm({
 
         <FieldError>{error}</FieldError>
 
-        <Button onClick={submit} disabled={!canSubmit || busy} className="self-start">
+        <Button
+          onClick={submit}
+          disabled={!canSubmit || busy}
+          size="lg"
+          className="w-full sm:w-auto sm:self-start"
+        >
           {busy && <Loader2 className="animate-spin" aria-hidden />}
           {c.submit}
         </Button>

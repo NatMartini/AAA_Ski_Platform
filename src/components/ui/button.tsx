@@ -5,22 +5,23 @@ import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
   // min-h-11 keeps every control at a comfortable tap target on a phone with
-  // gloves on, which is the actual usage context here.
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
+  // gloves on, which is the actual usage context here. `press` adds the small
+  // scale-down on tap defined in globals.css.
+  "press inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold tracking-tight disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         primary:
-          "bg-accent text-accent-foreground hover:bg-ice-800 dark:hover:bg-ice-300",
+          "bg-accent text-accent-foreground shadow-[var(--shadow-sm)] hover:bg-accent-strong",
         secondary:
-          "border border-border bg-surface text-foreground hover:bg-surface-muted",
-        ghost: "text-foreground hover:bg-surface-muted",
-        danger: "bg-red-600 text-white hover:bg-red-700",
+          "border border-border bg-surface text-ink shadow-[var(--shadow-sm)] hover:border-border-strong hover:bg-surface-3",
+        ghost: "text-ink-2 hover:bg-surface-2 hover:text-ink",
+        danger: "bg-danger text-white hover:opacity-90",
       },
       size: {
         default: "",
-        sm: "min-h-9 px-3 text-xs",
-        lg: "min-h-12 px-6 text-base",
+        sm: "min-h-9 rounded-lg px-3.5 text-xs",
+        lg: "min-h-12 px-7 text-base",
       },
     },
     defaultVariants: { variant: "primary", size: "default" },

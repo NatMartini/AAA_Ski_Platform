@@ -1,90 +1,421 @@
 @import "tailwindcss";
 
 /*
- * Cold, high-contrast palette. Booking decisions get made on a phone in a car
- * park, so contrast and tap targets matter more than subtlety.
+ * Design system — ported from the approved visual design.
+ *
+ * The palette, type scale, radii and shadows below are taken from that design
+ * rather than invented here, so the running app and the mockups stay in step.
+ * Two rules worth keeping in mind when editing:
+ *
+ *  1. Colours are CSS variables, never hard-coded hex in components. Both
+ *     themes are defined here and everything downstream reads the variable, so
+ *     dark mode needs no per-component work.
+ *  2. Dark mode is driven by an explicit `data-theme` attribute on <html>, not
+ *     by prefers-color-scheme alone. The site has its own theme toggle, and a
+ *     manual choice has to be able to beat the OS setting.
  */
-@theme {
-  --color-ice-50: #f2f7fb;
-  --color-ice-100: #e3edf6;
-  --color-ice-200: #c6dbec;
-  --color-ice-300: #99c0dc;
-  --color-ice-400: #659fc8;
-  --color-ice-500: #4382b1;
-  --color-ice-600: #326895;
-  --color-ice-700: #2a5479;
-  --color-ice-800: #274865;
-  --color-ice-900: #253d55;
-  --color-ice-950: #182739;
 
+@theme {
+  /* Ice-blue ramp, kept for the odd accent that needs a specific step. */
+  --color-ice-50: #f6f9fc;
+  --color-ice-100: #eef3f8;
+  --color-ice-200: #e8f0f7;
+  --color-ice-300: #c7dcee;
+  --color-ice-400: #8fbfe0;
+  --color-ice-500: #659fc8;
+  --color-ice-600: #2a5479;
+  --color-ice-700: #1f3f5c;
+  --color-ice-800: #172c3d;
+  --color-ice-900: #12202e;
+  --color-ice-950: #0e1620;
+
+  /* Manrope for Latin, Noto Sans SC for Chinese. Both are loaded via
+     next/font in the layout, which sets these variables. */
   --font-sans:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    var(--font-manrope), var(--font-noto-sc), ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei",
     sans-serif;
-  --font-mono:
-    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Radii — the design uses a 8/12/16 progression plus pills. */
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
 }
 
 :root {
-  --background: #ffffff;
+  --bg: #eef3f8;
   --surface: #ffffff;
-  --surface-muted: #f6f8fa;
-  --border: #dfe5eb;
-  --foreground: #12202e;
-  --muted-foreground: #56677a;
+  --surface-2: #eef3f8;
+  --surface-3: #f6f9fc;
+
+  --ink: #12202e;
+  --ink-2: #4a5f74;
+  /* The design's #8496a8 measured 2.72:1 on our surfaces — below the 4.5:1
+     WCAG AA floor for normal text, and this token is used for footer links and
+     eyebrow labels. Darkened until it clears AA on every surface with a little
+     margin (4.91 on --bg, 5.48 on --surface) while still reading as muted. */
+  --ink-3: #5a6b7d;
+  /* Original design value, for genuinely decorative marks only (never text). */
+  --ink-3-decorative: #8496a8;
+
+  --border: #dde6ef;
+  --border-strong: #c7d5e2;
+
   --accent: #2a5479;
-  --accent-foreground: #ffffff;
+  --accent-strong: #1f3f5c;
+  --accent-soft: #e8f0f7;
+  --accent-ink: #ffffff;
+
+  --amber: #a4670c;
+  --amber-bg: #fdf4e4;
+  --amber-border: #f0dcae;
+
+  --success: #1c7a4f;
+  --success-bg: #e6f4ec;
+
+  --danger: #b3261e;
+  --danger-bg: #fbecea;
+  --danger-border: #f0c9c5;
+
+  --shadow-sm: 0 1px 2px rgba(18, 32, 46, 0.06);
+  --shadow:
+    0 1px 2px rgba(18, 32, 46, 0.05), 0 10px 28px -12px rgba(18, 32, 46, 0.18);
+
+  /* Status pills. Each state gets a background, border and foreground so the
+     pill reads clearly in both themes without per-component overrides. */
+  --pill-hold-bg: #eef3f8;
+  --pill-hold-br: #d3dfea;
+  --pill-hold-fg: #4a5f74;
+  --pill-waiver-bg: #fdf4e4;
+  --pill-waiver-br: #f0dcae;
+  --pill-waiver-fg: #a4670c;
+  --pill-payment-bg: #e8f0f7;
+  --pill-payment-br: #c7dcee;
+  --pill-payment-fg: #2a5479;
+  --pill-checking-bg: #efeafb;
+  --pill-checking-br: #dccff3;
+  --pill-checking-fg: #6a4bab;
+  --pill-confirmed-bg: #e6f4ec;
+  --pill-confirmed-br: #bfe3cf;
+  --pill-confirmed-fg: #1c7a4f;
+  --pill-cancelled-bg: #fbecea;
+  --pill-cancelled-br: #f0c9c5;
+  --pill-cancelled-fg: #b3261e;
 }
 
+/* Follow the OS unless the user has made an explicit choice. */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0e1620;
+  :root:not([data-theme="light"]) {
+    --bg: #0e1620;
     --surface: #16212e;
-    --surface-muted: #1b2836;
-    --border: #2a3949;
-    --foreground: #e8eef4;
-    --muted-foreground: #9cadbe;
+    --surface-2: #1b2837;
+    --surface-3: #111b26;
+
+    --ink: #e8eef4;
+    --ink-2: #9db0c4;
+    /* Design value #6f8398 was 4.16:1 on --surface; lightened to clear AA on
+       every surface with margin (6.15 on --bg, 5.50 on --surface). */
+    --ink-3: #8698ac;
+    --ink-3-decorative: #6f8398;
+
+    --border: #26364a;
+    --border-strong: #374a61;
+
     --accent: #659fc8;
-    --accent-foreground: #0e1620;
+    --accent-strong: #7fb4d9;
+    --accent-soft: #172c3d;
+    --accent-ink: #08131f;
+
+    --amber: #e2b467;
+    --amber-bg: #282013;
+    --amber-border: #48391f;
+
+    --success: #7fd0a6;
+    --success-bg: #132419;
+
+    --danger: #e79790;
+    --danger-bg: #2e1918;
+    --danger-border: #57302c;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 34px -14px rgba(0, 0, 0, 0.6);
+
+    --pill-hold-bg: #1b2837;
+    --pill-hold-br: #33475f;
+    --pill-hold-fg: #9db0c4;
+    --pill-waiver-bg: #282013;
+    --pill-waiver-br: #48391f;
+    --pill-waiver-fg: #e2b467;
+    --pill-payment-bg: #172c3d;
+    --pill-payment-br: #2b4863;
+    --pill-payment-fg: #8fbfe0;
+    --pill-checking-bg: #211b31;
+    --pill-checking-br: #3d3357;
+    --pill-checking-fg: #b7a2e8;
+    --pill-confirmed-bg: #132419;
+    --pill-confirmed-br: #265039;
+    --pill-confirmed-fg: #7fd0a6;
+    --pill-cancelled-bg: #2e1918;
+    --pill-cancelled-br: #57302c;
+    --pill-cancelled-fg: #e79790;
   }
 }
 
+/* Explicit dark choice — wins over the OS preference above. */
+:root[data-theme="dark"] {
+  --bg: #0e1620;
+  --surface: #16212e;
+  --surface-2: #1b2837;
+  --surface-3: #111b26;
+
+  --ink: #e8eef4;
+  --ink-2: #9db0c4;
+  --ink-3: #8698ac;
+  --ink-3-decorative: #6f8398;
+
+  --border: #26364a;
+  --border-strong: #374a61;
+
+  --accent: #659fc8;
+  --accent-strong: #7fb4d9;
+  --accent-soft: #172c3d;
+  --accent-ink: #08131f;
+
+  --amber: #e2b467;
+  --amber-bg: #282013;
+  --amber-border: #48391f;
+
+  --success: #7fd0a6;
+  --success-bg: #132419;
+
+  --danger: #e79790;
+  --danger-bg: #2e1918;
+  --danger-border: #57302c;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 34px -14px rgba(0, 0, 0, 0.6);
+
+  --pill-hold-bg: #1b2837;
+  --pill-hold-br: #33475f;
+  --pill-hold-fg: #9db0c4;
+  --pill-waiver-bg: #282013;
+  --pill-waiver-br: #48391f;
+  --pill-waiver-fg: #e2b467;
+  --pill-payment-bg: #172c3d;
+  --pill-payment-br: #2b4863;
+  --pill-payment-fg: #8fbfe0;
+  --pill-checking-bg: #211b31;
+  --pill-checking-br: #3d3357;
+  --pill-checking-fg: #b7a2e8;
+  --pill-confirmed-bg: #132419;
+  --pill-confirmed-br: #265039;
+  --pill-confirmed-fg: #7fd0a6;
+  --pill-cancelled-bg: #2e1918;
+  --pill-cancelled-br: #57302c;
+  --pill-cancelled-fg: #e79790;
+}
+
+/* Expose the variables to Tailwind so `bg-surface`, `text-ink-2` etc. work. */
 @theme inline {
-  --color-background: var(--background);
+  --color-background: var(--bg);
   --color-surface: var(--surface);
-  --color-surface-muted: var(--surface-muted);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-surface-muted: var(--surface-2);
+  --color-foreground: var(--ink);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-muted-foreground: var(--ink-2);
   --color-border: var(--border);
-  --color-foreground: var(--foreground);
-  --color-muted-foreground: var(--muted-foreground);
+  --color-border-strong: var(--border-strong);
   --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-foreground: var(--accent-ink);
+  --color-amber: var(--amber);
+  --color-amber-bg: var(--amber-bg);
+  --color-amber-border: var(--amber-border);
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-danger-border: var(--danger-border);
 }
 
 html {
   color-scheme: light dark;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans);
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
-/*
- * Visible focus everywhere. The hour grid is a wall of buttons — without this
- * it is unusable by keyboard, which is the easiest accessibility win here.
- */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  /* 15px base: the design's body size, comfortable for Chinese and Latin. */
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
 @layer base {
+  /* Headings are tight and heavy; the design leans on weight, not size. */
+  h1,
+  h2,
+  h3 {
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+  }
+
+  /* Visible focus everywhere. The hour grid is a wall of buttons and is
+     unusable by keyboard without this. */
   :focus-visible {
-    outline: 2px solid var(--color-ice-500);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
-    border-radius: 2px;
+    border-radius: 4px;
   }
 
   ::selection {
-    background: var(--color-ice-200);
-    color: var(--color-ice-950);
+    background: var(--accent-soft);
+    color: var(--ink);
   }
+}
+
+/*
+ * Motion.
+ *
+ * Every animation here is short, subtle and interruption-safe: entrances are
+ * one-shot and nothing loops except the two deliberate attention cues (the
+ * countdown ring and the shimmer). All of it is switched off wholesale under
+ * prefers-reduced-motion at the bottom of this file.
+ */
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(0.96);
+  }
+  60% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 var(--accent-soft);
+  }
+  100% {
+    box-shadow: 0 0 0 10px transparent;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Content entrance. `.animate-fade-up` on a container plus `.stagger` on it
+   walks the children in one after another. */
+.animate-fade-up {
+  animation: fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease both;
+}
+
+.animate-pop {
+  animation: pop 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.stagger > * {
+  animation: fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.stagger > *:nth-child(1) { animation-delay: 0.02s; }
+.stagger > *:nth-child(2) { animation-delay: 0.07s; }
+.stagger > *:nth-child(3) { animation-delay: 0.12s; }
+.stagger > *:nth-child(4) { animation-delay: 0.17s; }
+.stagger > *:nth-child(5) { animation-delay: 0.22s; }
+.stagger > *:nth-child(6) { animation-delay: 0.27s; }
+.stagger > *:nth-child(7) { animation-delay: 0.32s; }
+.stagger > *:nth-child(8) { animation-delay: 0.37s; }
+
+/* Attention cue for the hold countdown when it gets short. */
+.animate-pulse-ring {
+  animation: pulse-ring 1.6s ease-out infinite;
+}
+
+/* Skeleton shimmer for loading placeholders. */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 25%,
+    var(--surface-3) 37%,
+    var(--surface-2) 63%
+  );
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+
+/* Card and tile lift on hover. Transform only, so it never reflows. */
+.lift {
+  transition:
+    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
+}
+.lift:hover {
+  transform: translateY(-2px);
+}
+.lift:active {
+  transform: translateY(0);
+}
+
+/* Buttons and tiles get a small press response. */
+.press {
+  transition:
+    transform 0.12s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease;
+}
+.press:active {
+  transform: scale(0.975);
 }
 
 /* Signature pad: never let a touch drag scroll the page mid-stroke. */
@@ -96,5 +427,25 @@ body {
 @media print {
   .no-print {
     display: none !important;
+  }
+}
+
+/*
+ * Respect the OS "reduce motion" setting. This is not decoration — vestibular
+ * disorders make sliding and scaling genuinely unpleasant, so everything
+ * becomes instant rather than merely faster.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .lift:hover,
+  .press:active {
+    transform: none;
   }
 }

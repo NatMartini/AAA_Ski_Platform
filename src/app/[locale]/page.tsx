@@ -16,15 +16,15 @@ export default async function HomePage({ params }: PageProps<"/[locale]">) {
   // Signed out: brand and a sign-in button only. No coaches, resorts or prices.
   if (!user) {
     return (
-      <div className="mx-auto max-w-md py-12 text-center">
-        <Snowflake className="mx-auto size-10 text-ice-500" aria-hidden />
-        <h1 className="mt-4 text-2xl font-semibold tracking-tight">
-          {t("signedOutTitle")}
-        </h1>
-        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+      <div className="animate-fade-up mx-auto max-w-md py-10 text-center sm:py-16">
+        <span className="mx-auto flex size-16 items-center justify-center rounded-3xl bg-[var(--accent-soft)]">
+          <Snowflake className="size-8 text-accent" aria-hidden />
+        </span>
+        <h1 className="mt-6 text-3xl">{t("signedOutTitle")}</h1>
+        <p className="mx-auto mt-3 max-w-sm text-[15px] leading-relaxed text-ink-2">
           {t("signedOutBody")}
         </p>
-        <Button asChild className="mt-6 w-full">
+        <Button asChild size="lg" className="mt-7 w-full">
           <Link href="/sign-in">{nav("signIn")}</Link>
         </Button>
       </div>
@@ -34,13 +34,13 @@ export default async function HomePage({ params }: PageProps<"/[locale]">) {
   const isCoach = user.role === "COACH" || user.role === "ADMIN";
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight">
+    <div className="stagger space-y-6">
+      <h1 className="text-3xl">
         {t("signedInTitle", { name: user.name ?? user.email })}
       </h1>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Card className="flex flex-col gap-3">
+        <Card interactive className="flex flex-col gap-3">
           <CardTitle>{nav("book")}</CardTitle>
           <CardDescription>
             {locale === "zh"
@@ -55,7 +55,7 @@ export default async function HomePage({ params }: PageProps<"/[locale]">) {
           </Button>
         </Card>
 
-        <Card className="flex flex-col gap-3">
+        <Card interactive className="flex flex-col gap-3">
           <CardTitle>{nav("myBookings")}</CardTitle>
           <CardDescription>
             {locale === "zh"
@@ -72,7 +72,7 @@ export default async function HomePage({ params }: PageProps<"/[locale]">) {
       </div>
 
       {isCoach && (
-        <Card className="flex items-center justify-between gap-4">
+        <Card interactive className="flex items-center justify-between gap-4">
           <div>
             <CardTitle>{nav("coach")}</CardTitle>
             <CardDescription>

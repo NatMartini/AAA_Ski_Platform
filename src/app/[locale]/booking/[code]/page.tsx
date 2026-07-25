@@ -9,7 +9,7 @@ import { PriceBreakdown } from "@/components/booking/price-breakdown";
 import { quoteFromBooking } from "@/lib/pricing";
 import { HoldCountdown } from "@/components/booking/hold-countdown";
 import { CoachReviewPanel } from "@/components/coach/coach-review-panel";
-import { statusLabel, statusTone } from "@/lib/booking/state";
+import { StatusPill } from "@/components/ui/status-pill";
 import { formatTorontoDate, formatTorontoTime } from "@/lib/time";
 import { toLocale } from "@/i18n/routing";
 import type { DisclosureSnapshot } from "@/lib/booking/disclosure";
@@ -47,21 +47,17 @@ export default async function BookingPage({
   const needsPayment = access.canPay;
 
   return (
-    <div className="space-y-5">
+    <div className="stagger space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="font-mono text-sm text-muted-foreground">
+          <p className="font-mono text-xs font-bold tracking-widest text-ink-3">
             {booking.code}
           </p>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="mt-1 text-3xl">
             {zh ? booking.resort.nameZh : booking.resort.nameEn}
           </h1>
         </div>
-        <span
-          className={`rounded-full border px-3 py-1 text-sm ${statusTone(booking.status)}`}
-        >
-          {statusLabel(booking.status, loc)}
-        </span>
+        <StatusPill status={booking.status} locale={loc} className="mt-1" />
       </div>
 
       {booking.status === "HOLD" && booking.holdExpiresAt && (
@@ -97,7 +93,7 @@ export default async function BookingPage({
             }
           />
         </dl>
-        <p className="rounded-lg bg-surface-muted p-3 text-xs text-muted-foreground">
+        <p className="rounded-xl bg-surface-2 p-3.5 text-xs leading-relaxed text-ink-2">
           {t("handoverNote")}
         </p>
       </Card>
@@ -133,7 +129,14 @@ export default async function BookingPage({
       )}
 
       {booking.status === "PENDING_PAYMENT_REVIEW" && access.isCustomer && (
-        <p className="rounded-lg border border-sky-500/40 bg-sky-500/10 p-3 text-sm">
+        <p
+          className="rounded-xl border p-4 text-sm font-medium"
+          style={{
+            background: "var(--pill-checking-bg)",
+            borderColor: "var(--pill-checking-br)",
+            color: "var(--pill-checking-fg)",
+          }}
+        >
           {tp("awaitingReview")}
         </p>
       )}
@@ -183,12 +186,12 @@ export default async function BookingPage({
       {snapshot && (
         <Card className="space-y-2">
           <CardTitle>{zh ? "取消与退款政策" : "Cancellation policy"}</CardTitle>
-          <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-2">
             {zh
               ? snapshot.cancellationPolicy.zh
               : snapshot.cancellationPolicy.en}
           </p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-ink-3">
             {zh
               ? "以上为你下单时的政策,之后教练修改不影响本订单。"
               : "These are the terms as they stood when you booked; later changes do not affect this booking."}
@@ -210,8 +213,8 @@ function Row({
 }) {
   return (
     <div className="flex flex-wrap justify-between gap-2">
-      <dt className="text-muted-foreground">{term}</dt>
-      <dd className={strong ? "font-medium" : undefined}>{value}</dd>
+      <dt className="text-ink-2">{term}</dt>
+      <dd className={strong ? "font-bold" : "text-ink"}>{value}</dd>
     </div>
   );
 }

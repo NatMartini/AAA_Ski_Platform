@@ -11,7 +11,7 @@ import { quote, lessonWindow, formatMoneyShort } from "@/lib/pricing";
 import { formatTorontoDate, formatTorontoTime } from "@/lib/time";
 import type { Locale } from "@/i18n/routing";
 import { cn } from "@/lib/utils";
-import { Loader2, MessageCircle } from "lucide-react";
+import { Clock, Loader2, MessageCircle } from "lucide-react";
 
 type Cell = { hour: number; startIso: string };
 type Day = {
@@ -197,9 +197,9 @@ export function SlotPicker({
       <Card>
         <CardDescription>{c.noDays}</CardDescription>
         {coachWechat && (
-          <p className="mt-2 flex items-center gap-1.5 text-sm">
-            <MessageCircle className="size-4" aria-hidden />
-            {c.otherTimes} <strong>{coachWechat}</strong>
+          <p className="mt-3 flex items-center gap-1.5 text-sm text-ink-2">
+            <MessageCircle className="size-4 shrink-0" aria-hidden />
+            {c.otherTimes} <strong className="text-ink">{coachWechat}</strong>
           </p>
         )}
       </Card>
@@ -207,12 +207,12 @@ export function SlotPicker({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="stagger space-y-5">
       <div>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-ink-3">
           {resortName} · {coachName}
         </p>
-        <h1 className="text-2xl font-semibold tracking-tight">{c.pickTime}</h1>
+        <h1 className="mt-1 text-3xl">{c.pickTime}</h1>
       </div>
 
       {/* Coach introduction. Fed from the coach's bio; the content is set in
@@ -247,7 +247,9 @@ export function SlotPicker({
         {day && (
           <>
             {day.startOptions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{c.noSlots}</p>
+              <p className="rounded-xl bg-surface-2 p-4 text-sm text-ink-2">
+                {c.noSlots}
+              </p>
             ) : (
               <HourGrid
                 day={day}
@@ -307,26 +309,28 @@ export function SlotPicker({
         )}
 
         {coachWechat && (
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <MessageCircle className="size-3.5" aria-hidden />
-            {c.otherTimes} <strong>{coachWechat}</strong>
+          <p className="flex items-center gap-1.5 border-t border-border pt-3 text-xs text-ink-3">
+            <MessageCircle className="size-3.5 shrink-0" aria-hidden />
+            {c.otherTimes} <strong className="text-ink-2">{coachWechat}</strong>
           </p>
         )}
       </Card>
 
       {priced && window && (
-        <Card className="space-y-4">
+        <Card className="animate-fade-up space-y-4">
           <CardTitle>{c.review}</CardTitle>
 
-          <p className="rounded-lg bg-surface-muted p-3 text-sm">
-            <strong>
+          <div className="rounded-xl border border-[var(--accent-soft)] bg-[var(--accent-soft)] p-4 text-sm">
+            <p className="flex items-center gap-2 font-bold text-ink">
+              <Clock className="size-4 shrink-0 text-accent" aria-hidden />
               {c.lessonRuns} {formatTorontoTime(window.lessonStartAt, locale)} –{" "}
-              {formatTorontoTime(window.lessonEndAt, locale)}
-            </strong>{" "}
-            ({priced.lessonMinutes} {c.minutes})
-            <br />
-            <span className="text-muted-foreground">{c.handoverNote}</span>
-          </p>
+              {formatTorontoTime(window.lessonEndAt, locale)} (
+              {priced.lessonMinutes} {c.minutes})
+            </p>
+            <p className="mt-1.5 pl-6 text-xs leading-relaxed text-ink-2">
+              {c.handoverNote}
+            </p>
+          </div>
 
           <PriceBreakdown quote={priced} locale={locale} />
 
@@ -364,7 +368,12 @@ export function SlotPicker({
 
           <FieldError>{error}</FieldError>
 
-          <Button onClick={submit} disabled={busy} className="self-start">
+          <Button
+            onClick={submit}
+            disabled={busy}
+            size="lg"
+            className="w-full sm:w-auto sm:self-start"
+          >
             {busy && <Loader2 className="animate-spin" aria-hidden />}
             {c.review}
           </Button>
@@ -402,22 +411,25 @@ function HourGrid({
         aria-label={locale === "zh" ? "可选时段" : "Available start times"}
         className="grid grid-cols-3 gap-2 sm:grid-cols-4"
       >
-        {day.startOptions.map((opt) => {
+        {day.startOptions.map((opt, i) => {
           const isSelected = selected === opt.hour;
           const label = `${String(opt.hour).padStart(2, "0")}:00`;
           if (!byHour.has(opt.hour)) return null;
 
           return (
             <button
-              key={opt.hour}
+              // Keyed by day as well as hour so the tiles re-run their entrance
+              // animation when the date changes.
+              key={`${day.dateKey}-${opt.hour}`}
               type="button"
               aria-pressed={isSelected}
               onClick={() => onSelect(opt.hour)}
+              style={{ animationDelay: `${Math.min(i, 10) * 25}ms` }}
               className={cn(
-                "flex min-h-14 items-center justify-center rounded-lg border text-sm font-medium transition-colors",
+                "press animate-fade-up flex min-h-14 items-center justify-center rounded-xl border text-[15px] font-bold tabular-nums",
                 isSelected
-                  ? "border-accent bg-accent text-accent-foreground"
-                  : "border-border bg-surface hover:border-ice-400",
+                  ? "border-accent bg-accent text-accent-foreground shadow-[var(--shadow-sm)]"
+                  : "border-border bg-surface text-ink hover:border-accent hover:bg-[var(--accent-soft)]",
               )}
             >
               {label}
@@ -425,9 +437,7 @@ function HourGrid({
           );
         })}
       </div>
-      {day.note && (
-        <p className="text-xs text-muted-foreground">{day.note}</p>
-      )}
+      {day.note && <p className="text-xs text-ink-3">{day.note}</p>}
     </div>
   );
 }
@@ -443,20 +453,24 @@ function CoachIntro({
   avatarUrl: string | null;
 }) {
   return (
-    <Card className="flex gap-4">
-      {avatarUrl && (
+    <Card className="flex items-start gap-4">
+      {avatarUrl ? (
         // Coach photo from an arbitrary host; next/image config is not worth it.
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={avatarUrl}
           alt={name}
-          className="size-16 shrink-0 rounded-full border border-border object-cover"
+          className="size-14 shrink-0 rounded-2xl border border-border object-cover sm:size-16"
         />
+      ) : (
+        <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-[var(--accent-soft)] text-xl font-extrabold text-accent sm:size-16">
+          {name.slice(0, 1)}
+        </span>
       )}
-      <div className="min-w-0 space-y-1">
+      <div className="min-w-0 space-y-1.5">
         <CardTitle>{name}</CardTitle>
         {bio && (
-          <div className="space-y-1 text-sm leading-relaxed text-muted-foreground">
+          <div className="space-y-1 text-sm leading-relaxed text-ink-2">
             {bio.split(/\n+/).map((para, i) => (
               <p key={i}>{para}</p>
             ))}

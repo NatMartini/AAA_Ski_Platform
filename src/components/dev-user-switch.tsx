@@ -40,8 +40,8 @@ export function DevUserSwitch({
           aria-current={c.email === current ? "true" : undefined}
           className={
             c.email === current
-              ? "rounded bg-red-600 px-2 py-1 font-medium text-white"
-              : "rounded border border-red-500/50 px-2 py-1 hover:bg-red-500/20"
+              ? "inline-flex min-h-8 items-center rounded-lg bg-red-600 px-2.5 font-semibold text-white"
+              : "inline-flex min-h-8 items-center rounded-lg border border-red-500/50 px-2.5 hover:bg-red-500/20"
           }
         >
           {c.name ?? c.email} · {c.role}

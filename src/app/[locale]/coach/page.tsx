@@ -68,14 +68,23 @@ export default async function CoachTodayPage({
   const gaps = profile ? setupGaps(profile) : [];
 
   return (
-    <div className="space-y-6">
+    <div className="stagger space-y-6">
       {gaps.length > 0 && (
-        <Card className="space-y-2 border-amber-500/40 bg-amber-500/5">
-          <CardTitle className="flex items-center gap-2">
-            <TriangleAlert className="size-4 text-amber-600" aria-hidden />
+        <Card
+          className="space-y-2"
+          style={{
+            background: "var(--amber-bg)",
+            borderColor: "var(--amber-border)",
+          }}
+        >
+          <CardTitle
+            className="flex items-center gap-2"
+            style={{ color: "var(--amber)" }}
+          >
+            <TriangleAlert className="size-4" aria-hidden />
             {zh ? "还不能接单" : "Not taking bookings yet"}
           </CardTitle>
-          <ul className="list-inside list-disc text-sm text-muted-foreground">
+          <ul className="list-inside list-disc text-sm text-ink-2">
             {gaps.map((gap) => (
               <li key={gap}>
                 {GAP_COPY[loc][gap as keyof (typeof GAP_COPY)["zh"]] ?? gap}
@@ -84,7 +93,7 @@ export default async function CoachTodayPage({
           </ul>
           <Link
             href="/coach/settings"
-            className="text-sm font-medium text-ice-700 underline dark:text-ice-300"
+            className="text-sm font-bold text-accent underline underline-offset-2"
           >
             {t("settings")}
           </Link>
@@ -92,7 +101,7 @@ export default async function CoachTodayPage({
       )}
 
       <section className="space-y-2">
-        <h2 className="text-sm font-medium text-muted-foreground">
+        <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-ink-3">
           {t("today")}
         </h2>
         {todays.length === 0 ? (
@@ -130,7 +139,7 @@ export default async function CoachTodayPage({
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-sm font-medium text-muted-foreground">
+        <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-ink-3">
           {zh ? "待处理" : "Needs attention"}
         </h2>
         {needsAttention.length === 0 ? (

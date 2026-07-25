@@ -5,6 +5,7 @@ import type { ActiveUser } from "@/lib/auth/require-user";
 import type { Locale } from "@/i18n/routing";
 import { LocaleSwitch } from "./locale-switch";
 import { SignOutButton } from "./sign-out-button";
+import { ThemeToggle } from "./theme-toggle";
 import { devBypassEnabled } from "@/lib/auth/dev-bypass";
 
 /**
@@ -24,48 +25,59 @@ export async function SiteHeader({
   const isCoach = user?.role === "COACH" || user?.role === "ADMIN";
 
   return (
-    <header className="border-b border-border bg-surface">
-      <div className="mx-auto flex w-full max-w-5xl items-center gap-4 px-4 py-3 sm:px-6">
+    <header className="sticky top-0 z-40 border-b border-border bg-[var(--surface)]/85 backdrop-blur-md">
+      <div className="mx-auto flex w-full max-w-5xl items-center gap-3 px-4 py-3 sm:px-6">
         <Link
           href="/"
-          className="flex items-center gap-2 font-semibold tracking-tight"
+          className="press flex items-center gap-2 font-extrabold tracking-tight"
         >
-          <Snowflake className="size-5 text-ice-500" aria-hidden />
-          <span>{brand("name")}</span>
+          <span className="flex size-8 items-center justify-center rounded-xl bg-accent text-accent-foreground">
+            <Snowflake className="size-4" aria-hidden />
+          </span>
+          <span className="hidden sm:inline">{brand("name")}</span>
         </Link>
 
         {user && (
-          <nav className="ml-auto flex items-center gap-1 text-sm">
-            <Link
-              href="/book"
-              className="rounded-lg px-3 py-2 hover:bg-surface-muted"
-            >
-              {t("book")}
-            </Link>
-            <Link
-              href="/my/bookings"
-              className="rounded-lg px-3 py-2 hover:bg-surface-muted"
-            >
-              {t("myBookings")}
-            </Link>
+          <nav className="ml-1 flex items-center gap-0.5 text-sm">
+            <HeaderLink href="/book">{t("book")}</HeaderLink>
+            <HeaderLink href="/my/bookings">{t("myBookings")}</HeaderLink>
             {isCoach && (
-              <Link
-                href="/coach"
-                className="rounded-lg px-3 py-2 font-medium text-ice-700 hover:bg-surface-muted dark:text-ice-300"
-              >
+              <HeaderLink href="/coach" accent>
                 {t("coach")}
-              </Link>
+              </HeaderLink>
             )}
           </nav>
         )}
 
-        <div className={user ? "flex items-center gap-2" : "ml-auto flex items-center gap-2"}>
+        <div className="ml-auto flex items-center gap-1.5">
           <LocaleSwitch current={locale} />
+          <ThemeToggle label={locale === "zh" ? "切换深色模式" : "Toggle theme"} />
           {user && (
             <SignOutButton label={t("signOut")} devMode={devBypassEnabled()} />
           )}
         </div>
       </div>
     </header>
+  );
+}
+
+function HeaderLink({
+  href,
+  children,
+  accent,
+}: {
+  href: string;
+  children: React.ReactNode;
+  accent?: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`press rounded-lg px-3 py-2 font-semibold transition-colors hover:bg-surface-2 ${
+        accent ? "text-accent" : "text-ink-2 hover:text-ink"
+      }`}
+    >
+      {children}
+    </Link>
   );
 }

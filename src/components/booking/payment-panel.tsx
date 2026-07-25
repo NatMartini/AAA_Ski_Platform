@@ -154,7 +154,14 @@ export function PaymentPanel({
   return (
     <div className="space-y-5">
       {rejectedNote !== null && (
-        <p className="flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-800 dark:text-red-200">
+        <p
+          className="animate-fade-up flex items-start gap-2.5 rounded-xl border p-4 text-sm"
+          style={{
+            background: "var(--danger-bg)",
+            borderColor: "var(--danger-border)",
+            color: "var(--danger)",
+          }}
+        >
           <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
           <span>
             <strong>
@@ -167,16 +174,23 @@ export function PaymentPanel({
       )}
 
       {isCoach && (
-        <p className="rounded-lg border border-ice-500/40 bg-ice-500/10 p-3 text-sm">
+        <p
+          className="rounded-xl border p-4 text-sm font-medium"
+          style={{
+            background: "var(--accent-soft)",
+            borderColor: "var(--accent-soft)",
+            color: "var(--accent)",
+          }}
+        >
           {c.coachUploading}
         </p>
       )}
 
       <Card className="space-y-4">
         <CardTitle>{c.amount}</CardTitle>
-        <p className="text-3xl font-semibold tabular-nums">
+        <p className="text-4xl font-extrabold tracking-tight tabular-nums">
           {formatMoneyShort(quote.totalCents)}{" "}
-          <span className="text-base font-normal text-muted-foreground">
+          <span className="text-base font-semibold text-ink-3">
             {quote.currency}
           </span>
         </p>
@@ -196,10 +210,10 @@ export function PaymentPanel({
               aria-pressed={method === m}
               onClick={() => setMethod(m)}
               className={cn(
-                "min-h-11 rounded-lg border px-4 text-sm",
+                "press min-h-11 rounded-xl border px-4 text-sm font-bold",
                 method === m
-                  ? "border-accent bg-accent text-accent-foreground"
-                  : "border-border bg-surface hover:border-ice-400",
+                  ? "border-accent bg-accent text-accent-foreground shadow-[var(--shadow-sm)]"
+                  : "border-border bg-surface text-ink hover:border-accent hover:bg-[var(--accent-soft)]",
               )}
             >
               {m === "EMT" ? c.emt : m === "WECHAT" ? c.wechat : c.alipay}
@@ -208,33 +222,33 @@ export function PaymentPanel({
         </div>
 
         {method === "EMT" && methods.emt && (
-          <dl className="rounded-lg bg-surface-muted p-4 text-sm">
+          <dl className="animate-fade-in rounded-xl border border-border bg-surface-3 p-4 text-sm">
             <div className="flex justify-between gap-4 py-1">
-              <dt className="text-muted-foreground">{c.emtTo}</dt>
-              <dd className="font-mono">{methods.emt.email}</dd>
+              <dt className="text-ink-2">{c.emtTo}</dt>
+              <dd className="font-mono font-semibold">{methods.emt.email}</dd>
             </div>
             {methods.emt.name && (
               <div className="flex justify-between gap-4 py-1">
-                <dt className="text-muted-foreground">{c.emtName}</dt>
-                <dd>{methods.emt.name}</dd>
+                <dt className="text-ink-2">{c.emtName}</dt>
+                <dd className="font-semibold">{methods.emt.name}</dd>
               </div>
             )}
             <div className="flex justify-between gap-4 py-1">
-              <dt className="text-muted-foreground">{c.memo}</dt>
-              <dd className="font-mono">{bookingCode}</dd>
+              <dt className="text-ink-2">{c.memo}</dt>
+              <dd className="font-mono font-semibold">{bookingCode}</dd>
             </div>
           </dl>
         )}
 
         {(method === "WECHAT" || method === "ALIPAY") && (
-          <div className="space-y-2">
-            <p className="text-sm">{c.scan}</p>
+          <div className="animate-fade-in space-y-2">
+            <p className="text-sm font-medium">{c.scan}</p>
             {/* eslint-disable-next-line @next/next/no-img-element -- served
                 from an authenticated route, not a static asset */}
             <img
               src={`/api/files/qr/${coachId}?kind=${method === "ALIPAY" ? "alipay" : "wechat"}`}
               alt={method === "ALIPAY" ? c.alipay : c.wechat}
-              className="size-52 rounded-lg border border-border bg-white object-contain p-2"
+              className="size-52 rounded-2xl border border-border bg-white object-contain p-3 shadow-[var(--shadow-sm)]"
             />
           </div>
         )}
@@ -262,7 +276,7 @@ export function PaymentPanel({
             <img
               src={preview}
               alt=""
-              className="max-h-48 rounded-lg border border-border"
+              className="animate-pop max-h-48 rounded-xl border border-border shadow-[var(--shadow-sm)]"
             />
           )}
           <Button
@@ -295,7 +309,8 @@ export function PaymentPanel({
         <Button
           onClick={submit}
           disabled={busy || uploading || !proofKey}
-          className="self-start"
+          size="lg"
+          className="w-full sm:w-auto sm:self-start"
         >
           {busy && <Loader2 className="animate-spin" aria-hidden />}
           {busy ? c.submitting : c.submit}

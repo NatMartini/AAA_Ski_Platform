@@ -44,16 +44,34 @@ export function HoldCountdown({
   return (
     <p
       role="status"
-      className={
+      className="flex items-center gap-3 rounded-xl border p-4 text-sm"
+      style={
         urgent
-          ? "flex items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-800 dark:text-red-200"
-          : "flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-100"
+          ? {
+              background: "var(--danger-bg)",
+              borderColor: "var(--danger-border)",
+              color: "var(--danger)",
+            }
+          : {
+              background: "var(--amber-bg)",
+              borderColor: "var(--amber-border)",
+              color: "var(--amber)",
+            }
       }
     >
-      <Timer className="size-4 shrink-0" aria-hidden />
-      <span>
+      {/* The ring only pulses in the last five minutes — a permanent animation
+          would just become wallpaper. */}
+      <span
+        className={`flex size-9 shrink-0 items-center justify-center rounded-full ${
+          urgent ? "animate-pulse-ring" : ""
+        }`}
+        style={{ background: "color-mix(in srgb, currentColor 12%, transparent)" }}
+      >
+        <Timer className="size-4" aria-hidden />
+      </span>
+      <span className="font-medium">
         {locale === "zh" ? "请在 " : "Finish within "}
-        <strong className="tabular-nums">
+        <strong className="text-base font-extrabold tabular-nums">
           {minutes}:{String(seconds).padStart(2, "0")}
         </strong>
         {locale === "zh"

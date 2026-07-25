@@ -35,8 +35,8 @@ export default async function MyBookingsPage({
   const past = bookings.filter((b) => !upcoming.includes(b));
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight">
+    <div className="stagger space-y-6">
+      <h1 className="text-3xl">
         {t("myBookings")}
       </h1>
 
@@ -50,7 +50,7 @@ export default async function MyBookingsPage({
 
       {upcoming.length > 0 && (
         <section className="space-y-2">
-          <h2 className="text-sm font-medium text-muted-foreground">
+          <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-ink-3">
             {zh ? "进行中" : "Active"}
           </h2>
           <div className="space-y-2">
@@ -78,7 +78,7 @@ export default async function MyBookingsPage({
 
       {past.length > 0 && (
         <section className="space-y-2">
-          <h2 className="text-sm font-medium text-muted-foreground">
+          <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-ink-3">
             {zh ? "历史" : "Past"}
           </h2>
           <div className="space-y-2">

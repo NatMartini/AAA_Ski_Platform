@@ -35,7 +35,7 @@ export function PriceBreakdown({
   const c = COPY[locale];
 
   return (
-    <dl className="rounded-lg border border-border text-sm">
+    <dl className="overflow-hidden rounded-xl border border-border bg-surface-3 text-sm">
       {quote.headcount > 1 && (
         <Row
           term={c.group}
@@ -51,10 +51,11 @@ export function PriceBreakdown({
         term={c.handover}
         value={`−${formatMoneyShort(quote.handoverDiscountCents)}`}
         muted
+        credit
       />
-      <div className="flex items-center justify-between gap-4 border-t border-border px-4 py-3">
-        <dt className="font-medium">{c.total}</dt>
-        <dd className="text-lg font-semibold tabular-nums">
+      <div className="flex items-center justify-between gap-4 border-t border-border bg-surface px-4 py-3.5">
+        <dt className="font-bold">{c.total}</dt>
+        <dd className="text-xl font-extrabold tabular-nums tracking-tight">
           {formatMoneyShort(quote.totalCents)}
         </dd>
       </div>
@@ -66,15 +67,22 @@ function Row({
   term,
   value,
   muted,
+  credit,
 }: {
   term: string;
   value: string;
   muted?: boolean;
+  /** Deductions read in the success colour so they are visibly a reduction. */
+  credit?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-      <dt className={muted ? "text-muted-foreground" : undefined}>{term}</dt>
-      <dd className="tabular-nums">{value}</dd>
+      <dt className={muted ? "text-ink-2" : "text-ink"}>{term}</dt>
+      <dd
+        className={`tabular-nums ${credit ? "font-semibold text-success" : "text-ink"}`}
+      >
+        {value}
+      </dd>
     </div>
   );
 }

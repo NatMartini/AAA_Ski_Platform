@@ -28,9 +28,9 @@ export default async function CoachBookingsPage({
   const done = bookings.filter((b) => TERMINAL_STATUSES.includes(b.status));
 
   return (
-    <div className="space-y-6">
+    <div className="stagger space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium text-muted-foreground">
+        <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-ink-3">
           {t("bookings")}
         </h2>
         {/* A file download from a route handler, not an internal page — next/link
@@ -38,7 +38,7 @@ export default async function CoachBookingsPage({
         <a
           href="/api/coach/export"
           download
-          className="text-sm text-ice-700 underline dark:text-ice-300"
+          className="press text-sm font-bold text-accent underline underline-offset-2"
         >
           {zh ? "导出 CSV" : "Export CSV"}
         </a>
@@ -81,7 +81,7 @@ export default async function CoachBookingsPage({
 
       {done.length > 0 && (
         <section className="space-y-2">
-          <h3 className="text-sm font-medium text-muted-foreground">
+          <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-ink-3">
             {zh ? "已结束" : "Closed"}
           </h3>
           <div className="space-y-2">

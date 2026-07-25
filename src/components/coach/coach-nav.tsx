@@ -17,7 +17,7 @@ export function CoachNav() {
   const t = useTranslations("coach");
 
   return (
-    <nav className="flex flex-wrap gap-1 border-b border-border pb-2 text-sm">
+    <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 text-sm">
       {ITEMS.map((item) => {
         // "/coach" would otherwise match every sub-page.
         const active =
@@ -30,10 +30,10 @@ export function CoachNav() {
             href={item.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "rounded-lg px-3 py-2",
+              "press whitespace-nowrap rounded-xl border px-3.5 py-2 font-semibold",
               active
-                ? "bg-surface-muted font-medium text-foreground"
-                : "text-muted-foreground hover:text-foreground",
+                ? "border-accent bg-accent text-accent-foreground shadow-[var(--shadow-sm)]"
+                : "border-border bg-surface text-ink-2 hover:border-accent hover:text-ink",
             )}
           >
             {t(item.key)}

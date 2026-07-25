@@ -11,7 +11,8 @@ import {
   toDateKey,
   dateKeyToDbDate,
 } from "@/lib/time";
-import { statusLabel, statusTone, OCCUPYING_STATUSES } from "@/lib/booking/state";
+import { OCCUPYING_STATUSES } from "@/lib/booking/state";
+import { StatusPill } from "@/components/ui/status-pill";
 import { toLocale } from "@/i18n/routing";
 import { CalendarPlus } from "lucide-react";
 
@@ -82,7 +83,7 @@ export default async function CoachSchedulePage({
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-border text-left text-muted-foreground">
+                    <tr className="border-b border-border text-left text-xs uppercase tracking-wider text-ink-3">
                       <th className="py-2 pr-3 font-medium">
                         {zh ? "授课时间" : "Lesson"}
                       </th>
@@ -127,11 +128,7 @@ export default async function CoachSchedulePage({
                             {formatMoneyShort(b.totalCents)}
                           </td>
                           <td className="py-2 pr-3">
-                            <span
-                              className={`rounded-full border px-2 py-0.5 text-xs ${statusTone(b.status)}`}
-                            >
-                              {statusLabel(b.status, loc)}
-                            </span>
+                            <StatusPill status={b.status} locale={loc} />
                           </td>
                           <td className="py-2">
                             <a
@@ -145,7 +142,7 @@ export default async function CoachSchedulePage({
                               target="_blank"
                               rel="noreferrer"
                               title={t("addToGoogle")}
-                              className="inline-flex items-center gap-1 text-ice-700 hover:underline dark:text-ice-300"
+                              className="press inline-flex items-center gap-1 text-accent hover:underline"
                             >
                               <CalendarPlus className="size-4" aria-hidden />
                               <span className="sr-only">

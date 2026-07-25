@@ -99,7 +99,7 @@ export function SignaturePad({
 
   return (
     <div className="space-y-2">
-      <p className="text-sm font-medium">{label}</p>
+      <p className="text-sm font-semibold">{label}</p>
       <canvas
         ref={canvasRef}
         onPointerDown={start}
@@ -108,7 +108,7 @@ export function SignaturePad({
         onPointerLeave={end}
         onPointerCancel={end}
         aria-label={label}
-        className="signature-pad h-36 w-full rounded-lg border border-dashed border-border bg-white"
+        className="signature-pad h-36 w-full rounded-xl border-2 border-dashed border-border-strong bg-white transition-colors hover:border-accent"
       />
       <div className="flex items-center justify-between">
         <Button type="button" variant="ghost" size="sm" onClick={clear}>
