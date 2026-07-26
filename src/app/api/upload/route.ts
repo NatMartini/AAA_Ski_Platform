@@ -15,9 +15,10 @@ export const dynamic = "force-dynamic";
  * Files land outside public/, so the only way to read one back is through a
  * route handler that checks the caller. See src/lib/storage.ts.
  *
- * Two purposes, each with its own authorisation:
+ * Three purposes, each with its own authorisation:
  *   payment-proof — the booking's own customer, or that booking's coach
  *   payment-qr    — a coach, for their own profile
+ *   coach-avatar  — a coach, for their own profile
  */
 export async function POST(req: Request) {
   const limited = rateLimitOrRespond(req, "upload", "upload");
@@ -44,11 +45,15 @@ export async function POST(req: Request) {
 
   let prefix: string;
 
-  if (purpose === "payment-qr") {
+  if (purpose === "payment-qr" || purpose === "coach-avatar") {
     if (r.user.role !== "COACH" && r.user.role !== "ADMIN") {
       return NextResponse.json({ error: "forbidden" }, { status: 403 });
     }
-    prefix = KEY_PREFIX.qr(r.user.id);
+    // Always the caller's own id, never one from the request body.
+    prefix =
+      purpose === "coach-avatar"
+        ? KEY_PREFIX.avatar(r.user.id)
+        : KEY_PREFIX.qr(r.user.id);
   } else if (purpose === "payment-proof") {
     const bookingCode = form.get("bookingCode");
     if (typeof bookingCode !== "string" || !bookingCode) {
@@ -97,6 +102,13 @@ export async function POST(req: Request) {
     await prisma.coachProfile.update({
       where: { userId: r.user.id },
       data: { [field]: key },
+    });
+  } else if (purpose === "coach-avatar") {
+    // avatarUrl points at the route that reads avatarKey back, so the coach
+    // cards and booking page keep rendering a plain URL and need no change.
+    await prisma.coachProfile.update({
+      where: { userId: r.user.id },
+      data: { avatarKey: key, avatarUrl: `/api/files/avatar/${r.user.id}` },
     });
   }
 

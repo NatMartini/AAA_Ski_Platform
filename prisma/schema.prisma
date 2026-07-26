@@ -131,6 +131,9 @@ model CoachProfile {
   displayName String
   bioEn       String? @db.Text
   bioZh       String? @db.Text
+  /// Storage key for a photo the coach uploaded. `avatarUrl` holds the
+  /// route that serves it, so every consumer just renders a URL.
+  avatarKey String?
   avatarUrl   String?
 
   // Pricing. handoverDiscountCents is deducted ONCE per booking, regardless of

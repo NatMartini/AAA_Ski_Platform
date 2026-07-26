@@ -13,15 +13,17 @@ import {
   Textarea,
 } from "@/components/ui/field";
 import { QrUploadField } from "./qr-upload-field";
+import { ImageUploadField } from "./image-upload-field";
 import { SkillPicker } from "@/components/booking/skill-picker";
 import { LEVELS } from "@/lib/skills";
 import { cn } from "@/lib/utils";
 import { formatMoneyShort } from "@/lib/pricing";
 import type { Locale } from "@/i18n/routing";
-import { Check, Loader2, TriangleAlert } from "lucide-react";
+import { Check, Languages, Loader2, TriangleAlert } from "lucide-react";
 
 export type CoachSettings = {
   displayName: string;
+  avatarKey: string | null;
   bioZh: string;
   bioEn: string;
   csiaLevel: number | null;
@@ -55,6 +57,12 @@ const COPY = {
   zh: {
     profile: "基本资料",
     displayName: "显示名称",
+    photo: "头像",
+    photoHelp: "显示在选择教练页和约课页。建议用正方形照片,上传后会自动压缩。",
+    photoUpload: "上传头像",
+    photoReplace: "更换头像",
+    photoFailed: "上传失败,请重试。",
+    photoTooLarge: "图片太大,请压缩后再传。",
     bio: "教练介绍",
     bioHelp: "显示在学员的约课页面最上方。空行分段。",
     bioZh: "中文",
@@ -67,9 +75,10 @@ const COPY = {
     levelN: "{n} 级",
     teachLevels: "可教水平",
     teachSkills: "可教动作",
-    teachSkillsHelp: "留空表示全部动作都可以教。",
+    teachSkillsHelp: "按 CSIA 等级排列。留空表示全部动作都可以教。",
     alpine: "双板技术",
     park: "公园",
+    tier: "L{n}",
     pricing: "价格",
     hourlyRate: "每小时价格(加元)",
     handover: "每单交接扣减(加元)",
@@ -90,13 +99,20 @@ const COPY = {
     alipay: "启用支付宝",
     qrHelp: "上传收款二维码。仅已登录并有订单的学员可见。",
     contact: "联系方式",
-    wechatId: "微信号(用于约其他时间)",
+    wechatId: "微信号",
     contactEmail: "联系邮箱",
     contactPhone: "联系电话",
     policy: "取消与退款政策",
     policyHelp:
       "下单前会完整展示给学员,并在下单时冻结到该订单上 —— 之后修改不影响已成立的订单。两种语言都必须填写才能接单。",
     policyZh: "中文版",
+    toEn: "翻译成英文",
+    toZh: "翻译成中文",
+    translateHint:
+      "自动翻译只是初稿,会把这段文字发送给 DeepL 翻译服务。请自己核对后再保存 —— 这段文字下单时会冻结成学员同意的条款。",
+    translateUnavailable: "尚未配置翻译服务(DEEPL_API_KEY)。",
+    translateFailed: "翻译失败,请稍后重试。",
+    translateEmpty: "请先填写要翻译的那一栏。",
     policyEn: "英文版",
     publish: "开放预定",
     publishHelp: "关闭后学员看不到你,也无法预定。",
@@ -108,6 +124,13 @@ const COPY = {
   en: {
     profile: "Profile",
     displayName: "Display name",
+    photo: "Profile photo",
+    photoHelp:
+      "Shown on the coach list and the booking page. A square photo works best; it is compressed on upload.",
+    photoUpload: "Upload photo",
+    photoReplace: "Replace photo",
+    photoFailed: "Upload failed. Please try again.",
+    photoTooLarge: "That image is too large.",
     bio: "Coach introduction",
     bioHelp:
       "Shown at the top of the booking page. Blank lines start a new paragraph.",
@@ -122,9 +145,11 @@ const COPY = {
     levelN: "Level {n}",
     teachLevels: "Abilities you teach",
     teachSkills: "Moves you teach",
-    teachSkillsHelp: "Leaving this empty means you teach everything.",
+    teachSkillsHelp:
+      "Listed in CSIA syllabus order. Leaving this empty means you teach everything.",
     alpine: "Alpine",
     park: "Park",
+    tier: "L{n}",
     pricing: "Pricing",
     hourlyRate: "Hourly rate (CAD)",
     handover: "Handover credit per booking (CAD)",
@@ -145,13 +170,20 @@ const COPY = {
     alipay: "Accept Alipay",
     qrHelp: "Upload your payment QR code. Only signed-in students with a booking can see it.",
     contact: "Contact",
-    wechatId: "WeChat ID (for off-grid times)",
+    wechatId: "WeChat ID",
     contactEmail: "Contact email",
     contactPhone: "Contact phone",
     policy: "Cancellation and refund policy",
     policyHelp:
       "Shown in full before a student books, and frozen onto the booking at that moment — later edits do not change existing bookings. Both languages are required before you can take bookings.",
     policyZh: "Chinese",
+    toEn: "Translate to English",
+    toZh: "Translate to Chinese",
+    translateHint:
+      "A first draft only — the text is sent to DeepL to translate. Read it before saving: this wording is frozen onto every booking as the terms the student agreed to.",
+    translateUnavailable: "No translation service is configured (DEEPL_API_KEY).",
+    translateFailed: "Translation failed. Please try again.",
+    translateEmpty: "Fill in the language you are translating from first.",
     policyEn: "English",
     publish: "Open for bookings",
     publishHelp: "While off, students cannot see or book you.",
@@ -176,10 +208,46 @@ export function CoachSettingsForm({
   const [form, setForm] = useState(initial);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [translating, setTranslating] = useState<"ZH" | "EN" | null>(null);
+  const [translateError, setTranslateError] = useState<string | null>(null);
 
   function set<K extends keyof CoachSettings>(key: K, value: CoachSettings[K]) {
     setForm((f) => ({ ...f, [key]: value }));
     setStatus("idle");
+  }
+
+  /**
+   * Drafts one language of the policy from the other. Never saves — it fills
+   * the field and leaves the coach to read it and press Save.
+   */
+  async function translatePolicy(target: "ZH" | "EN") {
+    const source =
+      target === "EN" ? form.cancellationPolicyZh : form.cancellationPolicyEn;
+    if (!source.trim()) {
+      setTranslateError(c.translateEmpty);
+      return;
+    }
+    setTranslating(target);
+    setTranslateError(null);
+
+    const res = await fetch("/api/coach/translate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: source, target }),
+    });
+    setTranslating(null);
+
+    if (!res.ok) {
+      setTranslateError(
+        res.status === 501 ? c.translateUnavailable : c.translateFailed,
+      );
+      return;
+    }
+    const { text } = (await res.json()) as { text: string };
+    set(
+      target === "EN" ? "cancellationPolicyEn" : "cancellationPolicyZh",
+      text,
+    );
   }
 
   async function save() {
@@ -245,6 +313,25 @@ export function CoachSettingsForm({
           />
           <FieldError>{errors.displayName}</FieldError>
         </div>
+        <div className="space-y-1.5">
+          <Label>{c.photo}</Label>
+          <ImageUploadField
+            purpose="coach-avatar"
+            previewSrc={`/api/files/avatar/${coachId}`}
+            previewAlt={form.displayName}
+            hasImage={Boolean(form.avatarKey)}
+            round
+            hint={c.photoHelp}
+            labels={{
+              upload: c.photoUpload,
+              replace: c.photoReplace,
+              failed: c.photoFailed,
+              tooLarge: c.photoTooLarge,
+            }}
+            onUploaded={(key) => set("avatarKey", key)}
+          />
+        </div>
+
         <CardDescription>{c.bioHelp}</CardDescription>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
@@ -336,7 +423,7 @@ export function CoachSettingsForm({
             locale={locale}
             selected={form.teachableSkills}
             onChange={(next) => set("teachableSkills", next)}
-            labels={{ alpine: c.alpine, park: c.park }}
+            labels={{ alpine: c.alpine, park: c.park, tier: c.tier }}
           />
         </div>
       </Card>
@@ -453,6 +540,7 @@ export function CoachSettingsForm({
             <QrUploadField
               kind="wechat"
               coachId={coachId}
+              locale={locale}
               currentKey={form.wechatPayQrKey}
               hint={c.qrHelp}
               onUploaded={(key) => set("wechatPayQrKey", key)}
@@ -471,6 +559,7 @@ export function CoachSettingsForm({
             <QrUploadField
               kind="alipay"
               coachId={coachId}
+              locale={locale}
               currentKey={form.alipayQrKey}
               hint={c.qrHelp}
               onUploaded={(key) => set("alipayQrKey", key)}
@@ -515,7 +604,15 @@ export function CoachSettingsForm({
         <CardTitle>{c.policy}</CardTitle>
         <CardDescription>{c.policyHelp}</CardDescription>
         <div className="space-y-1.5">
-          <Label htmlFor="policyZh">{c.policyZh}</Label>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Label htmlFor="policyZh">{c.policyZh}</Label>
+            <TranslateButton
+              label={c.toEn}
+              busy={translating === "EN"}
+              disabled={translating !== null}
+              onClick={() => translatePolicy("EN")}
+            />
+          </div>
           <Textarea
             id="policyZh"
             value={form.cancellationPolicyZh}
@@ -524,7 +621,15 @@ export function CoachSettingsForm({
           <FieldError>{errors.cancellationPolicyZh}</FieldError>
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="policyEn">{c.policyEn}</Label>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Label htmlFor="policyEn">{c.policyEn}</Label>
+            <TranslateButton
+              label={c.toZh}
+              busy={translating === "ZH"}
+              disabled={translating !== null}
+              onClick={() => translatePolicy("ZH")}
+            />
+          </div>
           <Textarea
             id="policyEn"
             value={form.cancellationPolicyEn}
@@ -532,6 +637,8 @@ export function CoachSettingsForm({
           />
           <FieldError>{errors.cancellationPolicyEn}</FieldError>
         </div>
+        <Hint>{c.translateHint}</Hint>
+        <FieldError>{translateError}</FieldError>
       </Card>
 
       <Card className="space-y-3">
@@ -567,6 +674,35 @@ export function CoachSettingsForm({
         )}
       </div>
     </div>
+  );
+}
+
+/** Fills the other language of the policy. Small and quiet — it is an aid. */
+function TranslateButton({
+  label,
+  busy,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  busy: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="press inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-ink-2 disabled:opacity-50 hover:enabled:border-accent hover:enabled:text-ink"
+    >
+      {busy ? (
+        <Loader2 className="size-3.5 animate-spin" aria-hidden />
+      ) : (
+        <Languages className="size-3.5" aria-hidden />
+      )}
+      {label}
+    </button>
   );
 }
 

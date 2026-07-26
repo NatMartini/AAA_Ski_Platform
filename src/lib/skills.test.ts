@@ -9,6 +9,7 @@ import {
   sanitizeSkillKeys,
   skillLabel,
   skillsForTrack,
+  skillsByTier,
 } from "./skills";
 
 describe("skill catalogue", () => {
@@ -29,9 +30,36 @@ describe("skill catalogue", () => {
     expect(skillLabel("no_such_skill", "en")).toBe("no_such_skill");
   });
 
-  it("sorts each track easiest first", () => {
+  it("still labels retired keys, for rows the migration never saw", () => {
+    expect(skillLabel("box_rail", "en")).toBe("Boxes & rails");
+    expect(skillLabel("spins", "zh")).toBe("转体(180 / 360)");
+  });
+
+  it("lists each track in CSIA syllabus order, easiest first", () => {
     const tiers = skillsForTrack("alpine").map((s) => s.tier);
     expect([...tiers].sort((a, b) => a - b)).toEqual(tiers);
+  });
+
+  it("groups by certification level without losing or duplicating anything", () => {
+    for (const track of ["alpine", "park"] as const) {
+      const grouped = skillsByTier(track).flatMap((g) => g.skills);
+      expect(grouped).toEqual(skillsForTrack(track));
+    }
+  });
+
+  it("keeps every manoeuvre separate — no combined entries", () => {
+    // "Boxes & rails" or "180 / 360" in one chip is what this replaced.
+    for (const skill of SKILLS) {
+      expect(skill.zh).not.toMatch(/[/／]/);
+      expect(skill.key).not.toMatch(/_(and|or)_/);
+    }
+  });
+
+  it("covers the park manoeuvres the CSIA park guides teach", () => {
+    const park = new Set(skillsForTrack("park").map((s) => s.key));
+    for (const key of ["grab", "spin_grab", "box", "rail", "spin_180", "spin_360"]) {
+      expect(park.has(key)).toBe(true);
+    }
   });
 });
 

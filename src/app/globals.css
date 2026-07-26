@@ -29,10 +29,13 @@
   --color-ice-900: #12202e;
   --color-ice-950: #0e1620;
 
-  /* Manrope for Latin, Noto Sans SC for Chinese. Both are loaded via
-     next/font in the layout, which sets these variables. */
+  /* Space Grotesk sets the tone — cut terminals and a slightly condensed
+     frame read colder and more technical than a rounded grotesque, which
+     is the register a ski school wants. Manrope carries body copy, Noto
+     Sans SC carries Chinese. All three are loaded via next/font in the
+     layout, which sets these variables. */
   --font-display:
-    var(--font-sora), var(--font-noto-sc), ui-sans-serif, system-ui,
+    var(--font-grotesk), var(--font-noto-sc), ui-sans-serif, system-ui,
     -apple-system, "Segoe UI", sans-serif;
   --font-sans:
     var(--font-manrope), var(--font-noto-sc), ui-sans-serif, system-ui,
@@ -47,27 +50,27 @@
 }
 
 :root {
-  --bg: #eef3f8;
+  --bg: #e9f1f9;
   --surface: #ffffff;
-  --surface-2: #eef3f8;
-  --surface-3: #f6f9fc;
+  --surface-2: #e8f0f8;
+  --surface-3: #f4f9fd;
 
-  --ink: #12202e;
-  --ink-2: #4a5f74;
+  --ink: #0f1e2b;
+  --ink-2: #42596f;
   /* The design's #8496a8 measured 2.72:1 on our surfaces — below the 4.5:1
      WCAG AA floor for normal text, and this token is used for footer links and
      eyebrow labels. Darkened until it clears AA on every surface with a little
      margin (4.91 on --bg, 5.48 on --surface) while still reading as muted. */
-  --ink-3: #5a6b7d;
+  --ink-3: #566a7e;
   /* Original design value, for genuinely decorative marks only (never text). */
   --ink-3-decorative: #8496a8;
 
-  --border: #dde6ef;
-  --border-strong: #c7d5e2;
+  --border: #d7e4f0;
+  --border-strong: #bed2e4;
 
-  --accent: #2a5479;
-  --accent-strong: #1f3f5c;
-  --accent-soft: #e8f0f7;
+  --accent: #0d5f8f;
+  --accent-strong: #08496e;
+  --accent-soft: #dcecf9;
   --accent-ink: #ffffff;
 
   --amber: #a4670c;
@@ -80,6 +83,11 @@
   --danger: #b3261e;
   --danger-bg: #fbecea;
   --danger-border: #f0c9c5;
+
+  /* Backdrop wash and the highlight that catches the top edge of a card. */
+  --frost-bloom: rgba(255, 255, 255, 0.85);
+  --frost-top: rgba(255, 255, 255, 0.6);
+  --frost-edge: rgba(255, 255, 255, 0.9);
 
   --shadow-sm: 0 1px 2px rgba(18, 32, 46, 0.06);
   --shadow:
@@ -110,25 +118,25 @@
 /* Follow the OS unless the user has made an explicit choice. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0e1620;
-    --surface: #16212e;
-    --surface-2: #1b2837;
-    --surface-3: #111b26;
+    --bg: #0a131c;
+    --surface: #132030;
+    --surface-2: #182739;
+    --surface-3: #0e1926;
 
-    --ink: #e8eef4;
-    --ink-2: #9db0c4;
+    --ink: #e9f1f8;
+    --ink-2: #9db3c8;
     /* Design value #6f8398 was 4.16:1 on --surface; lightened to clear AA on
        every surface with margin (6.15 on --bg, 5.50 on --surface). */
-    --ink-3: #8698ac;
+    --ink-3: #8699ae;
     --ink-3-decorative: #6f8398;
 
-    --border: #26364a;
-    --border-strong: #374a61;
+    --border: #23364c;
+    --border-strong: #354b66;
 
-    --accent: #659fc8;
-    --accent-strong: #7fb4d9;
-    --accent-soft: #172c3d;
-    --accent-ink: #08131f;
+    --accent: #6bb6e2;
+    --accent-strong: #8ecbf0;
+    --accent-soft: #13293c;
+    --accent-ink: #05121e;
 
     --amber: #e2b467;
     --amber-bg: #282013;
@@ -140,6 +148,12 @@
     --danger: #e79790;
     --danger-bg: #2e1918;
     --danger-border: #57302c;
+
+    /* Moonlight rather than daylight: a cold blue bloom, and a much fainter
+       edge highlight so cards still look lit from above without glowing. */
+    --frost-bloom: rgba(64, 122, 168, 0.16);
+    --frost-top: rgba(28, 60, 92, 0.22);
+    --frost-edge: rgba(255, 255, 255, 0.06);
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 34px -14px rgba(0, 0, 0, 0.6);
@@ -167,23 +181,23 @@
 
 /* Explicit dark choice — wins over the OS preference above. */
 :root[data-theme="dark"] {
-  --bg: #0e1620;
-  --surface: #16212e;
-  --surface-2: #1b2837;
-  --surface-3: #111b26;
+  --bg: #0a131c;
+  --surface: #132030;
+  --surface-2: #182739;
+  --surface-3: #0e1926;
 
-  --ink: #e8eef4;
-  --ink-2: #9db0c4;
-  --ink-3: #8698ac;
+  --ink: #e9f1f8;
+  --ink-2: #9db3c8;
+  --ink-3: #8699ae;
   --ink-3-decorative: #6f8398;
 
-  --border: #26364a;
-  --border-strong: #374a61;
+  --border: #23364c;
+  --border-strong: #354b66;
 
-  --accent: #659fc8;
-  --accent-strong: #7fb4d9;
-  --accent-soft: #172c3d;
-  --accent-ink: #08131f;
+  --accent: #6bb6e2;
+  --accent-strong: #8ecbf0;
+  --accent-soft: #13293c;
+  --accent-ink: #05121e;
 
   --amber: #e2b467;
   --amber-bg: #282013;
@@ -195,6 +209,10 @@
   --danger: #e79790;
   --danger-bg: #2e1918;
   --danger-border: #57302c;
+
+  --frost-bloom: rgba(64, 122, 168, 0.16);
+  --frost-top: rgba(28, 60, 92, 0.22);
+  --frost-edge: rgba(255, 255, 255, 0.06);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 34px -14px rgba(0, 0, 0, 0.6);
@@ -261,6 +279,20 @@ html {
 
 body {
   background: var(--bg);
+  /* Snow glare: a cold wash down the page and a soft bloom behind the top of
+     the content, so the page reads as daylight on snow rather than flat grey.
+     Fixed attachment keeps it a backdrop instead of something that scrolls
+     past. Both layers are pure colour, so there is no image to download and
+     nothing to go wrong at any viewport size. */
+  background-image:
+    radial-gradient(
+      70rem 32rem at 50% -14rem,
+      var(--frost-bloom) 0%,
+      transparent 70%
+    ),
+    linear-gradient(180deg, var(--frost-top) 0%, transparent 30rem);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
   color: var(--ink);
   font-family: var(--font-sans);
   /* 15px base: the design's body size, comfortable for Chinese and Latin. */
@@ -478,4 +510,18 @@ body {
    wordmark, big price figures, step numbers. */
 .font-display {
   font-family: var(--font-display);
+}
+
+/*
+ * Frosted edge.
+ *
+ * A one-pixel inset highlight along the top of a raised surface. Applied via a
+ * class rather than to every card selector so the header and other raised
+ * chrome can opt in, and so a card that deliberately sits flat can leave it
+ * off.
+ */
+.frosted {
+  box-shadow:
+    inset 0 1px 0 0 var(--frost-edge),
+    var(--shadow);
 }

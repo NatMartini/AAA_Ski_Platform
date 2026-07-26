@@ -1,15 +1,23 @@
 /**
- * Alpine skill and ability catalogue.
+ * Alpine and park manoeuvre catalogue, following the CSIA syllabus.
+ *
+ * Ordering and naming come from the official candidate guides: the Level 1–4
+ * ski-off runs for the alpine track, and the Snow Park Level 1–2 progressions
+ * for the park track. `tier` is the certification level a manoeuvre first
+ * appears at, which is also the order a student meets them in.
+ *
+ * One manoeuvre per entry. Nothing is combined — "boxes and rails" are two
+ * different features taught in two different sessions, and a coach who teaches
+ * one may not teach the other. The same goes for 180s and 360s.
  *
  * Deliberately a code constant rather than database rows: it changes when the
- * coaches decide it changes, it needs bilingual labels, and every consumer
- * wants compile-time keys. Adding a skill is a one-line edit here with no
- * migration.
+ * CSIA changes it, it needs bilingual labels, and every consumer wants
+ * compile-time keys. Adding a manoeuvre is a one-line edit here, no migration.
  *
- * Keys are stored in `CoachProfile.teachableSkills`, `Booking.requestedSkills`
- * and `Participant.level`. Never renumber or rename a key — old bookings keep
- * whatever they were saved with. Retire one by removing it from `SKILLS` and
- * leaving its label in `LEGACY_LABELS` so historical records still render.
+ * Keys are stored in `CoachProfile.teachableSkills` and
+ * `Booking.requestedSkills`. Never rename a key — old bookings keep whatever
+ * they were saved with. Retire one by removing it from `SKILLS` and leaving
+ * its label in `LEGACY_LABELS` so historical records still render.
  */
 
 export type SkillTrack = "alpine" | "park";
@@ -19,36 +27,87 @@ export type Skill = {
   track: SkillTrack;
   zh: string;
   en: string;
-  /** Roughly the ability at which this is usually taught, for sorting. */
-  tier: number;
+  /** CSIA level this first appears at. Also the display order. */
+  tier: 1 | 2 | 3 | 4;
 };
 
-/** CSIA-style alpine progression, easiest first. */
-export const SKILLS: Skill[] = [
-  { key: "first_slide", track: "alpine", tier: 1, zh: "第一次滑行 / 站立平衡", en: "First slides & balance" },
-  { key: "wedge", track: "alpine", tier: 1, zh: "犁式", en: "Wedge" },
-  { key: "wedge_turn", track: "alpine", tier: 1, zh: "犁式转弯", en: "Wedge turns" },
-  { key: "wedge_christie", track: "alpine", tier: 2, zh: "犁式并腿(半犁式)", en: "Wedge christie" },
-  { key: "parallel", track: "alpine", tier: 2, zh: "平行式", en: "Parallel turns" },
-  { key: "short_turn", track: "alpine", tier: 3, zh: "小弯", en: "Short turns" },
-  { key: "long_turn", track: "alpine", tier: 2, zh: "大弯", en: "Long turns" },
-  { key: "carving", track: "alpine", tier: 3, zh: "卡宾(刻滑)", en: "Carving" },
-  { key: "dynamic_parallel", track: "alpine", tier: 4, zh: "动态平行式", en: "Dynamic parallel" },
-  { key: "moguls", track: "alpine", tier: 4, zh: "刻槽 / 猫跳", en: "Moguls" },
-  { key: "steeps", track: "alpine", tier: 4, zh: "陡坡", en: "Steeps" },
-  { key: "powder", track: "alpine", tier: 4, zh: "粉雪", en: "Powder" },
-
-  // CSIA Park
-  { key: "park_intro", track: "park", tier: 2, zh: "公园入门 / 安全", en: "Park intro & safety" },
-  { key: "box_rail", track: "park", tier: 3, zh: "平箱 / 铁杆", en: "Boxes & rails" },
-  { key: "small_jump", track: "park", tier: 3, zh: "小跳台", en: "Small jumps" },
-  { key: "spins", track: "park", tier: 4, zh: "转体(180 / 360)", en: "Spins (180 / 360)" },
-  { key: "switch", track: "park", tier: 3, zh: "倒滑", en: "Switch riding" },
-  { key: "halfpipe", track: "park", tier: 4, zh: "U 型池", en: "Halfpipe" },
+/**
+ * The alpine progression.
+ *
+ * Level 1 is the beginner-to-intermediate lesson content; Level 2 adds the
+ * demonstration parallel and short turn ski-off runs; Level 3 adds advanced
+ * parallel, bumps and the tactic runs (hop turn, braquage); Level 4 adds the
+ * expert runs, the corridor objective and the javelin turn.
+ */
+const ALPINE: Omit<Skill, "track">[] = [
+  { key: "first_slide", tier: 1, zh: "第一次滑行", en: "First slides" },
+  { key: "straight_run", tier: 1, zh: "直滑降", en: "Straight run" },
+  { key: "wedge", tier: 1, zh: "犁式", en: "Snowplow" },
+  { key: "wedge_stop", tier: 1, zh: "犁式停止", en: "Snowplow stop" },
+  { key: "wedge_turn", tier: 1, zh: "犁式转弯", en: "Snowplow turns" },
+  { key: "traverse", tier: 1, zh: "横切", en: "Traverse" },
+  { key: "sideslip", tier: 1, zh: "侧滑", en: "Sideslip" },
+  { key: "wedge_christie", tier: 1, zh: "半犁式并腿", en: "Christie" },
+  { key: "parallel", tier: 1, zh: "平行式", en: "Basic parallel" },
+  { key: "demo_parallel", tier: 2, zh: "示范平行弯", en: "Demonstration parallel" },
+  { key: "short_turn", tier: 2, zh: "小弯", en: "Short turns" },
+  { key: "long_turn", tier: 2, zh: "大弯", en: "Long turns" },
+  { key: "carving", tier: 2, zh: "卡宾", en: "Carving" },
+  { key: "advanced_parallel", tier: 3, zh: "进阶平行弯", en: "Advanced parallel" },
+  { key: "short_radius", tier: 3, zh: "高级小弯", en: "Short radius turns" },
+  { key: "moguls", tier: 3, zh: "猫跳", en: "Bumps" },
+  { key: "braquage", tier: 3, zh: "原地小弯", en: "Braquage" },
+  { key: "hop_turn", tier: 3, zh: "跳跃转弯", en: "Hop turns" },
+  { key: "mixed_radius", tier: 3, zh: "变节奏弯", en: "Mixed radius" },
+  { key: "steeps", tier: 3, zh: "陡坡", en: "Steeps" },
+  { key: "powder", tier: 3, zh: "粉雪", en: "Powder" },
+  { key: "javelin", tier: 4, zh: "标枪转弯", en: "Javelin turns" },
+  { key: "corridor", tier: 4, zh: "定宽走廊", en: "Corridor" },
+  { key: "all_terrain", tier: 4, zh: "道外全地形", en: "All-terrain off-piste" },
 ];
 
-/** Labels for retired keys, so old bookings still read correctly. */
-const LEGACY_LABELS: Record<string, { zh: string; en: string }> = {};
+/**
+ * The park progression, from the Snow Park candidate guides.
+ *
+ * Park Level 1 covers jibbing, switch, jumping, grabs, the pop-90 onto a box,
+ * boxes, rails and 180/360 spins. Park Level 2 adds switch take-offs,
+ * switch-ups on a feature, urban rails, 540s and spins with grabs.
+ */
+const PARK: Skill[] = [
+  { key: "jibbing", track: "park", tier: 1, zh: "地形游玩", en: "Jibbing" },
+  { key: "switch", track: "park", tier: 1, zh: "倒滑", en: "Switch skiing" },
+  { key: "small_jump", track: "park", tier: 1, zh: "小跳台", en: "Small jumps" },
+  { key: "grab", track: "park", tier: 1, zh: "抓板", en: "Grabs" },
+  { key: "pop_90", track: "park", tier: 1, zh: "Pop 90 上道具", en: "Pop 90 onto a feature" },
+  { key: "box", track: "park", tier: 1, zh: "平箱", en: "Boxes" },
+  { key: "rail", track: "park", tier: 1, zh: "铁杆", en: "Rails" },
+  { key: "spin_180", track: "park", tier: 1, zh: "转体 180", en: "180 spins" },
+  { key: "spin_360", track: "park", tier: 1, zh: "转体 360", en: "360 spins" },
+  { key: "switch_takeoff", track: "park", tier: 2, zh: "倒滑起跳", en: "Switch take-offs" },
+  { key: "switch_up", track: "park", tier: 2, zh: "道具上换向", en: "Switch-ups" },
+  { key: "switch_spin", track: "park", tier: 2, zh: "倒滑转体", en: "Switch spins" },
+  { key: "spin_540", track: "park", tier: 2, zh: "转体 540", en: "540 spins" },
+  { key: "spin_grab", track: "park", tier: 2, zh: "转体抓板", en: "Spins with grabs" },
+  { key: "urban_rail", track: "park", tier: 2, zh: "异型杆", en: "Urban rails & kinks" },
+  { key: "halfpipe", track: "park", tier: 2, zh: "U 型池", en: "Halfpipe" },
+];
+
+export const SKILLS: Skill[] = [
+  ...ALPINE.map((s) => ({ ...s, track: "alpine" as const })),
+  ...PARK,
+];
+
+/**
+ * Labels for retired keys, so bookings saved before a change still read
+ * correctly. The 20260726… migration rewrites these in the database, but a row
+ * restored from an old backup would still land here.
+ */
+const LEGACY_LABELS: Record<string, { zh: string; en: string }> = {
+  park_intro: { zh: "公园入门", en: "Park intro" },
+  box_rail: { zh: "平箱 / 铁杆", en: "Boxes & rails" },
+  spins: { zh: "转体(180 / 360)", en: "Spins (180 / 360)" },
+  dynamic_parallel: { zh: "动态平行式", en: "Dynamic parallel" },
+};
 
 const BY_KEY = new Map(SKILLS.map((s) => [s.key, s]));
 
@@ -60,8 +119,26 @@ export function skillLabel(key: string, locale: "zh" | "en"): string {
   return key; // unknown key: show it rather than silently dropping it
 }
 
+/** CSIA level a manoeuvre belongs to, for grouping the picker. */
+export function skillTier(key: string): number {
+  return BY_KEY.get(key)?.tier ?? 0;
+}
+
 export function skillsForTrack(track: SkillTrack): Skill[] {
-  return SKILLS.filter((s) => s.track === track).sort((a, b) => a.tier - b.tier);
+  return SKILLS.filter((s) => s.track === track);
+}
+
+/** The manoeuvres of one track, grouped by the CSIA level they belong to. */
+export function skillsByTier(track: SkillTrack): { tier: number; skills: Skill[] }[] {
+  const groups = new Map<number, Skill[]>();
+  for (const skill of skillsForTrack(track)) {
+    const list = groups.get(skill.tier);
+    if (list) list.push(skill);
+    else groups.set(skill.tier, [skill]);
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([tier, skills]) => ({ tier, skills }));
 }
 
 export function isSkillKey(key: string): boolean {
@@ -100,7 +177,7 @@ export const LEVELS: Level[] = [
     zh: "初级",
     en: "Beginner",
     zhHint: "能用犁式控速,可滑绿道。",
-    enHint: "Can control speed in a wedge, comfortable on green runs.",
+    enHint: "Can control speed in a snowplow, comfortable on green runs.",
   },
   {
     key: "intermediate",

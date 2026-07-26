@@ -2,17 +2,16 @@
 
 import { useSyncExternalStore } from "react";
 import { Moon, Sun } from "lucide-react";
-
-type Theme = "light" | "dark";
+import { themeCookieString, type Theme } from "@/lib/theme";
 
 /**
  * Light/dark switch.
  *
  * The current theme is read from the live `data-theme` attribute rather than
  * held in component state, so it stays correct no matter who set it — the
- * pre-paint ThemeScript, this button, or another tab. useSyncExternalStore
- * gives the server render an explicit `null` (no DOM to read), which avoids a
- * hydration mismatch without an effect that immediately calls setState.
+ * server render, this button, or another tab. useSyncExternalStore gives the
+ * server render an explicit `null` (no DOM to read), which avoids a hydration
+ * mismatch without an effect that immediately calls setState.
  */
 const listeners = new Set<() => void>();
 
@@ -51,11 +50,8 @@ export function ThemeToggle({ label }: { label: string }) {
     const next: Theme = theme === "dark" ? "light" : "dark";
     // The MutationObserver above turns this into a re-render.
     document.documentElement.setAttribute("data-theme", next);
-    try {
-      localStorage.setItem("theme", next);
-    } catch {
-      // Private mode or blocked storage: the choice just will not persist.
-    }
+    // Persisted as a cookie so the next server render already knows.
+    document.cookie = themeCookieString(next);
   }
 
   const isDark = theme === "dark";

@@ -8,6 +8,7 @@ import { FieldError, Label, Select } from "@/components/ui/field";
 import { PriceBreakdown } from "./price-breakdown";
 import { AddParticipantDialog } from "./add-participant-dialog";
 import { SkillPicker } from "./skill-picker";
+import { DateCalendar } from "./date-calendar";
 import {
   quote,
   lessonWindow,
@@ -43,6 +44,8 @@ type Participant = {
 const COPY = {
   zh: {
     pickDay: "选择日期",
+    prevMonth: "上一月",
+    nextMonth: "下一月",
     pickTime: "选择开始时间",
     duration: "时长",
     hours: "小时",
@@ -52,6 +55,7 @@ const COPY = {
     skillsHint: "告诉教练你想重点练什么,课前就能准备。",
     alpine: "双板技术",
     park: "公园",
+    tier: "L{n}",
     plan: "付款方式",
     planFull: "一次付清",
     planDeposit: "先付定金(一小时课费),上课后付余款",
@@ -75,6 +79,8 @@ const COPY = {
   },
   en: {
     pickDay: "Choose a day",
+    prevMonth: "Previous month",
+    nextMonth: "Next month",
     pickTime: "Choose a start time",
     duration: "Duration",
     hours: "hours",
@@ -84,6 +90,7 @@ const COPY = {
     skillsHint: "Tell your coach what to focus on so they can plan ahead.",
     alpine: "Alpine",
     park: "Park",
+    tier: "L{n}",
     plan: "Payment",
     planFull: "Pay in full",
     planDeposit: "Deposit now (one hour), balance after the lesson",
@@ -139,7 +146,7 @@ export function SlotPicker({
   const c = COPY[locale];
 
   const [participants, setParticipants] = useState(initialParticipants);
-  const [dateKey, setDateKey] = useState(days[0]?.dateKey ?? "");
+  const [dateKey, setDateKey] = useState("");
   const [startHour, setStartHour] = useState<number | null>(null);
   const [hours, setHours] = useState<number>(minHours);
   const [headcount, setHeadcount] = useState(1);
@@ -261,21 +268,26 @@ export function SlotPicker({
 
       <Card className="space-y-4">
         <div className="space-y-1.5">
-          <Label htmlFor="day">{c.pickDay}</Label>
-          <Select
-            id="day"
-            value={dateKey}
-            onChange={(e) => {
-              setDateKey(e.target.value);
+          <Label>{c.pickDay}</Label>
+          <DateCalendar
+            locale={locale}
+            available={days.map((d) => d.dateKey)}
+            selected={dateKey || null}
+            onSelect={(next) => {
+              setDateKey(next);
               setStartHour(null);
             }}
-          >
-            {days.map((d) => (
-              <option key={d.dateKey} value={d.dateKey}>
-                {formatTorontoDate(new Date(`${d.dateKey}T12:00:00Z`), locale)}
-              </option>
-            ))}
-          </Select>
+            labels={{
+              prev: c.prevMonth,
+              next: c.nextMonth,
+              none: c.noDays,
+            }}
+          />
+          {dateKey && (
+            <p className="pt-0.5 text-sm font-semibold text-ink-2">
+              {formatTorontoDate(new Date(`${dateKey}T12:00:00Z`), locale)}
+            </p>
+          )}
         </div>
 
         {day && (
@@ -376,7 +388,7 @@ export function SlotPicker({
               selected={skills}
               onChange={setSkills}
               allowed={coachSkills}
-              labels={{ alpine: c.alpine, park: c.park }}
+              labels={{ alpine: c.alpine, park: c.park, tier: c.tier }}
             />
           </div>
 

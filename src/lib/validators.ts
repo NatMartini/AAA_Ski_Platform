@@ -180,6 +180,12 @@ export const paymentProofSchema = z.object({
   reference: z.string().trim().max(200).nullable().optional(),
 });
 
+export const translateSchema = z.object({
+  /** The policy is capped at 4000 characters, so this is too. */
+  text: z.string().trim().min(1).max(4000),
+  target: z.enum(["ZH", "EN"]),
+});
+
 export const cancelBookingSchema = z.object({
   /**
    * Required. A cancellation the student cannot explain is worse than no

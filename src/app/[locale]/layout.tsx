@@ -1,25 +1,27 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Manrope, Sora, Noto_Sans_SC } from "next/font/google";
+import { Manrope, Space_Grotesk, Noto_Sans_SC } from "next/font/google";
 import { NextIntlClientProvider, hasLocale } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { routing } from "@/i18n/routing";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { DevBanner } from "@/components/dev-banner";
-import { ThemeScript } from "@/components/theme-script";
 import { getUser } from "@/lib/auth/require-user";
+import { cookies } from "next/headers";
+import { isTheme, THEME_COOKIE } from "@/lib/theme";
 import "../globals.css";
 
-// Three faces, each with a job: Sora for headings and the wordmark (it has
-// more character than a neutral grotesque and its heavy weights hold up at
-// display sizes), Manrope for body copy, Noto Sans SC for Chinese. All are
-// self-hosted by next/font, so there is no third-party request at runtime —
-// which also keeps the CSP free of a font CDN.
-const sora = Sora({
+// Three faces, each with a job: Space Grotesk for headings and the wordmark —
+// its cut terminals and slightly condensed frame read colder and more
+// technical than a rounded grotesque, which suits a ski school — Manrope for
+// body copy, Noto Sans SC for Chinese. All are self-hosted by next/font, so
+// there is no third-party request at runtime, which also keeps the CSP free of
+// a font CDN.
+const grotesk = Space_Grotesk({
   subsets: ["latin"],
-  weight: ["600", "700", "800"],
-  variable: "--font-sora",
+  weight: ["500", "600", "700"],
+  variable: "--font-grotesk",
   display: "swap",
 });
 
@@ -66,14 +68,19 @@ export default async function LocaleLayout({
 
   const user = await getUser();
 
+  // Read here rather than in a pre-paint script: the server already knows the
+  // answer, so the very first byte carries the right theme and there is no
+  // flash and no inline script.
+  const stored = (await cookies()).get(THEME_COOKIE)?.value;
+  const theme = isTheme(stored) ? stored : null;
+
   return (
     <html
       lang={locale}
-      className={`h-full antialiased ${sora.variable} ${manrope.variable} ${notoSansSC.variable}`}
-      suppressHydrationWarning /* ThemeScript sets data-theme before paint */
+      data-theme={theme ?? undefined}
+      className={`h-full antialiased ${grotesk.variable} ${manrope.variable} ${notoSansSC.variable}`}
     >
       <body className="flex min-h-full flex-col">
-        <ThemeScript />
         <NextIntlClientProvider>
           <DevBanner user={user} />
           <SiteHeader user={user} locale={locale} />

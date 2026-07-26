@@ -104,6 +104,7 @@ export const KEY_PREFIX = {
   proof: (bookingId: string) => `proofs/${bookingId}`,
   waiver: () => `waivers`,
   qr: (coachId: string) => `qr/${coachId}`,
+  avatar: (coachId: string) => `avatars/${coachId}`,
   video: (bookingId: string) => `videos/${bookingId}`,
 } as const;
 
