@@ -29,6 +29,12 @@ export default async function CoachSettingsPage({
       coachId={user.id}
       initial={{
         displayName: profile.displayName,
+        bioZh: profile.bioZh ?? "",
+        bioEn: profile.bioEn ?? "",
+        csiaLevel: profile.csiaLevel,
+        csiaParkLevel: profile.csiaParkLevel,
+        teachableSkills: profile.teachableSkills,
+        teachableLevels: profile.teachableLevels,
         hourlyRateCents: profile.hourlyRateCents,
         handoverDiscountCents: profile.handoverDiscountCents,
         extraPersonCents: profile.extraPersonCents,

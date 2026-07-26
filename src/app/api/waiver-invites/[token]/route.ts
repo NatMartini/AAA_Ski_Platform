@@ -8,8 +8,6 @@ import { loadBooking } from "@/lib/booking/access";
 import { signWaiver } from "@/lib/waiver/sign";
 import { identityKey } from "@/lib/participants";
 import { clientIp } from "@/lib/request";
-import { dbDateToDateKey } from "@/lib/time";
-import { isMinorAt } from "@/lib/waiver/validity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,7 +44,7 @@ export async function POST(
   if (!booking || booking.status !== "AWAITING_WAIVER") {
     return NextResponse.json({ error: "invalid" }, { status: 409 });
   }
-  if (!booking.inviteName || !booking.inviteBirthDate) {
+  if (!booking.inviteName) {
     return NextResponse.json({ error: "incomplete-booking" }, { status: 409 });
   }
 
@@ -59,8 +57,7 @@ export async function POST(
   }
   const d = parsed.data;
 
-  const birthDateKey = dbDateToDateKey(booking.inviteBirthDate);
-  const isMinor = isMinorAt(booking.inviteBirthDate, booking.lessonStartAt);
+  const isMinor = booking.inviteIsMinor;
 
   // The participant belongs to whoever signed in. For a minor that is the
   // guardian's account (isSelf false); for an adult it is their own.
@@ -68,15 +65,15 @@ export async function POST(
     where: {
       accountId_identityKey: {
         accountId: r.user.id,
-        identityKey: identityKey(booking.inviteName, birthDateKey),
+        identityKey: identityKey(booking.inviteName),
       },
     },
     update: {},
     create: {
       accountId: r.user.id,
       fullName: booking.inviteName,
-      birthDate: booking.inviteBirthDate,
-      identityKey: identityKey(booking.inviteName, birthDateKey),
+      isMinor,
+      identityKey: identityKey(booking.inviteName),
       isSelf: !isMinor,
       email: isMinor ? null : r.user.email,
     },
@@ -86,7 +83,7 @@ export async function POST(
     booking,
     participantId: participant.id,
     participantName: participant.fullName,
-    participantBirthDate: participant.birthDate,
+    participantIsMinor: participant.isMinor,
     signerUserId: r.user.id,
     signerName: r.user.name ?? r.user.email,
     signerEmail: r.user.email,

@@ -6,9 +6,8 @@ import { getAvailability } from "@/lib/availability";
 import { canAcceptBookings } from "@/lib/coach";
 import { SlotPicker } from "@/components/booking/slot-picker";
 import { toLocale } from "@/i18n/routing";
-import { dbDateToDateKey, toDateKey } from "@/lib/time";
+import { toDateKey } from "@/lib/time";
 import { bookingHorizon } from "@/lib/season";
-import { isMinorAt } from "@/lib/waiver/validity";
 
 export default async function PickSlotPage({
   params,
@@ -53,6 +52,7 @@ export default async function PickSlotPage({
       coachBio={locale === "zh" ? profile.bioZh : profile.bioEn}
       coachAvatarUrl={profile.avatarUrl}
       coachWechat={profile.wechatId}
+      coachSkills={profile.teachableSkills}
       resortName={locale === "zh" ? resort.nameZh : resort.nameEn}
       minHours={profile.minHours}
       maxGroupSize={profile.maxGroupSize}
@@ -74,9 +74,12 @@ export default async function PickSlotPage({
       participants={participants.map((p) => ({
         id: p.id,
         fullName: p.fullName,
-        birthDate: dbDateToDateKey(p.birthDate),
+        isMinor: p.isMinor,
         isSelf: p.isSelf,
-        isMinorToday: isMinorAt(p.birthDate, new Date()),
+        level: p.level,
+        phone: p.phone,
+        emergencyContactName: p.emergencyContactName,
+        emergencyContactPhone: p.emergencyContactPhone,
       }))}
     />
   );

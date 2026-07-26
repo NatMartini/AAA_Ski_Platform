@@ -9,11 +9,22 @@ import { PriceBreakdown } from "@/components/booking/price-breakdown";
 import { quoteFromBooking } from "@/lib/pricing";
 import { HoldCountdown } from "@/components/booking/hold-countdown";
 import { CoachReviewPanel } from "@/components/coach/coach-review-panel";
+import { CoachLessonPanel } from "@/components/coach/coach-lesson-panel";
+import { prisma } from "@/lib/prisma";
+import { balanceCents } from "@/lib/booking/lesson";
+import { skillLabel, levelLabel } from "@/lib/skills";
+import { formatMoneyShort } from "@/lib/pricing";
 import { StatusPill } from "@/components/ui/status-pill";
 import { formatTorontoDate, formatTorontoTime } from "@/lib/time";
 import { toLocale } from "@/i18n/routing";
 import type { DisclosureSnapshot } from "@/lib/booking/disclosure";
-import { Download, FileSignature, CreditCard } from "lucide-react";
+import {
+  Download,
+  FileSignature,
+  CreditCard,
+  NotebookPen,
+  Target,
+} from "lucide-react";
 
 export default async function BookingPage({
   params,
@@ -45,6 +56,13 @@ export default async function BookingPage({
 
   const needsWaiver = !booking.waiverId && access.isCustomer;
   const needsPayment = access.canPay;
+
+  const owing = balanceCents(booking);
+  const videos = await prisma.lessonVideo.findMany({
+    where: { bookingId: booking.id },
+    orderBy: { uploadedAt: "asc" },
+    select: { id: true, caption: true, bytes: true },
+  });
 
   return (
     <div className="stagger space-y-5">
@@ -101,7 +119,61 @@ export default async function BookingPage({
       <Card className="space-y-3">
         <CardTitle>{zh ? "价格明细" : "Price breakdown"}</CardTitle>
         <PriceBreakdown locale={loc} quote={quoteFromBooking(booking)} />
+        {/* A deposit booking is confirmed with money still owing, so the
+            status pill alone would be misleading. */}
+        {booking.paymentPlan === "DEPOSIT" && (
+          <p
+            className="rounded-xl p-3 text-sm font-semibold"
+            style={{
+              background: owing > 0 ? "var(--amber-bg)" : "var(--success-bg)",
+              color: owing > 0 ? "var(--amber)" : "var(--success)",
+            }}
+            data-numeric
+          >
+            {owing === 0
+              ? zh
+                ? "已付清全部课费"
+                : "Paid in full"
+              : booking.amountPaidCents === 0
+                ? // Nothing has cleared yet: describe the plan, not a payment.
+                  zh
+                  ? `分两次付款:先付定金 ${formatMoneyShort(booking.depositCents)},余款 ${formatMoneyShort(owing - booking.depositCents)} 课后支付`
+                  : `Paying in two parts: ${formatMoneyShort(booking.depositCents)} deposit now, ${formatMoneyShort(owing - booking.depositCents)} after the lesson`
+                : zh
+                  ? `已付定金 ${formatMoneyShort(booking.amountPaidCents)},课后需再付 ${formatMoneyShort(owing)}`
+                  : `Deposit of ${formatMoneyShort(booking.amountPaidCents)} paid — ${formatMoneyShort(owing)} due after the lesson`}
+          </p>
+        )}
       </Card>
+
+      {(booking.requestedSkills.length > 0 || booking.studentLevel) && (
+        <Card className="space-y-2">
+          <CardTitle className="flex items-center gap-2">
+            <Target className="size-4 text-accent" aria-hidden />
+            {zh ? "本课重点" : "Focus for this lesson"}
+          </CardTitle>
+          {booking.studentLevel && (
+            <p className="text-sm text-ink-2">
+              {zh ? "学员水平:" : "Ability: "}
+              <strong className="text-ink">
+                {levelLabel(booking.studentLevel, loc)}
+              </strong>
+            </p>
+          )}
+          {booking.requestedSkills.length > 0 && (
+            <ul className="flex flex-wrap gap-1.5">
+              {booking.requestedSkills.map((key) => (
+                <li
+                  key={key}
+                  className="rounded-full border border-border bg-surface-2 px-2.5 py-1 text-xs font-semibold text-ink-2"
+                >
+                  {skillLabel(key, loc)}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
 
       {/* Next action for the customer */}
       {(needsWaiver || needsPayment) && (
@@ -169,6 +241,49 @@ export default async function BookingPage({
         </Card>
       )}
 
+      {booking.status === "CANCELLED" && (
+        <Card
+          className="space-y-1.5"
+          style={{ borderColor: "var(--danger-border)" }}
+        >
+          <CardTitle>{zh ? "已取消" : "Cancelled"}</CardTitle>
+          {booking.cancelReason && (
+            <p className="text-sm text-ink-2">{booking.cancelReason}</p>
+          )}
+        </Card>
+      )}
+
+      {/* Lesson notes and clips. Shown to the student as well as the coach —
+          for the student this is the whole point of coming back to the page
+          after the lesson. */}
+      {(booking.coachSummary || videos.length > 0) && (
+        <Card className="space-y-3">
+          <CardTitle className="flex items-center gap-2">
+            <NotebookPen className="size-4 text-accent" aria-hidden />
+            {zh ? "课后总结" : "Lesson notes"}
+          </CardTitle>
+          {booking.coachSummary && (
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-2">
+              {booking.coachSummary}
+            </p>
+          )}
+          {videos.map((v) => (
+            <div key={v.id} className="space-y-1.5">
+              <video
+                controls
+                preload="metadata"
+                playsInline
+                src={`/api/bookings/${booking.code}/videos/${v.id}`}
+                className="w-full rounded-xl border border-border bg-black"
+              />
+              {v.caption && (
+                <p className="text-xs text-ink-3">{v.caption}</p>
+              )}
+            </div>
+          ))}
+        </Card>
+      )}
+
       {access.isCoach && (
         <CoachReviewPanel
           locale={loc}
@@ -180,6 +295,21 @@ export default async function BookingPage({
           paymentReference={booking.paymentReference}
           canReview={access.canReview}
           canUploadProof={access.canPay}
+        />
+      )}
+
+      {access.isCoach && (
+        <CoachLessonPanel
+          locale={loc}
+          bookingCode={booking.code}
+          balanceCents={owing}
+          paidCents={booking.amountPaidCents}
+          depositCents={booking.depositCents}
+          isDeposit={booking.paymentPlan === "DEPOSIT"}
+          canSettleBalance={["CONFIRMED", "COMPLETED"].includes(booking.status)}
+          canCancel={access.canCancel}
+          summary={booking.coachSummary}
+          videos={videos}
         />
       )}
 

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Manrope, Noto_Sans_SC } from "next/font/google";
+import { Manrope, Sora, Noto_Sans_SC } from "next/font/google";
 import { NextIntlClientProvider, hasLocale } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { routing } from "@/i18n/routing";
@@ -11,9 +11,18 @@ import { ThemeScript } from "@/components/theme-script";
 import { getUser } from "@/lib/auth/require-user";
 import "../globals.css";
 
-// Manrope carries the Latin text; Noto Sans SC covers Chinese. Both are
+// Three faces, each with a job: Sora for headings and the wordmark (it has
+// more character than a neutral grotesque and its heavy weights hold up at
+// display sizes), Manrope for body copy, Noto Sans SC for Chinese. All are
 // self-hosted by next/font, so there is no third-party request at runtime —
 // which also keeps the CSP free of a font CDN.
+const sora = Sora({
+  subsets: ["latin"],
+  weight: ["600", "700", "800"],
+  variable: "--font-sora",
+  display: "swap",
+});
+
 const manrope = Manrope({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700", "800"],
@@ -23,7 +32,7 @@ const manrope = Manrope({
 
 const notoSansSC = Noto_Sans_SC({
   subsets: ["latin"],
-  weight: ["400", "500", "700"],
+  weight: ["400", "500", "700", "900"],
   variable: "--font-noto-sc",
   display: "swap",
   preload: false, // the SC subset is large; let it load on demand
@@ -60,7 +69,7 @@ export default async function LocaleLayout({
   return (
     <html
       lang={locale}
-      className={`h-full antialiased ${manrope.variable} ${notoSansSC.variable}`}
+      className={`h-full antialiased ${sora.variable} ${manrope.variable} ${notoSansSC.variable}`}
       suppressHydrationWarning /* ThemeScript sets data-theme before paint */
     >
       <body className="flex min-h-full flex-col">

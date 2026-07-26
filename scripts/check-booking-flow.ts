@@ -17,6 +17,12 @@ import { acknowledgementIds } from "../src/lib/waiver/template-v1";
 import { identityKey } from "../src/lib/participants";
 import { dateKeyToDbDate, torontoWallTimeToUtc } from "../src/lib/time";
 import { readObject } from "../src/lib/storage";
+import {
+  amountDueCents,
+  balanceCents,
+  stageOf,
+} from "../src/lib/booking/lesson";
+import { OCCUPYING_STATUSES } from "../src/lib/booking/state";
 
 for (const file of [".env.local", ".env"]) {
   try {
@@ -33,6 +39,9 @@ const PARENT = "__flow_check_parent";
 const ADULT = "__flow_check_adult";
 const RESORT_SLUG = "__flow_check_resort";
 const DAY = "2026-01-08";
+// A second open day, so the deposit and cancellation checks are not fighting
+// the earlier tests for the few free hours left on DAY.
+const DAY2 = "2026-01-09";
 
 // A 1x1 PNG stands in for a drawn signature.
 const SIG =
@@ -89,24 +98,26 @@ async function setup() {
     },
   });
 
-  await prisma.coachDay.create({
-    data: {
-      coachId: COACH,
-      resortId: resort.id,
-      date: dateKeyToDbDate(DAY),
-      startHour: 9,
-      endHour: 16,
-      breakStartHour: 13,
-      breakEndHour: 14,
-    },
-  });
+  for (const day of [DAY, DAY2]) {
+    await prisma.coachDay.create({
+      data: {
+        coachId: COACH,
+        resortId: resort.id,
+        date: dateKeyToDbDate(day),
+        startHour: 9,
+        endHour: 16,
+        breakStartHour: 13,
+        breakEndHour: 14,
+      },
+    });
+  }
 
   const child = await prisma.participant.create({
     data: {
       accountId: PARENT,
       fullName: "小明",
-      birthDate: dateKeyToDbDate("2015-03-02"),
-      identityKey: identityKey("小明", "2015-03-02"),
+      isMinor: true,
+      identityKey: identityKey("小明"),
       isSelf: false,
     },
   });
@@ -114,8 +125,8 @@ async function setup() {
     data: {
       accountId: ADULT,
       fullName: "张伟",
-      birthDate: dateKeyToDbDate("1990-01-01"),
-      identityKey: identityKey("张伟", "1990-01-01"),
+      isMinor: false,
+      identityKey: identityKey("张伟"),
       isSelf: true,
     },
   });
@@ -246,7 +257,7 @@ async function main() {
     booking: bookingRow!,
     participantId: adult.id,
     participantName: "张伟",
-    participantBirthDate: adult.birthDate,
+    participantIsMinor: adult.isMinor,
     signerUserId: ADULT,
     signerName: "张伟",
     signerEmail: "__flow_adult@example.invalid",
@@ -285,7 +296,7 @@ async function main() {
     booking: bookingRow!,
     participantId: adult.id,
     participantName: "张伟",
-    participantBirthDate: adult.birthDate,
+    participantIsMinor: adult.isMinor,
     signerUserId: ADULT,
     signerName: "张伟",
     signerEmail: "__flow_adult@example.invalid",
@@ -325,14 +336,14 @@ async function main() {
   });
   const reuse = resolveWaiver({
     waivers: adultWaivers,
-    participantBirthDate: adult.birthDate,
+    participantIsMinor: adult.isMinor,
     lessonStartAt: torontoWallTimeToUtc(DAY, 14),
   });
   check("the existing signature covers it — no re-signing", !reuse.needsSigning);
 
   const nextSeason = resolveWaiver({
     waivers: adultWaivers,
-    participantBirthDate: adult.birthDate,
+    participantIsMinor: adult.isMinor,
     lessonStartAt: torontoWallTimeToUtc("2026-12-10", 9),
   });
   check("next season needs a fresh signature", nextSeason.needsSigning);
@@ -367,7 +378,7 @@ async function main() {
     booking: childRow!,
     participantId: child.id,
     participantName: "小明",
-    participantBirthDate: child.birthDate,
+    participantIsMinor: child.isMinor,
     signerUserId: PARENT,
     signerName: "张丽",
     signerEmail: "__flow_parent@example.invalid",
@@ -404,11 +415,122 @@ async function main() {
     !childWaivers.some((w) => w.participantId === adult.id),
   );
 
+  console.log("\ndeposit payments");
+  const depositBooking = await createBooking({
+    coachId: COACH,
+    dateKey: DAY2,
+    startHour: 14,
+    hours: 2,
+    paymentPlan: "DEPOSIT",
+    requestedSkills: ["carving", "short_turn", "not_a_real_skill"],
+    locale: "zh",
+    account: {
+      id: ADULT,
+      participantId: adult.id,
+      participantName: "张伟",
+      level: "intermediate",
+    },
+    now,
+  });
+  check(
+    "a deposit booking is accepted",
+    depositBooking.ok,
+    depositBooking.ok ? "" : depositBooking.reason,
+  );
+
+  const depositRow = depositBooking.ok
+    ? await prisma.booking.findUnique({ where: { code: depositBooking.code } })
+    : null;
+
+  check(
+    "the deposit is one hour at the booked rate",
+    depositRow?.depositCents === 8000,
+    `deposit=${depositRow?.depositCents} total=${depositRow?.totalCents}`,
+  );
+  check(
+    "unknown skill keys are dropped, real ones kept",
+    depositRow?.requestedSkills.length === 2 &&
+      depositRow.requestedSkills.includes("carving") &&
+      !depositRow.requestedSkills.includes("not_a_real_skill"),
+    (depositRow?.requestedSkills ?? []).join(","),
+  );
+  check(
+    "the student's ability is snapshotted onto the booking",
+    depositRow?.studentLevel === "intermediate",
+  );
+
+  if (depositRow) {
+    check(
+      "before anything clears, the deposit is what is due",
+      stageOf(depositRow) === "DEPOSIT" && amountDueCents(depositRow) === 8000,
+    );
+
+    // What the review route does when the coach confirms the first screenshot.
+    const afterDeposit = await prisma.booking.update({
+      where: { id: depositRow.id },
+      data: { status: "CONFIRMED", amountPaidCents: depositRow.depositCents },
+    });
+    check(
+      "once the deposit clears the booking is confirmed with a balance owing",
+      afterDeposit.status === "CONFIRMED" && balanceCents(afterDeposit) === 6500,
+      `owing=${balanceCents(afterDeposit)}`,
+    );
+    check(
+      "the next payment asked for is the balance, not the deposit again",
+      stageOf(afterDeposit) === "BALANCE" &&
+        amountDueCents(afterDeposit) === 6500,
+    );
+
+    // What the balance route does when the coach records the rest.
+    const settled = await prisma.booking.update({
+      where: { id: depositRow.id },
+      data: {
+        amountPaidCents: afterDeposit.totalCents,
+        balanceSettledAt: new Date(),
+      },
+    });
+    check("settling the balance clears it", balanceCents(settled) === 0);
+
+    console.log("\ncoach cancellation");
+    const cancelled = await prisma.booking.update({
+      where: { id: depositRow.id },
+      data: {
+        status: "CANCELLED",
+        cancelledAt: new Date(),
+        cancelledById: COACH,
+        cancelReason: "雪场关闭",
+      },
+    });
+    check(
+      "a cancelled booking keeps its record",
+      cancelled.cancelReason === "雪场关闭" && cancelled.cancelledById === COACH,
+    );
+    check(
+      "a cancelled booking no longer occupies the slot",
+      !OCCUPYING_STATUSES.includes(cancelled.status),
+    );
+
+    // The proof that matters: the same hour can be booked again.
+    const rebooked = await createBooking({
+      coachId: COACH,
+      dateKey: DAY2,
+      startHour: 14,
+      hours: 2,
+      locale: "zh",
+      account: { id: ADULT, participantId: adult.id, participantName: "张伟" },
+      now,
+    });
+    check("the freed hour can be booked again", rebooked.ok);
+    if (rebooked.ok) {
+      await prisma.booking.delete({ where: { code: rebooked.code } });
+    }
+  }
+
   console.log("\naging out of a guardian signature");
   const agedOut = resolveWaiver({
     waivers: childWaivers,
-    // Pretend the same signature belongs to someone turning 18 in Feb 2026.
-    participantBirthDate: dateKeyToDbDate("2008-02-01"),
+    // Pretend the same person has since turned 18.
+    participantIsMinor: false,
     lessonStartAt: torontoWallTimeToUtc("2026-03-15", 9),
   });
   check(

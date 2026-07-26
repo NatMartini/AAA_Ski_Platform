@@ -5,7 +5,6 @@ import { createBookingSchema, fieldErrors } from "@/lib/validators";
 import { rateLimitOrRespond } from "@/lib/rate-limit";
 import { createBooking } from "@/lib/booking/create";
 import { checkSelfServeParticipant } from "@/lib/participants";
-import { torontoWallTimeToUtc } from "@/lib/time";
 import { toLocale } from "@/i18n/routing";
 import { sendBookingConfirmation } from "@/lib/booking/notify";
 
@@ -38,8 +37,9 @@ export async function POST(req: Request) {
       id: true,
       accountId: true,
       fullName: true,
-      birthDate: true,
+      isMinor: true,
       isSelf: true,
+      level: true,
       archivedAt: true,
     },
   });
@@ -50,12 +50,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  // Gate 2 and 4, re-checked against the lesson date rather than today.
-  const lessonStartAt = torontoWallTimeToUtc(d.date, d.startHour);
+  // Gate 4, re-checked server side from the stored row rather than the client.
   const check = checkSelfServeParticipant({
-    birthDate: participant.birthDate,
+    isMinor: participant.isMinor,
     isSelf: participant.isSelf,
-    lessonStartAt,
   });
   if (!check.ok) {
     return NextResponse.json({ error: check.reason }, { status: 400 });
@@ -71,11 +69,16 @@ export async function POST(req: Request) {
     startHour: d.startHour,
     hours: d.hours,
     headcount: d.headcount,
+    requestedSkills: d.requestedSkills,
+    paymentPlan: d.paymentPlan,
     locale,
     account: {
       id: r.user.id,
       participantId: participant.id,
       participantName: participant.fullName,
+      // Snapshot the ability the participant profile carries, so the coach
+      // sees what to expect even if the student edits it later.
+      level: participant.level,
     },
     notes: d.notes ?? null,
   });

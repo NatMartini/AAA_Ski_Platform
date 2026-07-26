@@ -9,9 +9,12 @@ import { Loader2, Plus, X } from "lucide-react";
 export type NewParticipant = {
   id: string;
   fullName: string;
-  birthDate: string;
+  isMinor: boolean;
   isSelf: boolean;
-  isMinorToday: boolean;
+  level: string | null;
+  phone: string | null;
+  emergencyContactName: string | null;
+  emergencyContactPhone: string | null;
 };
 
 const COPY = {
@@ -21,10 +24,13 @@ const COPY = {
     self: "我自己",
     child: "我的孩子(未满 18 岁)",
     fullName: "姓名",
-    birthDate: "出生日期",
-    birthHelp: "用于判断是否需要监护人签署免责协议。",
-    emergencyName: "紧急联系人",
-    emergencyPhone: "紧急联系电话",
+    minorQuestion: "是否未满 18 周岁?",
+    minorYes: "未满 18 周岁",
+    minorNo: "已满 18 周岁",
+    minorHelp: "未满 18 周岁的学员,免责协议须由父母或监护人签署。",
+    emergencyName: "紧急联系人(建议填写)",
+    emergencyPhone: "紧急联系电话(建议填写)",
+    emergencyHelp: "建议填写,便于课上发生意外时联系。可留空。",
     level: "水平",
     levels: {
       "": "不确定",
@@ -37,7 +43,7 @@ const COPY = {
     cancel: "取消",
     adultNotSelf:
       "成年学员需使用本人的 Google 账号预定并签署免责协议,无法代为添加。",
-    duplicate: "已存在同名同生日的学员。",
+    duplicate: "该账号下已有同名学员。如需区分,请使用不同的名字。",
     selfExists: "你已经添加过自己了。",
     failed: "添加失败,请检查填写内容。",
   },
@@ -47,10 +53,15 @@ const COPY = {
     self: "Myself",
     child: "My child (under 18)",
     fullName: "Full name",
-    birthDate: "Date of birth",
-    birthHelp: "Used to decide whether a guardian must sign the waiver.",
-    emergencyName: "Emergency contact",
-    emergencyPhone: "Emergency phone",
+    minorQuestion: "Under 18?",
+    minorYes: "Under 18",
+    minorNo: "18 or over",
+    minorHelp:
+      "For a participant under 18, a parent or guardian signs the waiver.",
+    emergencyName: "Emergency contact (recommended)",
+    emergencyPhone: "Emergency phone (recommended)",
+    emergencyHelp:
+      "Recommended so you can be reached if something happens on the hill. You can leave it blank.",
     level: "Ability",
     levels: {
       "": "Not sure",
@@ -63,7 +74,7 @@ const COPY = {
     cancel: "Cancel",
     adultNotSelf:
       "Adult students must book and sign with their own Google account, so they cannot be added here.",
-    duplicate: "A participant with that name and date of birth already exists.",
+    duplicate: "You already have a participant with that name. Use a distinct name to tell them apart.",
     selfExists: "You have already added yourself.",
     failed: "Could not add. Please check the details.",
   },
@@ -84,7 +95,7 @@ export function AddParticipantDialog({
   const [open, setOpen] = useState(false);
   const [isSelf, setIsSelf] = useState(!hasSelf);
   const [fullName, setFullName] = useState("");
-  const [birthDate, setBirthDate] = useState("");
+  const [isMinor, setIsMinor] = useState(false);
   const [emergencyContactName, setEmergencyName] = useState("");
   const [emergencyContactPhone, setEmergencyPhone] = useState("");
   const [skillLevel, setSkillLevel] = useState("");
@@ -100,7 +111,7 @@ export function AddParticipantDialog({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         fullName,
-        birthDate,
+        isMinor,
         isSelf,
         skillLevel: skillLevel || null,
         emergencyContactName: emergencyContactName || null,
@@ -127,13 +138,16 @@ export function AddParticipantDialog({
     onAdded({
       id,
       fullName,
-      birthDate,
+      isMinor,
       isSelf,
-      isMinorToday: !isSelf,
+      level: null,
+      phone: null,
+      emergencyContactName: emergencyContactName || null,
+      emergencyContactPhone: emergencyContactPhone || null,
     });
     setOpen(false);
     setFullName("");
-    setBirthDate("");
+    setIsMinor(false);
   }
 
   if (!open) {
@@ -183,7 +197,12 @@ export function AddParticipantDialog({
             type="radio"
             name="who"
             checked={!isSelf}
-            onChange={() => setIsSelf(false)}
+            onChange={() => {
+              setIsSelf(false);
+              // Someone else on your account can only be a minor, so preselect
+              // it; the question below stays visible and editable.
+              setIsMinor(true);
+            }}
             className="accent-[var(--accent)]"
           />
           {c.child}
@@ -203,14 +222,16 @@ export function AddParticipantDialog({
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="p-dob">{c.birthDate}</Label>
-          <Input
-            id="p-dob"
-            type="date"
-            value={birthDate}
-            onChange={(e) => setBirthDate(e.target.value)}
-          />
-          <Hint>{c.birthHelp}</Hint>
+          <Label htmlFor="p-minor">{c.minorQuestion}</Label>
+          <Select
+            id="p-minor"
+            value={isMinor ? "yes" : "no"}
+            onChange={(e) => setIsMinor(e.target.value === "yes")}
+          >
+            <option value="no">{c.minorNo}</option>
+            <option value="yes">{c.minorYes}</option>
+          </Select>
+          <Hint>{c.minorHelp}</Hint>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="p-emg">{c.emergencyName}</Label>
@@ -227,6 +248,7 @@ export function AddParticipantDialog({
             value={emergencyContactPhone}
             onChange={(e) => setEmergencyPhone(e.target.value)}
           />
+          <Hint>{c.emergencyHelp}</Hint>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="p-level">{c.level}</Label>
@@ -251,7 +273,7 @@ export function AddParticipantDialog({
           type="button"
           size="sm"
           onClick={save}
-          disabled={busy || !fullName || !birthDate}
+          disabled={busy || !fullName}
         >
           {busy && <Loader2 className="animate-spin" aria-hidden />}
           {c.save}

@@ -20,6 +20,7 @@ type Methods = {
 const COPY = {
   zh: {
     amount: "请转账金额",
+    depositNote: "这是定金(一小时课费)。余款 {rest} 请在课后当面付给教练。",
     emt: "Interac e-Transfer",
     emtTo: "收款邮箱",
     emtName: "收款人",
@@ -44,6 +45,8 @@ const COPY = {
   },
   en: {
     amount: "Amount to send",
+    depositNote:
+      "This is the deposit — one hour of the lesson. The remaining {rest} is paid to your coach after the lesson.",
     emt: "Interac e-Transfer",
     emtTo: "Send to",
     emtName: "Recipient",
@@ -75,6 +78,7 @@ export function PaymentPanel({
   coachId,
   isCoach,
   quote,
+  amountDueCents,
   methods,
   rejectedNote,
 }: {
@@ -83,6 +87,12 @@ export function PaymentPanel({
   coachId: string;
   isCoach: boolean;
   quote: Quote;
+  /**
+   * What to send now. Equals the total for a pay-in-full booking, and the
+   * deposit for a booking that is paying one hour up front — showing the total
+   * here would have half the students over-transferring.
+   */
+  amountDueCents: number;
   methods: Methods;
   rejectedNote: string | null;
 }) {
@@ -188,12 +198,23 @@ export function PaymentPanel({
 
       <Card className="space-y-4">
         <CardTitle>{c.amount}</CardTitle>
-        <p className="text-4xl font-extrabold tracking-tight tabular-nums">
-          {formatMoneyShort(quote.totalCents)}{" "}
+        <p className="font-display text-4xl font-extrabold tracking-tight tabular-nums">
+          {formatMoneyShort(amountDueCents)}{" "}
           <span className="text-base font-semibold text-ink-3">
             {quote.currency}
           </span>
         </p>
+        {amountDueCents < quote.totalCents && (
+          <p
+            className="rounded-xl p-3 text-sm font-semibold"
+            style={{ background: "var(--amber-bg)", color: "var(--amber)" }}
+          >
+            {c.depositNote.replace(
+              "{rest}",
+              formatMoneyShort(quote.totalCents - amountDueCents),
+            )}
+          </p>
+        )}
         <PriceBreakdown quote={quote} locale={locale} />
       </Card>
 

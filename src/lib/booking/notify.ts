@@ -151,3 +151,69 @@ export async function sendPaymentReviewed(input: {
     text: body,
   });
 }
+
+export async function sendBookingCancelled(input: {
+  code: string;
+  to: string;
+  reason: string;
+  byCoach: boolean;
+  coachName: string;
+  locale: Locale;
+}): Promise<void> {
+  const zh = input.locale === "zh";
+
+  const body = [
+    zh
+      ? `订单 ${input.code} 已被取消。`
+      : `Booking ${input.code} has been cancelled.`,
+    input.byCoach
+      ? zh
+        ? `取消人:教练 ${input.coachName}`
+        : `Cancelled by your coach, ${input.coachName}.`
+      : zh
+        ? "取消人:你本人"
+        : "Cancelled by you.",
+    "",
+    zh ? `原因:${input.reason}` : `Reason: ${input.reason}`,
+    "",
+    // Deliberately not a claim about what will be refunded: the terms are the
+    // ones frozen onto the booking, and the coach settles refunds by hand.
+    zh
+      ? "退款按你下单时的取消政策处理,教练会与你联系。"
+      : "Any refund follows the cancellation policy as it stood when you booked; your coach will be in touch.",
+    "",
+    `${baseUrl()}/${input.locale}/booking/${input.code}`,
+  ].join("\n");
+
+  await sendMail({
+    to: input.to,
+    subject: zh ? `课程已取消 · ${input.code}` : `Lesson cancelled · ${input.code}`,
+    text: body,
+  });
+}
+
+export async function sendLessonSummary(input: {
+  code: string;
+  to: string;
+  coachName: string;
+  locale: Locale;
+}): Promise<void> {
+  const zh = input.locale === "zh";
+
+  // The summary itself is not put in the mail body: it can be long, it may be
+  // edited afterwards, and the videos only exist behind a login anyway.
+  const body = [
+    zh
+      ? `教练 ${input.coachName} 已经写好了 ${input.code} 这节课的课后总结。`
+      : `${input.coachName} has written up your lesson (${input.code}).`,
+    "",
+    zh ? "打开这里查看总结和课程视频:" : "Read it and watch any video here:",
+    `${baseUrl()}/${input.locale}/booking/${input.code}`,
+  ].join("\n");
+
+  await sendMail({
+    to: input.to,
+    subject: zh ? `课后总结 · ${input.code}` : `Your lesson notes · ${input.code}`,
+    text: body,
+  });
+}

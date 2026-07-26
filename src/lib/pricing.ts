@@ -110,6 +110,28 @@ export function quote(input: {
 }
 
 /**
+ * The deposit for a booking: one hour at the effective (group-adjusted) rate.
+ *
+ * Capped at the total so a one-hour booking can never ask for more than the
+ * lesson costs.
+ */
+export function depositFor(quote: Quote): number {
+  return Math.min(quote.perHourCents, quote.totalCents);
+}
+
+export type PaymentPlan = "FULL" | "DEPOSIT";
+
+/** What is due right now under a given plan. */
+export function amountDueNow(quote: Quote, plan: PaymentPlan): number {
+  return plan === "DEPOSIT" ? depositFor(quote) : quote.totalCents;
+}
+
+/** What is still owed after `paid` has been confirmed. */
+export function balanceRemaining(totalCents: number, paidCents: number): number {
+  return Math.max(0, totalCents - paidCents);
+}
+
+/**
  * Rebuilds a Quote for display from a booking's frozen price snapshot.
  *
  * Uses the stored totals verbatim rather than recomputing, so what is shown is

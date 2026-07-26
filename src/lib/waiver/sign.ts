@@ -8,10 +8,9 @@ import {
   templateHash,
   type WaiverVariant,
 } from "./template-v1";
-import { CURRENT_TEMPLATE_VERSION, isMinorAt } from "./validity";
+import { CURRENT_TEMPLATE_VERSION } from "./validity";
 import { seasonOf } from "../season";
 import { buildKey, KEY_PREFIX, writeObject, sha256 } from "../storage";
-import { dbDateToDateKey } from "../time";
 import type { LoadedBooking } from "../booking/access";
 
 /**
@@ -30,7 +29,8 @@ export type SignInput = {
   booking: LoadedBooking;
   participantId: string;
   participantName: string;
-  participantBirthDate: Date;
+  /** Stored flag on the participant; never a client-supplied value. */
+  participantIsMinor: boolean;
   signerUserId: string;
   signerName: string;
   signerEmail: string;
@@ -63,12 +63,9 @@ export async function signWaiver(input: SignInput): Promise<SignResult> {
   const season = seasonOf(booking.lessonStartAt);
   if (!season) return { ok: false, reason: "off-season" };
 
-  // Age is derived from the date of birth against the lesson date, server
-  // side. Whatever the client believes about who should sign is ignored.
-  const participantIsMinor = isMinorAt(
-    input.participantBirthDate,
-    booking.lessonStartAt,
-  );
+  // Whatever the client believes about who should sign is ignored: this comes
+  // from the stored participant row.
+  const participantIsMinor = input.participantIsMinor;
   const variant: WaiverVariant = participantIsMinor ? "guardian" : "adult";
 
   if (participantIsMinor && !input.guardianName?.trim()) {
@@ -101,7 +98,6 @@ export async function signWaiver(input: SignInput): Promise<SignResult> {
     currency: booking.currency,
     season,
     participantName: input.participantName,
-    participantBirthDate: dbDateToDateKey(input.participantBirthDate),
     participantIsMinor,
     signerName: input.signerName,
     signerEmail: input.signerEmail,

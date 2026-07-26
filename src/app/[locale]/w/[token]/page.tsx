@@ -3,7 +3,6 @@ import { requireUserPage } from "@/lib/auth/require-user";
 import { checkInvite } from "@/lib/waiver/invite";
 import { loadBooking } from "@/lib/booking/access";
 import { clausesFor, WARNING } from "@/lib/waiver/template-v1";
-import { isMinorAt } from "@/lib/waiver/validity";
 import { WaiverForm } from "@/components/waiver/waiver-form";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { toLocale } from "@/i18n/routing";
@@ -69,7 +68,7 @@ export default async function SigningLinkPage({
   }
 
   const booking = await loadBooking(check.bookingCode);
-  if (!booking?.inviteBirthDate || !booking.inviteName) {
+  if (!booking?.inviteName) {
     return (
       <Card className="mx-auto max-w-md">
         <CardDescription>
@@ -79,7 +78,7 @@ export default async function SigningLinkPage({
     );
   }
 
-  const isMinor = isMinorAt(booking.inviteBirthDate, booking.lessonStartAt);
+  const isMinor = booking.inviteIsMinor;
   const variant = isMinor ? "guardian" : "adult";
 
   const clauses = clausesFor(variant).map((clause) => ({

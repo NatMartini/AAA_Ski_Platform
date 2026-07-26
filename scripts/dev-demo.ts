@@ -58,6 +58,20 @@ async function sessionCookie(userId: string, email: string, name: string) {
   });
 }
 
+/** What the demo coach teaches, used for both create and update. */
+const DEMO_SKILLS = [
+  "first_slide",
+  "wedge",
+  "wedge_turn",
+  "wedge_christie",
+  "parallel",
+  "short_turn",
+  "long_turn",
+  "carving",
+  "park_intro",
+  "box_rail",
+];
+
 async function main() {
   const resorts = await prisma.resort.findMany({ orderBy: { order: "asc" } });
   if (resorts.length === 0) {
@@ -79,7 +93,14 @@ async function main() {
 
   await prisma.coachProfile.upsert({
     where: { userId: coach.id },
-    update: {},
+    // Refreshed rather than left alone: re-running the demo after adding a
+    // profile field should show that field, not the row from three weeks ago.
+    update: {
+      csiaLevel: 2,
+      csiaParkLevel: 1,
+      teachableLevels: ["first_time", "beginner", "intermediate", "advanced"],
+      teachableSkills: DEMO_SKILLS,
+    },
     create: {
       userId: coach.id,
       displayName: "Kevin",
@@ -87,6 +108,10 @@ async function main() {
       bioZh: "CSIA 认证教练,各水平均可教学,对初学者尤其耐心。",
       hourlyRateCents: 8000,
       handoverDiscountCents: 1500,
+      csiaLevel: 2,
+      csiaParkLevel: 1,
+      teachableLevels: ["first_time", "beginner", "intermediate", "advanced"],
+      teachableSkills: DEMO_SKILLS,
       minHours: 2,
       maxHours: 8,
       leadTimeHours: 24,
@@ -160,22 +185,22 @@ async function main() {
   });
 
   for (const p of [
-    { fullName: "Wei Zhang", birthDate: "1992-04-18", isSelf: true },
-    { fullName: "小明", birthDate: "2016-03-02", isSelf: false },
+    { fullName: "Wei Zhang", isMinor: false, isSelf: true },
+    { fullName: "小明", isMinor: true, isSelf: false },
   ]) {
     await prisma.participant.upsert({
       where: {
         accountId_identityKey: {
           accountId: student.id,
-          identityKey: identityKey(p.fullName, p.birthDate),
+          identityKey: identityKey(p.fullName),
         },
       },
       update: {},
       create: {
         accountId: student.id,
         fullName: p.fullName,
-        birthDate: dateKeyToDbDate(p.birthDate),
-        identityKey: identityKey(p.fullName, p.birthDate),
+        isMinor: p.isMinor,
+        identityKey: identityKey(p.fullName),
         isSelf: p.isSelf,
         email: p.isSelf ? STUDENT_EMAIL : null,
         emergencyContactName: p.isSelf ? null : "Wei Zhang",

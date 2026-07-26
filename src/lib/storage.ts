@@ -104,6 +104,7 @@ export const KEY_PREFIX = {
   proof: (bookingId: string) => `proofs/${bookingId}`,
   waiver: () => `waivers`,
   qr: (coachId: string) => `qr/${coachId}`,
+  video: (bookingId: string) => `videos/${bookingId}`,
 } as const;
 
 /** Content types we are willing to serve back out of storage. */
@@ -113,6 +114,9 @@ export const SERVEABLE_TYPES: Record<string, string> = {
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
   pdf: "application/pdf",
+  mp4: "video/mp4",
+  mov: "video/quicktime",
+  webm: "video/webm",
 };
 
 export function contentTypeForKey(key: StorageKey): string {

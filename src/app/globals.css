@@ -31,6 +31,9 @@
 
   /* Manrope for Latin, Noto Sans SC for Chinese. Both are loaded via
      next/font in the layout, which sets these variables. */
+  --font-display:
+    var(--font-sora), var(--font-noto-sc), ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", sans-serif;
   --font-sans:
     var(--font-manrope), var(--font-noto-sc), ui-sans-serif, system-ui,
     -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei",
@@ -267,13 +270,34 @@ body {
 }
 
 @layer base {
-  /* Headings are tight and heavy; the design leans on weight, not size. */
+  /* Headings are tight and heavy; the design leans on weight, not size.
+     Sora's wide apertures need slightly more negative tracking than Manrope
+     to read as one word at display sizes. */
   h1,
   h2,
-  h3 {
+  h3,
+  h4 {
+    font-family: var(--font-display);
     font-weight: 800;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.025em;
     line-height: 1.15;
+  }
+
+  /* Chinese has no 800 in Noto Sans SC below 900, and -0.025em tracking
+     collapses CJK glyphs into each other. Undo both when the page is zh. */
+  :lang(zh) h1,
+  :lang(zh) h2,
+  :lang(zh) h3,
+  :lang(zh) h4 {
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+
+  /* Prices, times and hour counts sit in columns all over this app; without
+     tabular figures they jitter as the digits change. */
+  time,
+  [data-numeric] {
+    font-variant-numeric: tabular-nums;
   }
 
   /* Visible focus everywhere. The hour grid is a wall of buttons and is
@@ -448,4 +472,10 @@ body {
   .press:active {
     transform: none;
   }
+}
+
+/* Opt-in display face for things that are not semantic headings — the
+   wordmark, big price figures, step numbers. */
+.font-display {
+  font-family: var(--font-display);
 }

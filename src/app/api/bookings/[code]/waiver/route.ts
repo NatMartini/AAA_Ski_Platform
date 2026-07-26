@@ -52,7 +52,7 @@ export async function POST(
     booking,
     participantId: booking.participant.id,
     participantName: booking.participant.fullName,
-    participantBirthDate: booking.participant.birthDate,
+    participantIsMinor: booking.participant.isMinor,
     signerUserId: r.user.id,
     signerName: r.user.name ?? r.user.email,
     signerEmail: r.user.email,

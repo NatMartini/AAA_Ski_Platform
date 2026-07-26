@@ -4,14 +4,30 @@ import { useState } from "react";
 import { useRouter } from "@/i18n/navigation";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FieldError, Hint, Input, Label, Textarea } from "@/components/ui/field";
+import {
+  FieldError,
+  Hint,
+  Input,
+  Label,
+  Select,
+  Textarea,
+} from "@/components/ui/field";
 import { QrUploadField } from "./qr-upload-field";
+import { SkillPicker } from "@/components/booking/skill-picker";
+import { LEVELS } from "@/lib/skills";
+import { cn } from "@/lib/utils";
 import { formatMoneyShort } from "@/lib/pricing";
 import type { Locale } from "@/i18n/routing";
 import { Check, Loader2, TriangleAlert } from "lucide-react";
 
 export type CoachSettings = {
   displayName: string;
+  bioZh: string;
+  bioEn: string;
+  csiaLevel: number | null;
+  csiaParkLevel: number | null;
+  teachableSkills: string[];
+  teachableLevels: string[];
   hourlyRateCents: number;
   handoverDiscountCents: number;
   extraPersonCents: number;
@@ -39,6 +55,21 @@ const COPY = {
   zh: {
     profile: "基本资料",
     displayName: "显示名称",
+    bio: "教练介绍",
+    bioHelp: "显示在学员的约课页面最上方。空行分段。",
+    bioZh: "中文",
+    bioEn: "英文",
+    teaching: "教学资质与范围",
+    teachingHelp: "学员选择教练时会看到这些信息,系统自动分配教练时也会参考。",
+    csia: "CSIA 等级",
+    csiaPark: "CSIA Park 等级",
+    csiaNone: "未认证 / 不显示",
+    levelN: "{n} 级",
+    teachLevels: "可教水平",
+    teachSkills: "可教动作",
+    teachSkillsHelp: "留空表示全部动作都可以教。",
+    alpine: "双板技术",
+    park: "公园",
     pricing: "价格",
     hourlyRate: "每小时价格(加元)",
     handover: "每单交接扣减(加元)",
@@ -77,6 +108,23 @@ const COPY = {
   en: {
     profile: "Profile",
     displayName: "Display name",
+    bio: "Coach introduction",
+    bioHelp:
+      "Shown at the top of the booking page. Blank lines start a new paragraph.",
+    bioZh: "Chinese",
+    bioEn: "English",
+    teaching: "Certification and teaching range",
+    teachingHelp:
+      "Students see this when choosing a coach, and it drives the automatic matching.",
+    csia: "CSIA level",
+    csiaPark: "CSIA Park level",
+    csiaNone: "Not certified / hide",
+    levelN: "Level {n}",
+    teachLevels: "Abilities you teach",
+    teachSkills: "Moves you teach",
+    teachSkillsHelp: "Leaving this empty means you teach everything.",
+    alpine: "Alpine",
+    park: "Park",
     pricing: "Pricing",
     hourlyRate: "Hourly rate (CAD)",
     handover: "Handover credit per booking (CAD)",
@@ -142,6 +190,12 @@ export function CoachSettingsForm({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         displayName: form.displayName,
+        bioZh: form.bioZh,
+        bioEn: form.bioEn,
+        csiaLevel: form.csiaLevel,
+        csiaParkLevel: form.csiaParkLevel,
+        teachableSkills: form.teachableSkills,
+        teachableLevels: form.teachableLevels,
         hourlyRateCents: form.hourlyRateCents,
         handoverDiscountCents: form.handoverDiscountCents,
         extraPersonCents: form.extraPersonCents,
@@ -190,6 +244,100 @@ export function CoachSettingsForm({
             onChange={(e) => set("displayName", e.target.value)}
           />
           <FieldError>{errors.displayName}</FieldError>
+        </div>
+        <CardDescription>{c.bioHelp}</CardDescription>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="bioZh">
+              {c.bio} · {c.bioZh}
+            </Label>
+            <Textarea
+              id="bioZh"
+              value={form.bioZh}
+              onChange={(e) => set("bioZh", e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="bioEn">
+              {c.bio} · {c.bioEn}
+            </Label>
+            <Textarea
+              id="bioEn"
+              value={form.bioEn}
+              onChange={(e) => set("bioEn", e.target.value)}
+            />
+          </div>
+        </div>
+      </Card>
+
+      <Card className="space-y-4">
+        <CardTitle>{c.teaching}</CardTitle>
+        <CardDescription>{c.teachingHelp}</CardDescription>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <CertField
+            id="csiaLevel"
+            label={c.csia}
+            value={form.csiaLevel}
+            max={4}
+            noneLabel={c.csiaNone}
+            levelLabel={c.levelN}
+            onChange={(v) => set("csiaLevel", v)}
+          />
+          <CertField
+            id="csiaParkLevel"
+            label={c.csiaPark}
+            value={form.csiaParkLevel}
+            max={2}
+            noneLabel={c.csiaNone}
+            levelLabel={c.levelN}
+            onChange={(v) => set("csiaParkLevel", v)}
+          />
+        </div>
+
+        <fieldset>
+          <legend className="mb-1.5 text-sm font-semibold">
+            {c.teachLevels}
+          </legend>
+          <div className="flex flex-wrap gap-1.5">
+            {LEVELS.map((l) => {
+              const on = form.teachableLevels.includes(l.key);
+              return (
+                <button
+                  key={l.key}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() =>
+                    set(
+                      "teachableLevels",
+                      on
+                        ? form.teachableLevels.filter((k) => k !== l.key)
+                        : [...form.teachableLevels, l.key],
+                    )
+                  }
+                  className={cn(
+                    "press inline-flex min-h-9 items-center rounded-full border px-3 text-xs font-semibold",
+                    on
+                      ? "border-accent bg-accent text-accent-foreground"
+                      : "border-border bg-surface text-ink-2 hover:border-accent",
+                  )}
+                >
+                  {locale === "zh" ? l.zh : l.en}
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
+
+        <div className="space-y-1.5">
+          <Label>{c.teachSkills}</Label>
+          <Hint>{c.teachSkillsHelp}</Hint>
+          <SkillPicker
+            locale={locale}
+            selected={form.teachableSkills}
+            onChange={(next) => set("teachableSkills", next)}
+            labels={{ alpine: c.alpine, park: c.park }}
+          />
         </div>
       </Card>
 
@@ -418,6 +566,45 @@ export function CoachSettingsForm({
           </span>
         )}
       </div>
+    </div>
+  );
+}
+
+/** A CSIA level, or none. Stored as a small integer so it can be compared. */
+function CertField({
+  id,
+  label,
+  value,
+  max,
+  noneLabel,
+  levelLabel,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: number | null;
+  max: number;
+  noneLabel: string;
+  levelLabel: string;
+  onChange: (value: number | null) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Select
+        id={id}
+        value={value ?? ""}
+        onChange={(e) =>
+          onChange(e.target.value === "" ? null : Number(e.target.value))
+        }
+      >
+        <option value="">{noneLabel}</option>
+        {Array.from({ length: max }, (_, i) => i + 1).map((n) => (
+          <option key={n} value={n}>
+            {levelLabel.replace("{n}", String(n))}
+          </option>
+        ))}
+      </Select>
     </div>
   );
 }

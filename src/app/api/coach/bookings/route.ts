@@ -6,7 +6,6 @@ import { coachCreateBookingSchema, fieldErrors } from "@/lib/validators";
 import { createBooking } from "@/lib/booking/create";
 import { createInvite, inviteUrl } from "@/lib/waiver/invite";
 import { sendWaiverInviteEmail } from "@/lib/booking/notify";
-import { isPlausibleBirthDate } from "@/lib/participants";
 import { toLocale } from "@/i18n/routing";
 
 export const runtime = "nodejs";
@@ -38,13 +37,6 @@ export async function POST(req: Request) {
   }
   const d = parsed.data;
 
-  if (!isPlausibleBirthDate(d.studentBirthDate)) {
-    return NextResponse.json(
-      { error: "validation", fields: { studentBirthDate: "implausible" } },
-      { status: 400 },
-    );
-  }
-
   const locale = toLocale(req.headers.get("x-locale") ?? undefined);
 
   const result = await createBooking({
@@ -53,11 +45,12 @@ export async function POST(req: Request) {
     startHour: d.startHour,
     hours: d.hours,
     headcount: d.headcount,
+    requestedSkills: d.requestedSkills,
     locale,
     invite: {
       name: d.studentName,
       email: d.studentEmail,
-      birthDate: d.studentBirthDate,
+      isMinor: d.studentIsMinor,
     },
     notes: d.notes ?? null,
   });

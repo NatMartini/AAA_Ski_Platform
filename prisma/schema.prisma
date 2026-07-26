@@ -63,6 +63,7 @@ model User {
   coachDays    CoachDay[]
   coachBooking Booking[]     @relation("BookingCoach")
   reviewed     Booking[]     @relation("BookingReviewer")
+  cancelled    Booking[]     @relation("BookingCanceller")
   waivers      Waiver[]      @relation("WaiverSigner")
   coachWaivers Waiver[]      @relation("WaiverCoach")
 }
@@ -142,9 +143,21 @@ model CoachProfile {
 
   // Group lessons: each additional student adds this much per hour on top of
   // the base rate. $30 default → 1-on-2 is base+30/h, 1-on-3 base+60/h.
-  extraPersonCents      Int @default(3000)
+  extraPersonCents Int @default(3000)
   // Largest group a single booking may be for. 1 disables group bookings.
-  maxGroupSize          Int @default(3)
+  maxGroupSize     Int @default(3)
+
+  // ── Qualifications and what this coach teaches ──
+  /// CSIA certification level, 1-4. Shown to students when they pick a coach.
+  csiaLevel       Int?
+  /// CSIA Park certification level, 1-2. Null when not park-certified.
+  csiaParkLevel   Int?
+  /// Skill keys from lib/skills.ts this coach teaches (e.g. "wedge",
+  /// "parallel", "carving"). String keys rather than a DB enum so the
+  /// catalogue can grow without a migration.
+  teachableSkills String[]
+  /// Student levels this coach accepts, for auto-assignment.
+  teachableLevels String[]
 
   // Payment. Money goes directly to each coach — the platform never pools it.
   emtEnabled       Boolean @default(true)
@@ -219,11 +232,20 @@ model Participant {
   id        String @id @default(cuid())
   accountId String
 
-  fullName  String
-  birthDate DateTime @db.Date
+  fullName String
 
-  /// normalize(fullName) + birthDate. Stops one account from creating the same
-  /// child twice and thereby side-stepping an existing signed waiver.
+  /// Whether this participant is under 18.
+  ///
+  /// Deliberately a flag rather than a date of birth: the only thing the system
+  /// needs is "does a guardian have to sign", and a date of birth is more
+  /// personal data than that question requires. The cost is that we cannot
+  /// detect the day someone turns 18 on our own — instead, flipping this to
+  /// false invalidates a guardian-signed waiver and forces the now-adult
+  /// participant to sign for themselves. See lib/waiver/validity.ts.
+  isMinor Boolean @default(false)
+
+  /// normalize(fullName). Stops one account creating the same person twice and
+  /// thereby side-stepping an existing signed waiver.
   identityKey String
 
   /// true when this participant is the account holder. Adults who are not the
@@ -235,6 +257,10 @@ model Participant {
   phone      String?
   wechatId   String?
   skillLevel SkillLevel?
+
+  /// Self-reported ability, used to auto-assign a coach. Keys from
+  /// lib/skills.ts, not a DB enum, so the catalogue can grow without migrating.
+  level String?
 
   emergencyContactName  String?
   emergencyContactPhone String?
@@ -276,6 +302,14 @@ enum PaymentMethod {
   ALIPAY
 }
 
+/// How the student chose to pay.
+enum PaymentPlan {
+  /// Everything up front.
+  FULL
+  /// One hour now to hold the slot, the balance settled after the lesson.
+  DEPOSIT
+}
+
 enum UploadedBy {
   CUSTOMER
   COACH
@@ -313,11 +347,34 @@ model Booking {
   // extraPersonCents is the per-extra-student surcharge as it stood then, so
   // the effective per-hour rate is re-derivable: base + (headcount-1) × extra.
   hourlyRateCents       Int
-  extraPersonCents      Int @default(0)
+  extraPersonCents      Int    @default(0)
   subtotalCents         Int
   handoverDiscountCents Int
   totalCents            Int
   currency              String @default("CAD")
+
+  // ── Payment plan ──
+  /// FULL pays everything up front; DEPOSIT pays one hour now and the balance
+  /// after the lesson.
+  paymentPlan      PaymentPlan @default(FULL)
+  /// What the deposit is for this booking (one hour at the booked rate).
+  /// Equals totalCents when the plan is FULL.
+  depositCents     Int         @default(0)
+  /// Running total the coach has confirmed as received. The booking is settled
+  /// when this reaches totalCents.
+  amountPaidCents  Int         @default(0)
+  balanceSettledAt DateTime?
+
+  // ── What the student wants to work on ──
+  /// Skill keys from lib/skills.ts the student asked to practise.
+  requestedSkills String[]
+  /// Student's self-reported level at booking time.
+  studentLevel    String?
+
+  // ── After the lesson ──
+  /// The coach's written summary, visible to the student.
+  coachSummary   String?   @db.Text
+  coachSummaryAt DateTime?
 
   /// Exactly what was shown on the review page (price breakdown, cancellation
   /// policy, contact details). Frozen so editing the policy later cannot
@@ -327,9 +384,11 @@ model Booking {
   confirmationSentAt DateTime?
 
   // Placeholders for coach-created bookings, before the student has signed in.
-  inviteName      String?
-  inviteEmail     String?
-  inviteBirthDate DateTime? @db.Date
+  inviteName    String?
+  inviteEmail   String?
+  /// Whether the coach flagged this student as under 18, so the signing link
+  /// asks a guardian to sign.
+  inviteIsMinor Boolean @default(false)
 
   participantNameSnapshot String?
   notes                   String? @db.Text
@@ -351,8 +410,13 @@ model Booking {
   reviewedAt   DateTime?
   reviewNote   String?
 
-  cancelledAt  DateTime?
-  cancelReason String?
+  cancelledAt   DateTime?
+  cancelledById String?
+  cancelReason  String?
+
+  /// Free-text note from the coach when they record the balance as settled,
+  /// e.g. "cash on the hill". Not a payment record — see amountPaidCents.
+  balanceNote String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -363,8 +427,10 @@ model Booking {
   resort       Resort        @relation(fields: [resortId], references: [id], onDelete: Restrict)
   coachDay     CoachDay      @relation(fields: [coachDayId], references: [id], onDelete: Cascade)
   reviewedBy   User?         @relation("BookingReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  cancelledBy  User?         @relation("BookingCanceller", fields: [cancelledById], references: [id], onDelete: SetNull)
   waiver       Waiver?       @relation(fields: [waiverId], references: [id], onDelete: SetNull)
   waiverInvite WaiverInvite?
+  videos       LessonVideo[]
 
   @@index([coachId, startAt])
   @@index([status, holdExpiresAt])
@@ -395,6 +461,29 @@ model WaiverInvite {
   booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
   @@index([email])
+}
+
+/// A video the coach recorded during a lesson, for the student to review.
+///
+/// Stored in the private storage directory like every other upload and served
+/// only through an authenticated route — lesson footage of a child is not
+/// something to leave on a guessable URL.
+model LessonVideo {
+  id        String @id @default(cuid())
+  bookingId String
+
+  /// Relative storage key, never a URL.
+  storageKey  String
+  contentType String
+  bytes       Int
+  caption     String?
+
+  uploadedById String
+  uploadedAt   DateTime @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
 }
 
 // ──────────────────────────── Waivers ────────────────────────────

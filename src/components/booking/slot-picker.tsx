@@ -7,7 +7,13 @@ import { Button } from "@/components/ui/button";
 import { FieldError, Label, Select } from "@/components/ui/field";
 import { PriceBreakdown } from "./price-breakdown";
 import { AddParticipantDialog } from "./add-participant-dialog";
-import { quote, lessonWindow, formatMoneyShort } from "@/lib/pricing";
+import { SkillPicker } from "./skill-picker";
+import {
+  quote,
+  lessonWindow,
+  formatMoneyShort,
+  depositFor,
+} from "@/lib/pricing";
 import { formatTorontoDate, formatTorontoTime } from "@/lib/time";
 import type { Locale } from "@/i18n/routing";
 import { cn } from "@/lib/utils";
@@ -26,9 +32,12 @@ type Day = {
 type Participant = {
   id: string;
   fullName: string;
-  birthDate: string;
+  isMinor: boolean;
   isSelf: boolean;
-  isMinorToday: boolean;
+  level: string | null;
+  phone: string | null;
+  emergencyContactName: string | null;
+  emergencyContactPhone: string | null;
 };
 
 const COPY = {
@@ -39,6 +48,15 @@ const COPY = {
     hours: "小时",
     headcount: "上课人数",
     people: "人",
+    skills: "想练的动作(可多选)",
+    skillsHint: "告诉教练你想重点练什么,课前就能准备。",
+    alpine: "双板技术",
+    park: "公园",
+    plan: "付款方式",
+    planFull: "一次付清",
+    planDeposit: "先付定金(一小时课费),上课后付余款",
+    depositNow: "现在支付",
+    balanceLater: "课后支付",
     oneOnN: "1 对 {n}",
     groupNote: "多人课每增加一人,每小时加 {extra}。",
     participant: "上课学员",
@@ -62,6 +80,15 @@ const COPY = {
     hours: "hours",
     headcount: "How many students",
     people: "students",
+    skills: "What you want to work on (optional)",
+    skillsHint: "Tell your coach what to focus on so they can plan ahead.",
+    alpine: "Alpine",
+    park: "Park",
+    plan: "Payment",
+    planFull: "Pay in full",
+    planDeposit: "Deposit now (one hour), balance after the lesson",
+    depositNow: "Due now",
+    balanceLater: "Due after the lesson",
     oneOnN: "1-on-{n}",
     groupNote: "Each extra student adds {extra} per hour.",
     participant: "Who is taking the lesson",
@@ -87,6 +114,7 @@ export function SlotPicker({
   coachBio,
   coachAvatarUrl,
   coachWechat,
+  coachSkills,
   resortName,
   minHours,
   maxGroupSize,
@@ -99,6 +127,8 @@ export function SlotPicker({
   coachBio: string | null;
   coachAvatarUrl: string | null;
   coachWechat: string | null;
+  /** Skill keys this coach teaches; empty means show the whole catalogue. */
+  coachSkills: string[];
   resortName: string;
   minHours: number;
   maxGroupSize: number;
@@ -113,6 +143,8 @@ export function SlotPicker({
   const [startHour, setStartHour] = useState<number | null>(null);
   const [hours, setHours] = useState<number>(minHours);
   const [headcount, setHeadcount] = useState(1);
+  const [skills, setSkills] = useState<string[]>([]);
+  const [plan, setPlan] = useState<"FULL" | "DEPOSIT">("FULL");
   const [participantId, setParticipantId] = useState(
     initialParticipants.find((p) => p.isSelf)?.id ?? "",
   );
@@ -177,6 +209,8 @@ export function SlotPicker({
         hours,
         headcount,
         participantId,
+        requestedSkills: skills,
+        paymentPlan: plan,
       }),
     });
     setBusy(false);
@@ -335,6 +369,42 @@ export function SlotPicker({
           <PriceBreakdown quote={priced} locale={locale} />
 
           <div className="space-y-1.5">
+            <Label>{c.skills}</Label>
+            <p className="text-xs text-ink-3">{c.skillsHint}</p>
+            <SkillPicker
+              locale={locale}
+              selected={skills}
+              onChange={setSkills}
+              allowed={coachSkills}
+              labels={{ alpine: c.alpine, park: c.park }}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>{c.plan}</Label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <PlanOption
+                selected={plan === "FULL"}
+                onSelect={() => setPlan("FULL")}
+                title={c.planFull}
+                amountLabel={c.depositNow}
+                amount={formatMoneyShort(priced.totalCents)}
+              />
+              <PlanOption
+                selected={plan === "DEPOSIT"}
+                onSelect={() => setPlan("DEPOSIT")}
+                title={c.planDeposit}
+                amountLabel={c.depositNow}
+                amount={formatMoneyShort(depositFor(priced))}
+                secondaryLabel={c.balanceLater}
+                secondary={formatMoneyShort(
+                  priced.totalCents - depositFor(priced),
+                )}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
             <Label htmlFor="participant">{c.participant}</Label>
             <div className="flex flex-wrap items-center gap-2">
               <Select
@@ -439,6 +509,49 @@ function HourGrid({
       </div>
       {day.note && <p className="text-xs text-ink-3">{day.note}</p>}
     </div>
+  );
+}
+
+/** One payment-plan choice, showing what is due now and later. */
+function PlanOption({
+  selected,
+  onSelect,
+  title,
+  amountLabel,
+  amount,
+  secondaryLabel,
+  secondary,
+}: {
+  selected: boolean;
+  onSelect: () => void;
+  title: string;
+  amountLabel: string;
+  amount: string;
+  secondaryLabel?: string;
+  secondary?: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onSelect}
+      className={cn(
+        "press rounded-xl border p-3 text-left",
+        selected
+          ? "border-accent bg-[var(--accent-soft)]"
+          : "border-border bg-surface hover:border-accent",
+      )}
+    >
+      <span className="block text-sm font-bold text-ink">{title}</span>
+      <span className="mt-1 block text-xs text-ink-2">
+        {amountLabel} <strong className="text-ink">{amount}</strong>
+      </span>
+      {secondary && (
+        <span className="block text-xs text-ink-2">
+          {secondaryLabel} <strong className="text-ink">{secondary}</strong>
+        </span>
+      )}
+    </button>
   );
 }
 

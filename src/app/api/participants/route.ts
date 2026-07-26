@@ -3,9 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/require-user";
 import { fieldErrors, participantSchema } from "@/lib/validators";
 import { rateLimitOrRespond } from "@/lib/rate-limit";
-import { dateKeyToDbDate, dbDateToDateKey } from "@/lib/time";
-import { identityKey, isPlausibleBirthDate } from "@/lib/participants";
-import { isMinorAt } from "@/lib/waiver/validity";
+import { identityKey } from "@/lib/participants";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,10 +21,13 @@ export async function GET() {
     participants: participants.map((p) => ({
       id: p.id,
       fullName: p.fullName,
-      birthDate: dbDateToDateKey(p.birthDate),
+      isMinor: p.isMinor,
       isSelf: p.isSelf,
       skillLevel: p.skillLevel,
-      isMinorToday: isMinorAt(p.birthDate, new Date()),
+      level: p.level,
+      phone: p.phone,
+      emergencyContactName: p.emergencyContactName,
+      emergencyContactPhone: p.emergencyContactPhone,
     })),
   });
 }
@@ -47,23 +48,11 @@ export async function POST(req: Request) {
   }
   const d = parsed.data;
 
-  if (!isPlausibleBirthDate(d.birthDate)) {
-    return NextResponse.json(
-      { error: "validation", fields: { birthDate: "implausible-birth-date" } },
-      { status: 400 },
-    );
-  }
-
-  const birthDate = dateKeyToDbDate(d.birthDate);
-
   // Gate 4: nobody can sign a waiver for another adult, so an adult who is not
   // the account holder cannot be created here at all. They must book with
   // their own account. (Coaches use a different path, where the student signs
   // for themselves via a link.)
-  //
-  // Judged as of today: someone who is 17 now but 18 by their lesson is caught
-  // again at booking time by checkSelfServeParticipant.
-  if (!d.isSelf && !isMinorAt(birthDate, new Date())) {
+  if (!d.isSelf && !d.isMinor) {
     return NextResponse.json({ error: "adult-not-self" }, { status: 400 });
   }
 
@@ -78,16 +67,17 @@ export async function POST(req: Request) {
     }
   }
 
-  const key = identityKey(d.fullName, d.birthDate);
+  const key = identityKey(d.fullName);
 
   try {
     const participant = await prisma.participant.create({
       data: {
         accountId: r.user.id,
         fullName: d.fullName,
-        birthDate,
+        isMinor: d.isMinor,
         identityKey: key,
         isSelf: d.isSelf,
+        level: emptyToNull(d.level),
         email: emptyToNull(d.email) ?? (d.isSelf ? r.user.email : null),
         phone: emptyToNull(d.phone),
         wechatId: emptyToNull(d.wechatId),

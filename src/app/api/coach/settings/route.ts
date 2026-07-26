@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireCoach } from "@/lib/auth/require-user";
 import { coachSettingsSchema, fieldErrors } from "@/lib/validators";
 import { rateLimitOrRespond } from "@/lib/rate-limit";
+import { sanitizeLevelKeys, sanitizeSkillKeys } from "@/lib/skills";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,6 +40,12 @@ export async function PATCH(req: Request) {
     where: { id: profile.id },
     data: {
       displayName: d.displayName,
+      bioZh: emptyToNull(d.bioZh),
+      bioEn: emptyToNull(d.bioEn),
+      csiaLevel: d.csiaLevel,
+      csiaParkLevel: d.csiaParkLevel,
+      teachableSkills: sanitizeSkillKeys(d.teachableSkills),
+      teachableLevels: sanitizeLevelKeys(d.teachableLevels),
       hourlyRateCents: d.hourlyRateCents,
       handoverDiscountCents: d.handoverDiscountCents,
       extraPersonCents: d.extraPersonCents,

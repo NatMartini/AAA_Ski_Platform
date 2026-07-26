@@ -1,7 +1,8 @@
 {
   "brand": {
-    "name": "AAA 滑雪课程",
-    "tagline": "私人滑雪教学预定"
+    "name": "AAA的双板滑雪约课平台",
+    "short": "AAA 双板",
+    "tagline": "私人双板滑雪教学预定"
   },
   "nav": {
     "book": "预定课程",
@@ -13,7 +14,7 @@
     "language": "语言"
   },
   "home": {
-    "signedOutTitle": "AAA 滑雪课程预定",
+    "signedOutTitle": "AAA的双板滑雪约课平台",
     "signedOutBody": "本站仅供已联系过教练的学员使用。请用 Google 账号登录后预定课程。",
     "signedInTitle": "欢迎回来,{name}",
     "startBooking": "开始预定",
@@ -45,7 +46,13 @@
     "otherTimes": "想约其他时间?请微信联系教练 {wechat}。",
     "slotTaken": "抱歉,该时段刚被他人预定,请另选时间。",
     "holdCountdown": "请在 {minutes} 分钟内完成签署与付款,否则时段将自动释放。",
-    "code": "订单号"
+    "code": "订单号",
+    "matchTitle": "不确定选谁?让系统帮你分配",
+    "matchBody": "选择你目前的水平,我们会安排一位教得了这个水平、且排课较少的教练。之后仍可自己更换。",
+    "matchAction": "帮我分配教练",
+    "matchPick": "选择你目前的水平",
+    "orPickYourself": "或自己选择教练",
+    "teachesLevels": "可教水平:"
   },
   "price": {
     "rateLine": "{rate} / 小时 × {hours} 小时",

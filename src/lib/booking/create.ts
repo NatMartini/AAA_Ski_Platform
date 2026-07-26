@@ -2,7 +2,8 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma";
 import { generateBookingCode } from "./code";
 import { isOverlapViolation } from "./overlap";
-import { lessonWindow, quote } from "../pricing";
+import { depositFor, lessonWindow, quote, type PaymentPlan } from "../pricing";
+import { sanitizeSkillKeys } from "../skills";
 import { torontoWallTimeToUtc, dateKeyToDbDate, type DateKey } from "../time";
 import { isWithinSeason } from "../season";
 import { computeDaySlots, isBookable } from "../slots";
@@ -32,11 +33,20 @@ type CreateInput = {
   hours: number;
   /** Number of students; defaults to 1. Capped at the coach's maxGroupSize. */
   headcount?: number;
+  /** Skill keys the student wants to work on; unknown keys are dropped. */
+  requestedSkills?: string[];
+  /** FULL pays everything now; DEPOSIT pays one hour now. Defaults to FULL. */
+  paymentPlan?: PaymentPlan;
   locale: Locale;
   /** Self-serve booking by the account holder. */
-  account?: { id: string; participantId: string; participantName: string };
+  account?: {
+    id: string;
+    participantId: string;
+    participantName: string;
+    level?: string | null;
+  };
   /** Coach-created booking; the student signs later via an invite link. */
-  invite?: { name: string; email: string; birthDate: DateKey };
+  invite?: { name: string; email: string; isMinor: boolean };
   notes?: string | null;
   now?: Date;
 };
@@ -97,6 +107,9 @@ export async function createBooking(
     headcount,
     extraPersonCents: profile.extraPersonCents,
   });
+
+  const plan: PaymentPlan = input.paymentPlan ?? "FULL";
+  const depositCents = plan === "DEPOSIT" ? depositFor(priced) : priced.totalCents;
 
   const disclosure = buildDisclosure({
     locale: input.locale,
@@ -174,6 +187,12 @@ export async function createBooking(
           headcount,
           lessonStartAt,
           lessonEndAt,
+          paymentPlan: plan,
+          depositCents,
+          // Unknown skill keys are dropped rather than stored, so a stale or
+          // hand-crafted client cannot write junk into the record.
+          requestedSkills: sanitizeSkillKeys(input.requestedSkills ?? []),
+          studentLevel: input.account?.level ?? null,
           // hourlyRateCents is the base (one-student) rate; the surcharge is
           // stored separately so the effective rate stays re-derivable.
           hourlyRateCents: priced.hourlyRateCents,
@@ -185,9 +204,7 @@ export async function createBooking(
           disclosureSnapshot: disclosure as unknown as Prisma.InputJsonValue,
           inviteName: input.invite?.name ?? null,
           inviteEmail: input.invite?.email.toLowerCase() ?? null,
-          inviteBirthDate: input.invite
-            ? dateKeyToDbDate(input.invite.birthDate)
-            : null,
+          inviteIsMinor: input.invite?.isMinor ?? false,
           participantNameSnapshot:
             input.account?.participantName ?? input.invite?.name ?? null,
           notes: input.notes ?? null,

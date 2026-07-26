@@ -57,7 +57,6 @@ export type WaiverRenderInput = {
   season: string;
 
   participantName: string;
-  participantBirthDate: string;
   participantIsMinor: boolean;
 
   signerName: string;
@@ -125,13 +124,14 @@ export async function renderWaiverPdf(
   writer.kv("Season / 雪季", input.season);
   writer.gap(4);
   writer.kv("Participant / 学员", input.participantName);
-  writer.kv("Date of birth / 出生日期", input.participantBirthDate);
-  if (input.participantIsMinor) {
-    writer.kv(
-      "Status / 身份",
-      "Minor — signed by parent or legal guardian / 未成年,由监护人签署",
-    );
-  }
+  // No date of birth is collected, so the record states the status that
+  // actually matters for the agreement rather than implying an exact age.
+  writer.kv(
+    "Status / 身份",
+    input.participantIsMinor
+      ? "Under 18 — signed by parent or legal guardian / 未满 18 周岁,由监护人签署"
+      : "18 or over — signed in person / 已满 18 周岁,由本人签署",
+  );
   writer.gap(10);
   writer.rule();
   writer.gap(10);

@@ -31,7 +31,6 @@ async function main() {
     currency: "CAD",
     season: "2025-26",
     participantName: variant === "guardian" ? "小明" : "张伟 (Zhang Wei)",
-    participantBirthDate: variant === "guardian" ? "2015-03-02" : "1990-01-01",
     participantIsMinor: variant === "guardian",
     signerName: variant === "guardian" ? "张丽" : "张伟 (Zhang Wei)",
     signerEmail: "student@example.com",

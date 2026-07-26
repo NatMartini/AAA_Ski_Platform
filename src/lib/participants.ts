@@ -1,6 +1,4 @@
 import { createHash } from "node:crypto";
-import { isMinorAt } from "./waiver/validity";
-import { dateKeyToDbDate, type DateKey } from "./time";
 
 /**
  * Rules that stop one person's waiver being credited to another.
@@ -10,37 +8,40 @@ import { dateKeyToDbDate, type DateKey } from "./time";
  * the lookup misses. These functions add the rest:
  *
  *   1. Participants are picked explicitly from a list, never inferred.
- *   2. Minor status is derived from date of birth on the *lesson* date, server
- *      side. A client-supplied "isMinor" is ignored entirely.
+ *   2. Minor status is a stored flag on the participant, applied server side.
+ *      A client-supplied value is only trusted when creating a participant, and
+ *      never overrides the stored one at booking time.
  *   3. A minor's waiver must be signed by their guardian — the account holder.
  *   4. Self-serve booking refuses to create an adult who is not the account
  *      holder, because no adult can sign a waiver for another adult.
- *   5. Once a minor turns 18, the guardian's signature stops applying (handled
- *      in resolveWaiver).
+ *   5. Changing the minor flag retires a waiver signed under the old value
+ *      (handled in resolveWaiver).
  */
 
 /**
  * Deduplication key for a participant within one account.
  *
- * Prevents someone adding "Xiao Ming / 2015-03-02" twice and using the second,
- * waiver-free copy. Cross-account duplicates are allowed on purpose: separated
- * parents each keep their own record, and each needs their own signature.
+ * Prevents someone adding "Xiao Ming" twice and using the second, waiver-free
+ * copy. Cross-account duplicates are allowed on purpose: separated parents each
+ * keep their own record, and each needs their own signature.
+ *
+ * Name only, since dates of birth are no longer collected. That makes the key
+ * coarser — one account cannot hold two people with the same name — which is
+ * the safe direction to err: it forces a rename rather than silently creating a
+ * second, unsigned identity.
  */
-export function identityKey(fullName: string, birthDate: DateKey): string {
+export function identityKey(fullName: string): string {
   const normalized = fullName
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ")
     // Strip punctuation and spacing so "Xiao-Ming" and "xiao ming" collide.
     .replace(/[.,'’\-_\s]/g, "");
-  return createHash("sha256")
-    .update(`${normalized}|${birthDate}`)
-    .digest("hex")
-    .slice(0, 32);
+  return createHash("sha256").update(normalized).digest("hex").slice(0, 32);
 }
 
 export type ParticipantCheck =
-  | { ok: true; isMinor: boolean }
+  | { ok: true }
   | { ok: false; reason: "adult-not-self" };
 
 /**
@@ -50,38 +51,27 @@ export type ParticipantCheck =
  * adult student still has to sign for themselves via the signing link.
  */
 export function checkSelfServeParticipant(input: {
-  birthDate: Date;
+  isMinor: boolean;
   isSelf: boolean;
-  lessonStartAt: Date;
 }): ParticipantCheck {
-  const isMinor = isMinorAt(input.birthDate, input.lessonStartAt);
-  if (!isMinor && !input.isSelf) {
+  if (!input.isMinor && !input.isSelf) {
     return { ok: false, reason: "adult-not-self" };
   }
-  return { ok: true, isMinor };
+  return { ok: true };
 }
 
 /**
- * Who must sign, given the participant's age at the lesson.
- * Never trust the client for this.
+ * Who must sign. Never trust the client for this — it comes from the stored
+ * participant row.
  */
 export function requiredSignerRole(
-  birthDate: Date,
-  lessonStartAt: Date,
+  isMinor: boolean,
 ): "PARTICIPANT" | "GUARDIAN" {
-  return isMinorAt(birthDate, lessonStartAt) ? "GUARDIAN" : "PARTICIPANT";
-}
-
-/** A date of birth in the future, or implying an implausible age, is a typo. */
-export function isPlausibleBirthDate(birthDate: DateKey, now = new Date()): boolean {
-  const dob = dateKeyToDbDate(birthDate).getTime();
-  if (dob > now.getTime()) return false;
-  const years = (now.getTime() - dob) / (365.25 * 24 * 3600 * 1000);
-  return years <= 110;
+  return isMinor ? "GUARDIAN" : "PARTICIPANT";
 }
 
 export function participantErrorMessage(
-  reason: ParticipantCheck extends { ok: false; reason: infer R } ? R : never,
+  reason: "adult-not-self",
   locale: "en" | "zh",
 ): string {
   const messages = {

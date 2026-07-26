@@ -29,12 +29,15 @@ export async function SiteHeader({
       <div className="mx-auto flex w-full max-w-5xl items-center gap-3 px-4 py-3 sm:px-6">
         <Link
           href="/"
-          className="press flex items-center gap-2 font-extrabold tracking-tight"
+          className="press font-display flex items-center gap-2 font-extrabold tracking-tight"
         >
           <span className="flex size-8 items-center justify-center rounded-xl bg-accent text-accent-foreground">
             <Snowflake className="size-4" aria-hidden />
           </span>
-          <span className="hidden sm:inline">{brand("name")}</span>
+          {/* The full name is long; below lg it would crowd out the nav, so
+              the header falls back to the short form and then to the mark. */}
+          <span className="hidden lg:inline">{brand("name")}</span>
+          <span className="hidden sm:inline lg:hidden">{brand("short")}</span>
         </Link>
 
         {user && (

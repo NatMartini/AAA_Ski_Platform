@@ -50,10 +50,17 @@ export const coachDaySchema = z
 
 export const coachSettingsSchema = z.object({
   displayName: z.string().trim().min(1).max(80),
+  /** Coach introduction shown at the top of the booking page. */
+  bioZh: z.string().trim().max(2000).nullable().optional(),
+  bioEn: z.string().trim().max(2000).nullable().optional(),
   hourlyRateCents: z.number().int().min(0).max(1_000_000),
   handoverDiscountCents: z.number().int().min(0).max(1_000_000),
   extraPersonCents: z.number().int().min(0).max(1_000_000),
   maxGroupSize: z.number().int().min(1).max(20),
+  csiaLevel: z.number().int().min(1).max(4).nullable(),
+  csiaParkLevel: z.number().int().min(1).max(2).nullable(),
+  teachableSkills: z.array(z.string().max(40)).max(40).default([]),
+  teachableLevels: z.array(z.string().max(40)).max(10).default([]),
   minHours: z.number().int().min(1).max(12),
   maxHours: z.number().int().min(1).max(12),
   leadTimeHours: z.number().int().min(0).max(720),
@@ -96,7 +103,8 @@ export const coachSettingsSchema = z.object({
 
 export const participantSchema = z.object({
   fullName: z.string().trim().min(1).max(120),
-  birthDate: dateKeySchema,
+  /** Under 18. Drives who must sign the waiver. */
+  isMinor: z.boolean(),
   isSelf: z.boolean(),
   phone: z.string().trim().max(40).nullable().optional(),
   wechatId: z.string().trim().max(80).nullable().optional(),
@@ -105,6 +113,9 @@ export const participantSchema = z.object({
     .enum(["FIRST_TIME", "BEGINNER", "INTERMEDIATE", "ADVANCED"])
     .nullable()
     .optional(),
+  /** Ability key from lib/skills.ts. */
+  level: z.string().trim().max(40).nullable().optional(),
+  // Recommended but never required — a booking must not be blocked on it.
   emergencyContactName: z.string().trim().max(120).nullable().optional(),
   emergencyContactPhone: z.string().trim().max(40).nullable().optional(),
 });
@@ -119,6 +130,9 @@ export const createBookingSchema = z.object({
   hours: z.number().int().min(1).max(12),
   headcount: headcountSchema,
   participantId: z.string().min(1),
+  /** Skill keys the student wants to work on; unknown keys are dropped. */
+  requestedSkills: z.array(z.string().max(40)).max(12).default([]),
+  paymentPlan: z.enum(["FULL", "DEPOSIT"]).default("FULL"),
   notes: z.string().trim().max(1000).nullable().optional(),
 });
 
@@ -137,7 +151,9 @@ export const coachCreateBookingSchema = z.object({
   studentName: z.string().trim().min(1).max(120),
   /** The signing link is issued to this address and only it can sign. */
   studentEmail: z.string().trim().email(),
-  studentBirthDate: dateKeySchema,
+  /** Under 18 — the signing link then asks a guardian to sign. */
+  studentIsMinor: z.boolean().default(false),
+  requestedSkills: z.array(z.string().max(40)).max(12).default([]),
   notes: z.string().trim().max(1000).nullable().optional(),
 });
 
@@ -157,9 +173,28 @@ export const waiverSignSchema = z.object({
 
 export const paymentProofSchema = z.object({
   method: z.enum(["EMT", "WECHAT", "ALIPAY"]),
+  /** Which instalment this proof is for. */
+  stage: z.enum(["DEPOSIT", "FULL", "BALANCE"]).default("FULL"),
   /** Storage key returned by the upload endpoint, not a URL. */
   proofKey: z.string().min(1).max(300),
   reference: z.string().trim().max(200).nullable().optional(),
+});
+
+export const cancelBookingSchema = z.object({
+  /**
+   * Required. A cancellation the student cannot explain is worse than no
+   * cancellation feature at all — this text is emailed to them verbatim.
+   */
+  reason: z.string().trim().min(1).max(500),
+});
+
+export const lessonSummarySchema = z.object({
+  summary: z.string().trim().max(4000),
+});
+
+export const settleBalanceSchema = z.object({
+  /** Free-text note for the coach's own records, e.g. "cash on the hill". */
+  note: z.string().trim().max(200).nullable().optional(),
 });
 
 export const reviewSchema = z.object({

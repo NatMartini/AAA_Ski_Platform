@@ -1,5 +1,4 @@
 import { seasonOf, type Season } from "../season";
-import { dbDateToDateKey, toDateKey, type DateKey } from "../time";
 
 /**
  * Decides whether a booking needs a fresh waiver signature.
@@ -9,12 +8,19 @@ import { dbDateToDateKey, toDateKey, type DateKey } from "../time";
  * has not thereby signed for their child — those are different rows and the
  * lookup simply misses.
  *
+ * Age is a stored boolean (`Participant.isMinor`), not a date of birth. That is
+ * less personal data for the same decision, but it means the system cannot
+ * notice a birthday on its own. The protection that replaces it: a waiver
+ * records whether the participant was a minor when it was signed, and if that
+ * no longer matches, the waiver stops counting. So when someone flips a
+ * participant from minor to adult, the guardian's signature is retired and the
+ * now-adult participant is asked to sign for themselves — which is the outcome
+ * the date-based check used to produce.
+ *
  * This module is deliberately pure: the caller does the query and passes the
- * candidate row in. That keeps the age and season rules unit-testable without a
+ * candidate rows in, so the season and age rules stay unit-testable without a
  * database.
  */
-
-export const ADULT_AGE = 18;
 
 /** Bump when the legal text changes materially: everyone re-signs. */
 export const CURRENT_TEMPLATE_VERSION = 1;
@@ -33,8 +39,8 @@ export type WaiverRecord = {
 export type ResolveInput = {
   /** Candidate waivers for this participant + coach. Unfiltered is fine. */
   waivers: WaiverRecord[];
-  /** Participant's date of birth, as stored in the date-only column. */
-  participantBirthDate: Date;
+  /** Whether the participant is currently recorded as under 18. */
+  participantIsMinor: boolean;
   /** Start of the lesson being booked. */
   lessonStartAt: Date;
 };
@@ -47,31 +53,11 @@ export type ResolveReason =
   | "none" // never signed for this coach this season
   | "superseded" // signed, but the legal text has since changed
   | "revoked" // the signature was withdrawn
-  | "aged-out"; // signed by a guardian, participant is now an adult
-
-/** True if the participant is under 18 *on the day of the lesson*. */
-export function isMinorAt(birthDate: Date, at: Date): boolean {
-  return ageAt(birthDate, at) < ADULT_AGE;
-}
-
-/**
- * Whole years old on a given day, in Toronto terms. Both values are reduced to
- * calendar dates first so a lesson at 9am and one at 4pm never disagree.
- */
-export function ageAt(birthDate: Date, at: Date): number {
-  const born = splitKey(dbDateToDateKey(birthDate));
-  const on = splitKey(toDateKey(at));
-
-  let age = on.year - born.year;
-  const hadBirthday =
-    on.month > born.month ||
-    (on.month === born.month && on.day >= born.day);
-  if (!hadBirthday) age -= 1;
-  return age;
-}
+  | "aged-out" // signed by a guardian, participant is now marked an adult
+  | "now-minor"; // signed as an adult, participant is now marked a minor
 
 export function resolveWaiver(input: ResolveInput): ResolveResult {
-  const { waivers, participantBirthDate, lessonStartAt } = input;
+  const { waivers, participantIsMinor, lessonStartAt } = input;
 
   const season = seasonOf(lessonStartAt);
   if (!season) {
@@ -103,9 +89,14 @@ export function resolveWaiver(input: ResolveInput): ResolveResult {
   const waiver = live.reduce((a, b) => (a.signedAt >= b.signedAt ? a : b));
 
   // A guardian's signature covers a child, not the adult that child becomes.
-  // Once they turn 18 they have to sign for themselves.
-  if (waiver.participantWasMinor && !isMinorAt(participantBirthDate, lessonStartAt)) {
+  if (waiver.participantWasMinor && !participantIsMinor) {
     return { needsSigning: true, reason: "aged-out", season };
+  }
+  // The reverse is a correction rather than a birthday — someone ticked the
+  // box wrongly the first time. Either way the wrong person signed, so the
+  // guardian has to sign properly.
+  if (!waiver.participantWasMinor && participantIsMinor) {
+    return { needsSigning: true, reason: "now-minor", season };
   }
 
   return { needsSigning: false, waiver, season };
@@ -129,14 +120,13 @@ export function resolveReasonMessage(
       zh: "此前的免责协议已作废,请重新签署。",
     },
     "aged-out": {
-      en: "This participant is now 18 or older, so they must sign the waiver themselves.",
-      zh: "该学员已满 18 岁,须由本人签署免责协议。",
+      en: "This participant is now recorded as 18 or over, so they must sign the waiver themselves.",
+      zh: "该学员现已登记为成年,须由本人签署免责协议。",
+    },
+    "now-minor": {
+      en: "This participant is now recorded as under 18, so a parent or guardian must sign.",
+      zh: "该学员现已登记为未成年,须由父母或监护人签署。",
     },
   };
   return messages[reason][locale];
-}
-
-function splitKey(key: DateKey) {
-  const [year, month, day] = key.split("-").map(Number);
-  return { year, month, day };
 }

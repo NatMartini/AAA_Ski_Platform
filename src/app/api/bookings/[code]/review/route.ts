@@ -5,6 +5,7 @@ import { rateLimitOrRespond } from "@/lib/rate-limit";
 import { fieldErrors, reviewSchema } from "@/lib/validators";
 import { accessFor, loadBooking } from "@/lib/booking/access";
 import { assertTransition } from "@/lib/booking/state";
+import { stageOf } from "@/lib/booking/lesson";
 import { sendPaymentReviewed } from "@/lib/booking/notify";
 import { toLocale } from "@/i18n/routing";
 
@@ -47,6 +48,14 @@ export async function POST(
   const next = action === "confirm" ? "CONFIRMED" : "PAYMENT_REJECTED";
   assertTransition(booking.status, next);
 
+  // What this screenshot covers. On a deposit booking the first cleared
+  // payment is one hour's fee, and the booking is CONFIRMED with a balance
+  // still owing — the coach settles that in person and records it separately.
+  const paidCents =
+    stageOf(booking) === "DEPOSIT"
+      ? Math.min(booking.depositCents, booking.totalCents)
+      : booking.totalCents;
+
   await prisma.booking.update({
     where: { id: booking.id },
     data: {
@@ -54,6 +63,7 @@ export async function POST(
       reviewedById: r.user.id,
       reviewedAt: new Date(),
       reviewNote: note?.trim() || null,
+      ...(action === "confirm" ? { amountPaidCents: paidCents } : {}),
       // On rejection drop the screenshot reference so the student uploads a
       // fresh one rather than the coach re-reviewing the same image. The slot
       // stays held throughout.

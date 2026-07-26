@@ -1,7 +1,8 @@
 {
   "brand": {
-    "name": "AAA Ski Lessons",
-    "tagline": "Private ski lesson booking"
+    "name": "AAA Ski Lesson Booking",
+    "short": "AAA Ski",
+    "tagline": "Private alpine ski lesson booking"
   },
   "nav": {
     "book": "Book a lesson",
@@ -45,7 +46,13 @@
     "otherTimes": "Want a different time? Message the coach on WeChat at {wechat}.",
     "slotTaken": "Sorry — someone just took that slot. Please pick another time.",
     "holdCountdown": "Finish signing and payment within {minutes} minutes or the slot is released.",
-    "code": "Booking reference"
+    "code": "Booking reference",
+    "matchTitle": "Not sure who to pick? Let us match you",
+    "matchBody": "Tell us how you ski and we'll put you with a coach who teaches that level and has the lighter schedule. You can still change later.",
+    "matchAction": "Match me with a coach",
+    "matchPick": "Choose your current level",
+    "orPickYourself": "Or choose a coach yourself",
+    "teachesLevels": "Teaches:"
   },
   "price": {
     "rateLine": "{rate} / hour × {hours} hours",

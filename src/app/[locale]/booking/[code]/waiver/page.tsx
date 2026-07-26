@@ -4,7 +4,6 @@ import { redirect } from "@/i18n/navigation";
 import { requireUserPage } from "@/lib/auth/require-user";
 import { accessFor, loadBooking } from "@/lib/booking/access";
 import { clausesFor, WARNING } from "@/lib/waiver/template-v1";
-import { isMinorAt } from "@/lib/waiver/validity";
 import { WaiverForm } from "@/components/waiver/waiver-form";
 import { toLocale } from "@/i18n/routing";
 
@@ -37,10 +36,7 @@ export default async function SignWaiverPage({
   const loc = toLocale(locale);
   const zh = loc === "zh";
 
-  const isMinor = isMinorAt(
-    booking.participant!.birthDate,
-    booking.lessonStartAt,
-  );
+  const isMinor = booking.participant!.isMinor;
   const variant = isMinor ? "guardian" : "adult";
 
   const clauses = clausesFor(variant).map((clause) => ({
@@ -68,6 +64,17 @@ export default async function SignWaiverPage({
         isGuardian={isMinor}
         minorNotice={isMinor ? t("minorNotice") : null}
         warning={zh ? WARNING.zh : WARNING.en}
+        prefill={{
+          typedName: user.name,
+          // For a minor the guardian is whoever holds the account; the
+          // emergency contact saved on the participant is usually them too.
+          guardianName: isMinor
+            ? (booking.participant!.emergencyContactName ?? user.name)
+            : null,
+          guardianPhone: isMinor
+            ? booking.participant!.emergencyContactPhone
+            : null,
+        }}
         postTo={`/api/bookings/${booking.code}/waiver`}
         redirectTo={`/booking/${booking.code}/payment`}
       />

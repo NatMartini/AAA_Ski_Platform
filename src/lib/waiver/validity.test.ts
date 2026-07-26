@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  ageAt,
   CURRENT_TEMPLATE_VERSION,
-  isMinorAt,
   resolveWaiver,
   type WaiverRecord,
 } from "./validity";
-import { dateKeyToDbDate, torontoWallTimeToUtc } from "../time";
+import { torontoWallTimeToUtc } from "../time";
 
 function waiver(over: Partial<WaiverRecord> = {}): WaiverRecord {
   return {
@@ -20,41 +18,13 @@ function waiver(over: Partial<WaiverRecord> = {}): WaiverRecord {
   };
 }
 
-const ADULT_DOB = dateKeyToDbDate("1990-01-01");
 const JAN_LESSON = torontoWallTimeToUtc("2026-01-15", 9);
-
-describe("ageAt", () => {
-  it("counts whole years", () => {
-    expect(ageAt(dateKeyToDbDate("2008-02-01"), torontoWallTimeToUtc("2026-01-15", 9))).toBe(17);
-    expect(ageAt(dateKeyToDbDate("2008-02-01"), torontoWallTimeToUtc("2026-03-15", 9))).toBe(18);
-  });
-
-  it("treats the birthday itself as the new age", () => {
-    expect(ageAt(dateKeyToDbDate("2008-02-01"), torontoWallTimeToUtc("2026-02-01", 9))).toBe(18);
-    expect(ageAt(dateKeyToDbDate("2008-02-01"), torontoWallTimeToUtc("2026-01-31", 9))).toBe(17);
-  });
-
-  it("does not vary with the hour of the lesson", () => {
-    const dob = dateKeyToDbDate("2008-02-01");
-    const morning = torontoWallTimeToUtc("2026-02-01", 9);
-    const evening = torontoWallTimeToUtc("2026-02-01", 20);
-    expect(ageAt(dob, morning)).toBe(ageAt(dob, evening));
-  });
-});
-
-describe("isMinorAt", () => {
-  it("uses the lesson date, not today", () => {
-    const dob = dateKeyToDbDate("2008-02-01");
-    expect(isMinorAt(dob, torontoWallTimeToUtc("2026-01-15", 9))).toBe(true);
-    expect(isMinorAt(dob, torontoWallTimeToUtc("2026-03-15", 9))).toBe(false);
-  });
-});
 
 describe("resolveWaiver", () => {
   it("requires a signature when nothing is on file", () => {
     const r = resolveWaiver({
       waivers: [],
-      participantBirthDate: ADULT_DOB,
+      participantIsMinor: false,
       lessonStartAt: JAN_LESSON,
     });
     expect(r).toMatchObject({ needsSigning: true, reason: "none", season: "2025-26" });
@@ -63,7 +33,7 @@ describe("resolveWaiver", () => {
   it("reuses a signature from earlier in the same season", () => {
     const r = resolveWaiver({
       waivers: [waiver()],
-      participantBirthDate: ADULT_DOB,
+      participantIsMinor: false,
       lessonStartAt: JAN_LESSON,
     });
     expect(r.needsSigning).toBe(false);
@@ -72,7 +42,7 @@ describe("resolveWaiver", () => {
   it("does not reuse a signature from a different season", () => {
     const r = resolveWaiver({
       waivers: [waiver({ season: "2024-25" })],
-      participantBirthDate: ADULT_DOB,
+      participantIsMinor: false,
       lessonStartAt: JAN_LESSON,
     });
     expect(r).toMatchObject({ needsSigning: true, reason: "none" });
@@ -81,7 +51,7 @@ describe("resolveWaiver", () => {
   it("requires re-signing when the major template version moved", () => {
     const r = resolveWaiver({
       waivers: [waiver({ templateVersion: CURRENT_TEMPLATE_VERSION - 1 })],
-      participantBirthDate: ADULT_DOB,
+      participantIsMinor: false,
       lessonStartAt: JAN_LESSON,
     });
     expect(r).toMatchObject({ needsSigning: true, reason: "superseded" });
@@ -90,7 +60,7 @@ describe("resolveWaiver", () => {
   it("ignores revoked signatures", () => {
     const r = resolveWaiver({
       waivers: [waiver({ revokedAt: new Date("2026-01-10T00:00:00Z") })],
-      participantBirthDate: ADULT_DOB,
+      participantIsMinor: false,
       lessonStartAt: JAN_LESSON,
     });
     expect(r).toMatchObject({ needsSigning: true, reason: "revoked" });
@@ -101,7 +71,7 @@ describe("resolveWaiver", () => {
     const newer = waiver({ id: "new", signedAt: new Date("2026-01-05T00:00:00Z") });
     const r = resolveWaiver({
       waivers: [older, newer],
-      participantBirthDate: ADULT_DOB,
+      participantIsMinor: false,
       lessonStartAt: JAN_LESSON,
     });
     expect(r).toMatchObject({ needsSigning: false });
@@ -112,42 +82,50 @@ describe("resolveWaiver", () => {
     expect(() =>
       resolveWaiver({
         waivers: [],
-        participantBirthDate: ADULT_DOB,
+        participantIsMinor: false,
         lessonStartAt: torontoWallTimeToUtc("2026-07-21", 9),
       }),
     ).toThrow(/outside any ski season/);
   });
 });
 
-describe("resolveWaiver: aging out of a guardian signature", () => {
-  // Signed by a parent in December while the child was 17; the child turns 18
-  // on 2026-02-01.
-  const dob = dateKeyToDbDate("2008-02-01");
+describe("resolveWaiver: guardian signature and the minor flag", () => {
   const guardianSigned = waiver({ participantWasMinor: true });
 
-  it("still covers lessons taken while they are a minor", () => {
+  it("covers a participant who is still a minor", () => {
     const r = resolveWaiver({
       waivers: [guardianSigned],
-      participantBirthDate: dob,
-      lessonStartAt: torontoWallTimeToUtc("2026-01-15", 9),
+      participantIsMinor: true,
+      lessonStartAt: JAN_LESSON,
     });
     expect(r.needsSigning).toBe(false);
   });
 
-  it("stops covering lessons taken after their 18th birthday", () => {
+  it("stops covering them once they are marked an adult", () => {
+    // This is what replaces the old date-of-birth "aged out" check: flipping
+    // the flag retires the guardian's signature.
     const r = resolveWaiver({
       waivers: [guardianSigned],
-      participantBirthDate: dob,
-      lessonStartAt: torontoWallTimeToUtc("2026-03-15", 9),
+      participantIsMinor: false,
+      lessonStartAt: JAN_LESSON,
     });
     expect(r).toMatchObject({ needsSigning: true, reason: "aged-out" });
+  });
+
+  it("requires a guardian when an adult-signed waiver is corrected to a minor", () => {
+    const r = resolveWaiver({
+      waivers: [waiver({ participantWasMinor: false })],
+      participantIsMinor: true,
+      lessonStartAt: JAN_LESSON,
+    });
+    expect(r).toMatchObject({ needsSigning: true, reason: "now-minor" });
   });
 
   it("leaves a self-signed adult waiver alone", () => {
     const r = resolveWaiver({
       waivers: [waiver({ participantWasMinor: false })],
-      participantBirthDate: dob,
-      lessonStartAt: torontoWallTimeToUtc("2026-03-15", 9),
+      participantIsMinor: false,
+      lessonStartAt: JAN_LESSON,
     });
     expect(r.needsSigning).toBe(false);
   });
