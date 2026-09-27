@@ -10,18 +10,27 @@ import { computeDaySlots, isBookable } from "../slots";
 import { OCCUPYING_STATUSES } from "./state";
 import { buildDisclosure, type DisclosureSnapshot } from "./disclosure";
 import type { Locale } from "@/i18n/routing";
+import { resolveWaiver } from "../waiver/validity";
+import { EXPIRING_HOLD_STATUSES } from "./hold";
+import { MAX_SUPPORTED_HEADCOUNT } from "./group";
 
 /** Minutes a self-serve booking holds its slot while the student finishes up. */
 export const HOLD_MINUTES = 30;
 
 export type CreateBookingResult =
-  | { ok: true; code: string; id: string }
+  | {
+      ok: true;
+      code: string;
+      id: string;
+      nextStep: "waiver" | "payment";
+    }
   | {
       ok: false;
       reason:
         | "off-season"
         | "no-such-day"
         | "coach-unavailable"
+        | "group-booking-unavailable"
         | "slot-unavailable"
         | "slot-taken";
     };
@@ -43,6 +52,8 @@ type CreateInput = {
     id: string;
     participantId: string;
     participantName: string;
+    /** Stored participant flag; determines whether an existing waiver applies. */
+    participantIsMinor: boolean;
     level?: string | null;
   };
   /** Coach-created booking; the student signs later via an invite link. */
@@ -71,6 +82,9 @@ export async function createBooking(
   const now = input.now ?? new Date();
 
   if (!isWithinSeason(input.dateKey)) return { ok: false, reason: "off-season" };
+  if ((input.headcount ?? 1) > MAX_SUPPORTED_HEADCOUNT) {
+    return { ok: false, reason: "group-booking-unavailable" };
+  }
 
   const profile = await prisma.coachProfile.findUnique({
     where: { userId: input.coachId },
@@ -92,8 +106,8 @@ export async function createBooking(
   const endAt = torontoWallTimeToUtc(input.dateKey, input.startHour + input.hours);
   const { lessonStartAt, lessonEndAt } = lessonWindow(startAt, endAt);
 
-  // Clamp the group size to what this coach allows rather than trusting the
-  // client; a maxGroupSize of 1 means no group bookings.
+  // The request boundary currently admits one participant. Keep the coach cap
+  // as a second guard so this remains correct when group booking is enabled.
   const headcount = Math.min(
     Math.max(1, input.headcount ?? 1),
     profile.maxGroupSize,
@@ -141,6 +155,33 @@ export async function createBooking(
   try {
     const booking = await prisma.$transaction(async (tx) => {
       await sweepExpiredHolds(tx, input.coachId, now);
+
+      // A waiver belongs to the participant (not merely the account), coach,
+      // lesson season and template version. resolveWaiver also rejects an
+      // otherwise matching signature when the stored minor flag has changed.
+      let reusableWaiverId: string | null = null;
+      if (input.account) {
+        const waivers = await tx.waiver.findMany({
+          where: {
+            participantId: input.account.participantId,
+            coachId: input.coachId,
+          },
+          select: {
+            id: true,
+            season: true,
+            templateVersion: true,
+            participantWasMinor: true,
+            revokedAt: true,
+            signedAt: true,
+          },
+        });
+        const resolved = resolveWaiver({
+          waivers,
+          participantIsMinor: input.account.participantIsMinor,
+          lessonStartAt,
+        });
+        if (!resolved.needsSigning) reusableWaiverId = resolved.waiver.id;
+      }
 
       // Re-read live bookings inside the transaction so the availability check
       // reflects the sweep we just did.
@@ -208,14 +249,24 @@ export async function createBooking(
           participantNameSnapshot:
             input.account?.participantName ?? input.invite?.name ?? null,
           notes: input.notes ?? null,
-          status: createdByCoach ? "AWAITING_WAIVER" : "HOLD",
+          status: createdByCoach
+            ? "AWAITING_WAIVER"
+            : reusableWaiverId
+              ? "AWAITING_PAYMENT"
+              : "HOLD",
           holdExpiresAt,
+          waiverId: reusableWaiverId,
         },
-        select: { id: true, code: true },
+        select: { id: true, code: true, status: true },
       });
     });
 
-    return { ok: true, code: booking.code, id: booking.id };
+    return {
+      ok: true,
+      code: booking.code,
+      id: booking.id,
+      nextStep: booking.status === "AWAITING_PAYMENT" ? "payment" : "waiver",
+    };
   } catch (err) {
     if (err instanceof SlotUnavailable) {
       return { ok: false, reason: "slot-unavailable" };
@@ -241,8 +292,8 @@ export async function sweepExpiredHolds(
   const result = await tx.booking.updateMany({
     where: {
       ...(coachId ? { coachId } : {}),
-      status: "HOLD",
-      holdExpiresAt: { not: null, lt: now },
+      status: { in: EXPIRING_HOLD_STATUSES },
+      holdExpiresAt: { not: null, lte: now },
     },
     data: { status: "EXPIRED" },
   });

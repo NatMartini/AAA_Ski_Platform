@@ -158,9 +158,9 @@ model CoachProfile {
   /// Skill keys from lib/skills.ts this coach teaches (e.g. "wedge",
   /// "parallel", "carving"). String keys rather than a DB enum so the
   /// catalogue can grow without a migration.
-  teachableSkills String[]
+  teachableSkills String[] @default([])
   /// Student levels this coach accepts, for auto-assignment.
-  teachableLevels String[]
+  teachableLevels String[] @default([])
 
   // Payment. Money goes directly to each coach — the platform never pools it.
   emtEnabled       Boolean @default(true)
@@ -370,7 +370,7 @@ model Booking {
 
   // ── What the student wants to work on ──
   /// Skill keys from lib/skills.ts the student asked to practise.
-  requestedSkills String[]
+  requestedSkills String[] @default([])
   /// Student's self-reported level at booking time.
   studentLevel    String?
 
@@ -426,9 +426,9 @@ model Booking {
 
   account      User?         @relation("BookingAccount", fields: [accountId], references: [id], onDelete: SetNull)
   participant  Participant?  @relation(fields: [participantId], references: [id], onDelete: SetNull)
-  coach        User          @relation("BookingCoach", fields: [coachId], references: [id], onDelete: Cascade)
+  coach        User          @relation("BookingCoach", fields: [coachId], references: [id], onDelete: Restrict)
   resort       Resort        @relation(fields: [resortId], references: [id], onDelete: Restrict)
-  coachDay     CoachDay      @relation(fields: [coachDayId], references: [id], onDelete: Cascade)
+  coachDay     CoachDay      @relation(fields: [coachDayId], references: [id], onDelete: Restrict)
   reviewedBy   User?         @relation("BookingReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   cancelledBy  User?         @relation("BookingCanceller", fields: [cancelledById], references: [id], onDelete: SetNull)
   waiver       Waiver?       @relation(fields: [waiverId], references: [id], onDelete: SetNull)
@@ -551,11 +551,10 @@ model Waiver {
   createdAt DateTime @default(now())
 
   participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
-  coach       User        @relation("WaiverCoach", fields: [coachId], references: [id], onDelete: Cascade)
+  coach       User        @relation("WaiverCoach", fields: [coachId], references: [id], onDelete: Restrict)
   signer      User        @relation("WaiverSigner", fields: [signerUserId], references: [id], onDelete: Restrict)
   bookings    Booking[]
 
-  @@unique([participantId, coachId, season, templateVersion])
   @@index([coachId, season])
   @@index([participantId])
 }

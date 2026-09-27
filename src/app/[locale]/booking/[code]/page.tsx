@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { PriceBreakdown } from "@/components/booking/price-breakdown";
 import { quoteFromBooking } from "@/lib/pricing";
 import { HoldCountdown } from "@/components/booking/hold-countdown";
+import { isSelfServeHoldExpired } from "@/lib/booking/hold";
 import { CoachReviewPanel } from "@/components/coach/coach-review-panel";
 import { CoachLessonPanel } from "@/components/coach/coach-lesson-panel";
 import { prisma } from "@/lib/prisma";
@@ -54,8 +55,14 @@ export default async function BookingPage({
     (booking.lessonEndAt.getTime() - booking.lessonStartAt.getTime()) / 60000,
   );
 
-  const needsWaiver = !booking.waiverId && access.isCustomer;
-  const needsPayment = access.canPay;
+  const holdExpired = isSelfServeHoldExpired(booking, new Date());
+  const effectiveStatus = holdExpired ? "EXPIRED" : booking.status;
+  const needsWaiver =
+    !holdExpired &&
+    !booking.waiverId &&
+    access.isCustomer &&
+    ["HOLD", "AWAITING_WAIVER"].includes(booking.status);
+  const needsPayment = !holdExpired && access.canPay;
 
   const owing = balanceCents(booking);
   const videos = await prisma.lessonVideo.findMany({
@@ -75,15 +82,17 @@ export default async function BookingPage({
             {zh ? booking.resort.nameZh : booking.resort.nameEn}
           </h1>
         </div>
-        <StatusPill status={booking.status} locale={loc} className="mt-1" />
+        <StatusPill status={effectiveStatus} locale={loc} className="mt-1" />
       </div>
 
-      {booking.status === "HOLD" && booking.holdExpiresAt && (
-        <HoldCountdown
-          expiresAt={booking.holdExpiresAt.toISOString()}
-          locale={loc}
-        />
-      )}
+      {!holdExpired &&
+        ["HOLD", "AWAITING_PAYMENT"].includes(booking.status) &&
+        booking.holdExpiresAt && (
+          <HoldCountdown
+            expiresAt={booking.holdExpiresAt.toISOString()}
+            locale={loc}
+          />
+        )}
 
       <Card className="space-y-3">
         <CardTitle>{formatTorontoDate(booking.startAt, loc)}</CardTitle>
@@ -294,7 +303,7 @@ export default async function BookingPage({
           paymentMethod={booking.paymentMethod}
           paymentReference={booking.paymentReference}
           canReview={access.canReview}
-          canUploadProof={access.canPay}
+          canUploadProof={!holdExpired && access.canPay}
         />
       )}
 
@@ -307,7 +316,7 @@ export default async function BookingPage({
           depositCents={booking.depositCents}
           isDeposit={booking.paymentPlan === "DEPOSIT"}
           canSettleBalance={["CONFIRMED", "COMPLETED"].includes(booking.status)}
-          canCancel={access.canCancel}
+          canCancel={!holdExpired && access.canCancel}
           summary={booking.coachSummary}
           videos={videos}
         />

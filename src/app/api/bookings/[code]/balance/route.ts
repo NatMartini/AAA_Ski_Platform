@@ -53,14 +53,23 @@ export async function POST(
     );
   }
 
-  await prisma.booking.update({
-    where: { id: booking.id },
+  // Refuse a stale write if the booking was cancelled or another request
+  // settled the balance after our read.
+  const settled = await prisma.booking.updateMany({
+    where: {
+      id: booking.id,
+      status: booking.status,
+      amountPaidCents: booking.amountPaidCents,
+    },
     data: {
       amountPaidCents: booking.totalCents,
       balanceSettledAt: new Date(),
       balanceNote: parsed.data.note?.trim() || null,
     },
   });
+  if (settled.count !== 1) {
+    return NextResponse.json({ error: "state-changed" }, { status: 409 });
+  }
 
   return NextResponse.json({ ok: true, amountPaidCents: booking.totalCents });
 }

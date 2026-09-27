@@ -8,21 +8,32 @@ import {
   templateHash,
   type WaiverVariant,
 } from "./template-v1";
-import { CURRENT_TEMPLATE_VERSION } from "./validity";
-import { seasonOf } from "../season";
-import { buildKey, KEY_PREFIX, writeObject, sha256 } from "../storage";
+import {
+  CURRENT_TEMPLATE_VERSION,
+  resolveWaiver,
+  type ResolveResult,
+} from "./validity";
+import { seasonOf, seasonRange, type Season } from "../season";
+import {
+  buildKey,
+  deleteObject,
+  KEY_PREFIX,
+  writeObject,
+  sha256,
+} from "../storage";
 import type { LoadedBooking } from "../booking/access";
+import { isSelfServeHoldExpired } from "../booking/hold";
+import { addDaysToDateKey, torontoWallTimeToUtc } from "../time";
 
 /**
  * Records a signature and produces the signed PDF.
  *
- * The whole thing is one transaction: either the waiver row, the PDF and the
- * booking's new status all land, or none of them do. A signature recorded
- * without its PDF, or a PDF with no record, would both be worse than a clean
- * failure the signer can retry.
+ * The PDF is staged before the database transaction. Every path where the
+ * transaction does not adopt that storage key removes it, so a concurrent
+ * reuse or failed state transition cannot leave an orphaned signed document.
  *
- * Waiver rows are never updated after this. A correction means signing again
- * and revoking the old one, which is what makes the stored record defensible.
+ * Signed evidence is immutable. Only revokedAt/revokeReason may be updated;
+ * the corrected signature is always a new row with its own PDF and audit data.
  */
 
 export type SignInput = {
@@ -54,7 +65,8 @@ export type SignResult =
         | "missing-acknowledgement"
         | "missing-guardian-details"
         | "bad-signature"
-        | "already-signed";
+        | "already-signed"
+        | "expired";
     };
 
 export async function signWaiver(input: SignInput): Promise<SignResult> {
@@ -62,6 +74,11 @@ export async function signWaiver(input: SignInput): Promise<SignResult> {
 
   const season = seasonOf(booking.lessonStartAt);
   if (!season) return { ok: false, reason: "off-season" };
+
+  const signedAt = new Date();
+  if (isSelfServeHoldExpired(booking, signedAt)) {
+    return { ok: false, reason: "expired" };
+  }
 
   // Whatever the client believes about who should sign is ignored: this comes
   // from the stored participant row.
@@ -84,9 +101,25 @@ export async function signWaiver(input: SignInput): Promise<SignResult> {
   const png = decodePngDataUrl(input.signatureImage);
   if (!png) return { ok: false, reason: "bad-signature" };
 
-  const hash = templateHash(variant);
-  const signedAt = new Date();
+  // A booking created before waiver reuse was wired into createBooking may
+  // still reach this endpoint even though a matching signature already
+  // exists. Attach it atomically and do not collect a redundant signature.
+  try {
+    const reused = await prisma.$transaction((tx) =>
+      reuseStoredWaiver(tx, input, season, signedAt),
+    );
+    if (reused) return { ok: true, waiverId: reused };
+  } catch (err) {
+    if (err instanceof HoldExpiredError) {
+      return { ok: false, reason: "expired" };
+    }
+    if (err instanceof BookingNoLongerSignableError) {
+      return { ok: false, reason: "already-signed" };
+    }
+    throw err;
+  }
 
+  const hash = templateHash(variant);
   const pdf = await renderWaiverPdf({
     variant,
     bookingCode: booking.code,
@@ -119,6 +152,45 @@ export async function signWaiver(input: SignInput): Promise<SignResult> {
 
   try {
     const waiver = await prisma.$transaction(async (tx) => {
+      const resolved = await resolveStoredWaiver(
+        tx,
+        input.participantId,
+        booking.coachId,
+        input.participantIsMinor,
+        booking.lessonStartAt,
+      );
+
+      // Another request may have signed between the early reuse check and the
+      // PDF render. Reuse that active row instead of fighting the unique index.
+      if (!resolved.needsSigning) {
+        await attachWaiverToBookings(
+          tx,
+          input,
+          resolved.waiver.id,
+          season,
+          signedAt,
+        );
+        return { id: resolved.waiver.id, created: false };
+      }
+
+      // When the participant's stored minor status changes, the existing
+      // active agreement was signed by the wrong role. Retire it in the same
+      // transaction that creates the corrected signature, preserving both
+      // audit records without leaving a gap or two active rows.
+      if (resolved.reason === "aged-out" || resolved.reason === "now-minor") {
+        const retired = await tx.waiver.updateMany({
+          where: { id: resolved.waiver.id, revokedAt: null },
+          data: {
+            revokedAt: signedAt,
+            revokeReason:
+              resolved.reason === "aged-out"
+                ? "participant-now-adult"
+                : "participant-now-minor",
+          },
+        });
+        if (retired.count !== 1) throw new WaiverChangedError();
+      }
+
       const created = await tx.waiver.create({
         data: {
           participantId: input.participantId,
@@ -148,36 +220,172 @@ export async function signWaiver(input: SignInput): Promise<SignResult> {
         select: { id: true },
       });
 
-      // Attach to this booking and to any other live booking with the same
-      // coach this season, so the student is not asked to sign twice.
-      await tx.booking.updateMany({
-        where: {
-          participantId: input.participantId,
-          coachId: booking.coachId,
-          waiverId: null,
-          status: { in: ["HOLD", "AWAITING_WAIVER", "AWAITING_PAYMENT"] },
-        },
-        data: { waiverId: created.id },
-      });
+      await attachWaiverToBookings(
+        tx,
+        input,
+        created.id,
+        season,
+        signedAt,
+        resolved.reason === "aged-out" || resolved.reason === "now-minor"
+          ? resolved.waiver.id
+          : null,
+      );
 
-      await tx.booking.update({
-        where: { id: booking.id },
-        data: { waiverId: created.id, status: "AWAITING_PAYMENT" },
-      });
-
-      return created;
+      return { id: created.id, created: true };
     });
 
+    if (!waiver.created) {
+      await deleteObject(written.key).catch(() => undefined);
+    }
     return { ok: true, waiverId: waiver.id };
   } catch (err) {
-    // Unique on (participant, coach, season, templateVersion): a second signature
-    // for the same season is a duplicate submit, not a new agreement.
-    if ((err as { code?: string }).code === "P2002") {
+    await deleteObject(written.key).catch(() => undefined);
+    if (err instanceof HoldExpiredError) {
+      return { ok: false, reason: "expired" };
+    }
+    if (
+      err instanceof BookingNoLongerSignableError ||
+      err instanceof WaiverChangedError
+    ) {
       return { ok: false, reason: "already-signed" };
+    }
+    // A concurrent signature can win the partial unique index. Resolve again
+    // and attach the winner, making duplicate submits idempotent.
+    if ((err as { code?: string }).code === "P2002") {
+      try {
+        const reused = await prisma.$transaction((tx) =>
+          reuseStoredWaiver(tx, input, season, signedAt),
+        );
+        return reused
+          ? { ok: true, waiverId: reused }
+          : { ok: false, reason: "already-signed" };
+      } catch (retryErr) {
+        if (retryErr instanceof HoldExpiredError) {
+          return { ok: false, reason: "expired" };
+        }
+        return { ok: false, reason: "already-signed" };
+      }
     }
     throw err;
   }
 }
+
+async function resolveStoredWaiver(
+  tx: Prisma.TransactionClient,
+  participantId: string,
+  coachId: string,
+  participantIsMinor: boolean,
+  lessonStartAt: Date,
+): Promise<ResolveResult> {
+  const waivers = await tx.waiver.findMany({
+    where: { participantId, coachId },
+    select: {
+      id: true,
+      season: true,
+      templateVersion: true,
+      participantWasMinor: true,
+      revokedAt: true,
+      signedAt: true,
+    },
+  });
+  return resolveWaiver({ waivers, participantIsMinor, lessonStartAt });
+}
+
+async function reuseStoredWaiver(
+  tx: Prisma.TransactionClient,
+  input: SignInput,
+  season: Season,
+  now: Date,
+): Promise<string | null> {
+  const resolved = await resolveStoredWaiver(
+    tx,
+    input.participantId,
+    input.booking.coachId,
+    input.participantIsMinor,
+    input.booking.lessonStartAt,
+  );
+  if (resolved.needsSigning) return null;
+
+  await attachWaiverToBookings(tx, input, resolved.waiver.id, season, now);
+  return resolved.waiver.id;
+}
+
+async function attachWaiverToBookings(
+  tx: Prisma.TransactionClient,
+  input: SignInput,
+  waiverId: string,
+  season: Season,
+  now: Date,
+  replacesWaiverId: string | null = null,
+): Promise<void> {
+  const current = await tx.booking.updateMany({
+    where: {
+      id: input.booking.id,
+      waiverId: null,
+      OR: [
+        // Coach-created bookings deliberately have no timer.
+        { status: "AWAITING_WAIVER", holdExpiresAt: null },
+        // The original self-serve deadline still applies after signing.
+        { status: "HOLD", holdExpiresAt: { gt: now } },
+      ],
+    },
+    data: { waiverId, status: "AWAITING_PAYMENT" },
+  });
+
+  if (current.count !== 1) {
+    const latest = await tx.booking.findUnique({
+      where: { id: input.booking.id },
+      select: { status: true, holdExpiresAt: true, waiverId: true },
+    });
+    if (
+      latest?.status === "EXPIRED" ||
+      (latest && isSelfServeHoldExpired(latest, now))
+    ) {
+      throw new HoldExpiredError();
+    }
+    // A concurrent identical request already completed the desired update.
+    if (
+      latest?.status === "AWAITING_PAYMENT" &&
+      latest.waiverId === waiverId
+    ) {
+      return;
+    }
+    throw new BookingNoLongerSignableError();
+  }
+
+  // Cover any other pending lesson for this participant with the same coach
+  // in this season. Date bounds prevent a January signature from being
+  // attached to next December's booking.
+  const range = seasonRange(season);
+  const seasonStartsAt = torontoWallTimeToUtc(range.start, 0);
+  const afterSeasonEndsAt = torontoWallTimeToUtc(
+    addDaysToDateKey(range.end, 1),
+    0,
+  );
+  await tx.booking.updateMany({
+    where: {
+      id: { not: input.booking.id },
+      participantId: input.participantId,
+      coachId: input.booking.coachId,
+      lessonStartAt: { gte: seasonStartsAt, lt: afterSeasonEndsAt },
+      status: { in: ["HOLD", "AWAITING_WAIVER", "AWAITING_PAYMENT"] },
+      AND: [
+        {
+          OR: [
+            { waiverId: null },
+            ...(replacesWaiverId ? [{ waiverId: replacesWaiverId }] : []),
+          ],
+        },
+        { OR: [{ holdExpiresAt: null }, { holdExpiresAt: { gt: now } }] },
+      ],
+    },
+    data: { waiverId, status: "AWAITING_PAYMENT" },
+  });
+}
+
+class HoldExpiredError extends Error {}
+class BookingNoLongerSignableError extends Error {}
+class WaiverChangedError extends Error {}
 
 export { TEMPLATE_VERSION, TEMPLATE_REVISION };
 

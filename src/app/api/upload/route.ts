@@ -4,7 +4,11 @@ import { requireUser } from "@/lib/auth/require-user";
 import { rateLimitOrRespond } from "@/lib/rate-limit";
 import { ImageRejected, MAX_INPUT_BYTES, processUpload } from "@/lib/upload/image";
 import { buildKey, KEY_PREFIX, writeObject } from "@/lib/storage";
-import { OCCUPYING_STATUSES } from "@/lib/booking/state";
+import { deletePaymentProofIfUnreferenced } from "@/lib/payment-proof";
+import {
+  expireElapsedHold,
+  isSelfServeHoldExpired,
+} from "@/lib/booking/hold";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,7 +65,13 @@ export async function POST(req: Request) {
     }
     const booking = await prisma.booking.findUnique({
       where: { code: bookingCode },
-      select: { id: true, accountId: true, coachId: true, status: true },
+      select: {
+        id: true,
+        accountId: true,
+        coachId: true,
+        status: true,
+        holdExpiresAt: true,
+      },
     });
     if (!booking) {
       return NextResponse.json({ error: "not-found" }, { status: 404 });
@@ -72,8 +82,13 @@ export async function POST(req: Request) {
     if (!allowed) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 });
     }
-    if (!OCCUPYING_STATUSES.includes(booking.status)) {
+    if (!["AWAITING_PAYMENT", "PAYMENT_REJECTED"].includes(booking.status)) {
       return NextResponse.json({ error: "invalid-state" }, { status: 409 });
+    }
+    const now = new Date();
+    if (isSelfServeHoldExpired(booking, now)) {
+      await expireElapsedHold(prisma, booking.id, now);
+      return NextResponse.json({ error: "expired" }, { status: 409 });
     }
     prefix = KEY_PREFIX.proof(booking.id);
   } else {
@@ -96,7 +111,20 @@ export async function POST(req: Request) {
   const key = buildKey(prefix, processed.extension);
   const written = await writeObject(key, processed.buffer);
 
-  if (purpose === "payment-qr") {
+  if (purpose === "payment-proof") {
+    // Re-selecting a screenshot before submitting used to leave every earlier
+    // upload behind forever. The client identifies the one it replaced; the
+    // server validates ownership through the booking-derived prefix and still
+    // refuses to delete it if any booking currently references it.
+    const replacedKey = form.get("replacedKey");
+    if (
+      typeof replacedKey === "string" &&
+      replacedKey !== written.key &&
+      replacedKey.startsWith(`${prefix}/`)
+    ) {
+      await deletePaymentProofIfUnreferenced(replacedKey).catch(() => false);
+    }
+  } else if (purpose === "payment-qr") {
     const kind = form.get("kind");
     const field = kind === "alipay" ? "alipayQrKey" : "wechatPayQrKey";
     await prisma.coachProfile.update({

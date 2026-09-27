@@ -109,7 +109,11 @@ describe("resolveWaiver: guardian signature and the minor flag", () => {
       participantIsMinor: false,
       lessonStartAt: JAN_LESSON,
     });
-    expect(r).toMatchObject({ needsSigning: true, reason: "aged-out" });
+    expect(r).toMatchObject({
+      needsSigning: true,
+      reason: "aged-out",
+      waiver: { id: guardianSigned.id },
+    });
   });
 
   it("requires a guardian when an adult-signed waiver is corrected to a minor", () => {
@@ -118,7 +122,11 @@ describe("resolveWaiver: guardian signature and the minor flag", () => {
       participantIsMinor: true,
       lessonStartAt: JAN_LESSON,
     });
-    expect(r).toMatchObject({ needsSigning: true, reason: "now-minor" });
+    expect(r).toMatchObject({
+      needsSigning: true,
+      reason: "now-minor",
+      waiver: { id: "w1" },
+    });
   });
 
   it("leaves a self-signed adult waiver alone", () => {

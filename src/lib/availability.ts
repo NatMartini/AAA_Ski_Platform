@@ -12,7 +12,6 @@ export type AvailableDay = DaySlots & {
   handoverDiscountCents: number;
   extraPersonCents: number;
   maxGroupSize: number;
-  note: string | null;
 };
 
 /**
@@ -40,7 +39,14 @@ export async function getAvailability(opts: {
       coachId: opts.coachId,
       date: { gte: dateKeyToDbDate(opts.from), lte: dateKeyToDbDate(opts.to) },
     },
-    include: {
+    select: {
+      id: true,
+      date: true,
+      startHour: true,
+      endHour: true,
+      breakStartHour: true,
+      breakEndHour: true,
+      hourlyRateCentsOverride: true,
       resort: { select: { id: true, slug: true, nameEn: true, nameZh: true } },
     },
     orderBy: { date: "asc" },
@@ -87,7 +93,6 @@ export async function getAvailability(opts: {
       handoverDiscountCents: profile.handoverDiscountCents,
       extraPersonCents: profile.extraPersonCents,
       maxGroupSize: profile.maxGroupSize,
-      note: day.note,
     };
   });
 }

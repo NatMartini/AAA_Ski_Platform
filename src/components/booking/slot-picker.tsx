@@ -26,7 +26,6 @@ type Day = {
   hourlyRateCents: number;
   handoverDiscountCents: number;
   extraPersonCents: number;
-  note: string | null;
   cells: Cell[];
   startOptions: { hour: number; durations: number[] }[];
 };
@@ -65,6 +64,7 @@ const COPY = {
     groupNote: "多人课每增加一人,每小时加 {extra}。",
     participant: "上课学员",
     addParticipant: "添加学员",
+    cancellationPolicy: "取消与退款政策",
     noDays: "该雪场暂时没有可预定的日子。",
     noSlots: "这一天已经约满了。",
     review: "确认并预定",
@@ -100,6 +100,7 @@ const COPY = {
     groupNote: "Each extra student adds {extra} per hour.",
     participant: "Who is taking the lesson",
     addParticipant: "Add participant",
+    cancellationPolicy: "Cancellation and refund policy",
     noDays: "No days are open at this resort yet.",
     noSlots: "This day is fully booked.",
     review: "Review and book",
@@ -122,6 +123,7 @@ export function SlotPicker({
   coachAvatarUrl,
   coachWechat,
   coachSkills,
+  cancellationPolicy,
   resortName,
   minHours,
   maxGroupSize,
@@ -136,6 +138,7 @@ export function SlotPicker({
   coachWechat: string | null;
   /** Skill keys this coach teaches; empty means show the whole catalogue. */
   coachSkills: string[];
+  cancellationPolicy: string;
   resortName: string;
   minHours: number;
   maxGroupSize: number;
@@ -229,8 +232,15 @@ export function SlotPicker({
       return;
     }
 
-    const { code } = (await res.json()) as { code: string };
-    router.push(`/booking/${code}`);
+    const { code, nextStep } = (await res.json()) as {
+      code: string;
+      nextStep: "waiver" | "payment";
+    };
+    router.push(
+      nextStep === "payment"
+        ? `/booking/${code}/payment`
+        : `/booking/${code}`,
+    );
   }
 
   if (days.length === 0) {
@@ -448,6 +458,15 @@ export function SlotPicker({
             </div>
           </div>
 
+          <div className="space-y-1.5 border-t border-border pt-4">
+            <p className="text-sm font-bold text-ink">
+              {c.cancellationPolicy}
+            </p>
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-2">
+              {cancellationPolicy}
+            </p>
+          </div>
+
           <FieldError>{error}</FieldError>
 
           <Button
@@ -519,7 +538,6 @@ function HourGrid({
           );
         })}
       </div>
-      {day.note && <p className="text-xs text-ink-3">{day.note}</p>}
     </div>
   );
 }

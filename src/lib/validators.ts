@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { isDateKey } from "./time";
 import { isWithinSeason } from "./season";
+import { MAX_SUPPORTED_HEADCOUNT } from "./booking/group";
 
 /**
  * All request bodies are parsed here before anything touches the database.
@@ -120,8 +121,13 @@ export const participantSchema = z.object({
   emergencyContactPhone: z.string().trim().max(40).nullable().optional(),
 });
 
-/** Upper bound; the coach's own maxGroupSize is enforced at booking time. */
-const headcountSchema = z.number().int().min(1).max(20).default(1);
+/** Multi-person orders stay closed until every attendee can carry a waiver. */
+const headcountSchema = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_SUPPORTED_HEADCOUNT)
+  .default(1);
 
 export const createBookingSchema = z.object({
   coachId: z.string().min(1),

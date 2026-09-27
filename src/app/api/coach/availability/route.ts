@@ -102,7 +102,7 @@ export async function PUT(req: Request) {
   return NextResponse.json({ ok: true, id: day.id });
 }
 
-/** Remove a day. Refused while it still holds live bookings. */
+/** Remove a day. Historical as well as live bookings keep their day record. */
 export async function DELETE(req: Request) {
   const limited = rateLimitOrRespond(req, "write", "coach-availability");
   if (limited) return limited;
@@ -122,16 +122,36 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  const live = await prisma.booking.count({
-    where: { coachDayId: id, status: { in: OCCUPYING_STATUSES } },
+  const bookingCount = await prisma.booking.count({
+    where: { coachDayId: id },
   });
-  if (live > 0) {
+  if (bookingCount > 0) {
     return NextResponse.json(
-      { error: "has-bookings", count: live },
+      { error: "has-bookings", count: bookingCount },
       { status: 409 },
     );
   }
 
-  await prisma.coachDay.delete({ where: { id } });
+  try {
+    await prisma.coachDay.delete({ where: { id } });
+  } catch (error) {
+    // The restrictive FK is the final guard if a booking is inserted after the
+    // count above. Translate that race into the same stable API response.
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "P2003"
+    ) {
+      const racedBookingCount = await prisma.booking.count({
+        where: { coachDayId: id },
+      });
+      return NextResponse.json(
+        { error: "has-bookings", count: racedBookingCount },
+        { status: 409 },
+      );
+    }
+    throw error;
+  }
   return NextResponse.json({ ok: true });
 }

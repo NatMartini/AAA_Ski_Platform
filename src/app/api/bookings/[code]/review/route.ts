@@ -8,6 +8,7 @@ import { assertTransition } from "@/lib/booking/state";
 import { stageOf } from "@/lib/booking/lesson";
 import { sendPaymentReviewed } from "@/lib/booking/notify";
 import { toLocale } from "@/i18n/routing";
+import { deletePaymentProofIfUnreferenced } from "@/lib/payment-proof";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,9 +56,17 @@ export async function POST(
     stageOf(booking) === "DEPOSIT"
       ? Math.min(booking.depositCents, booking.totalCents)
       : booking.totalCents;
+  const rejectedProofKey = action === "reject" ? booking.paymentProofKey : null;
 
-  await prisma.booking.update({
-    where: { id: booking.id },
+  // Compare-and-set both state and proof. Two review requests, or a review
+  // racing cancellation, must not overwrite whichever decision committed
+  // first.
+  const reviewed = await prisma.booking.updateMany({
+    where: {
+      id: booking.id,
+      status: booking.status,
+      paymentProofKey: booking.paymentProofKey,
+    },
     data: {
       status: next,
       reviewedById: r.user.id,
@@ -72,6 +81,16 @@ export async function POST(
         : {}),
     },
   });
+  if (reviewed.count !== 1) {
+    return NextResponse.json({ error: "state-changed" }, { status: 409 });
+  }
+
+  // The row no longer points at a rejected screenshot. Remove the private file
+  // too, but only after re-checking under the same per-booking lock used when a
+  // proof is attached. A failed filesystem cleanup is retried by retention.
+  if (rejectedProofKey) {
+    await deletePaymentProofIfUnreferenced(rejectedProofKey).catch(() => false);
+  }
 
   const to = booking.account?.email ?? booking.inviteEmail;
   if (to) {

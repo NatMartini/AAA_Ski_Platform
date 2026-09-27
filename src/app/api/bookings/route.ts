@@ -76,6 +76,7 @@ export async function POST(req: Request) {
       id: r.user.id,
       participantId: participant.id,
       participantName: participant.fullName,
+      participantIsMinor: participant.isMinor,
       // Snapshot the ability the participant profile carries, so the coach
       // sees what to expect even if the student edits it later.
       level: participant.level,
@@ -92,5 +93,8 @@ export async function POST(req: Request) {
   // always re-download the confirmation from the booking page.
   await sendBookingConfirmation(result.code, locale).catch(() => null);
 
-  return NextResponse.json({ ok: true, code: result.code }, { status: 201 });
+  return NextResponse.json(
+    { ok: true, code: result.code, nextStep: result.nextStep },
+    { status: 201 },
+  );
 }

@@ -60,8 +60,10 @@ export async function POST(
 
   assertTransition(booking.status, "CANCELLED");
 
-  await prisma.booking.update({
-    where: { id: booking.id },
+  // Compare-and-set the state. Without the status predicate a payment submit
+  // racing this request could resurrect a booking after it was cancelled.
+  const cancelled = await prisma.booking.updateMany({
+    where: { id: booking.id, status: booking.status },
     data: {
       status: "CANCELLED",
       cancelledAt: new Date(),
@@ -69,6 +71,9 @@ export async function POST(
       cancelReason: reason,
     },
   });
+  if (cancelled.count !== 1) {
+    return NextResponse.json({ error: "state-changed" }, { status: 409 });
+  }
 
   // Only tell the other side. Cancelling your own lesson and then being
   // emailed about it is noise.

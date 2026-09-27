@@ -8,6 +8,7 @@ import { SlotPicker } from "@/components/booking/slot-picker";
 import { toLocale } from "@/i18n/routing";
 import { toDateKey } from "@/lib/time";
 import { bookingHorizon } from "@/lib/season";
+import { MAX_SUPPORTED_HEADCOUNT } from "@/lib/booking/group";
 
 export default async function PickSlotPage({
   params,
@@ -53,15 +54,22 @@ export default async function PickSlotPage({
       coachAvatarUrl={profile.avatarUrl}
       coachWechat={profile.wechatId}
       coachSkills={profile.teachableSkills}
+      cancellationPolicy={
+        (locale === "zh"
+          ? profile.cancellationPolicyZh
+          : profile.cancellationPolicyEn) ?? ""
+      }
       resortName={locale === "zh" ? resort.nameZh : resort.nameEn}
       minHours={profile.minHours}
-      maxGroupSize={profile.maxGroupSize}
+      maxGroupSize={Math.min(
+        profile.maxGroupSize,
+        MAX_SUPPORTED_HEADCOUNT,
+      )}
       days={forResort.map((day) => ({
         dateKey: day.dateKey,
         hourlyRateCents: day.hourlyRateCents,
         handoverDiscountCents: day.handoverDiscountCents,
         extraPersonCents: day.extraPersonCents,
-        note: day.note,
         cells: day.cells.map((c) => ({
           hour: c.hour,
           startIso: c.startAt.toISOString(),

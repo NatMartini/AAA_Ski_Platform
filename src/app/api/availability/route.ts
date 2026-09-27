@@ -34,7 +34,6 @@ export async function GET(req: Request) {
       resort: day.resort,
       hourlyRateCents: day.hourlyRateCents,
       handoverDiscountCents: day.handoverDiscountCents,
-      note: day.note,
       cells: day.cells.map((cell) => ({
         hour: cell.hour,
         status: cell.status,

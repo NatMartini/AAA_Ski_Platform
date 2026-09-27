@@ -5,6 +5,11 @@ import { fieldErrors, waiverSignSchema } from "@/lib/validators";
 import { accessFor, loadBooking } from "@/lib/booking/access";
 import { signWaiver } from "@/lib/waiver/sign";
 import { clientIp } from "@/lib/request";
+import { prisma } from "@/lib/prisma";
+import {
+  expireElapsedHold,
+  isSelfServeHoldExpired,
+} from "@/lib/booking/hold";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,6 +44,12 @@ export async function POST(
     return NextResponse.json({ error: "invalid-state" }, { status: 409 });
   }
 
+  const now = new Date();
+  if (isSelfServeHoldExpired(booking, now)) {
+    await expireElapsedHold(prisma, booking.id, now);
+    return NextResponse.json({ error: "expired" }, { status: 409 });
+  }
+
   const parsed = waiverSignSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json(
@@ -70,7 +81,13 @@ export async function POST(
   });
 
   if (!result.ok) {
-    return NextResponse.json({ error: result.reason }, { status: 400 });
+    if (result.reason === "expired") {
+      await expireElapsedHold(prisma, booking.id, new Date());
+    }
+    return NextResponse.json(
+      { error: result.reason },
+      { status: result.reason === "expired" ? 409 : 400 },
+    );
   }
   return NextResponse.json({ ok: true });
 }

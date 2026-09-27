@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 /**
@@ -16,7 +16,9 @@ import path from "node:path";
  * check who is asking.
  */
 
-const ROOT = path.resolve(process.env.STORAGE_DIR ?? "./storage");
+const ROOT = process.env.STORAGE_DIR
+  ? path.resolve(/* turbopackIgnore: true */ process.env.STORAGE_DIR)
+  : path.join(process.cwd(), "storage");
 
 /** Keys look like "proofs/<bookingId>/<uuid>.webp". */
 export type StorageKey = string;
@@ -40,7 +42,7 @@ export function resolveKey(key: StorageKey): string {
   if (key.includes("\0")) throw new StorageKeyError(key);
   if (path.isAbsolute(key)) throw new StorageKeyError(key);
 
-  const full = path.resolve(ROOT, key);
+  const full = path.resolve(/* turbopackIgnore: true */ ROOT, key);
   const rel = path.relative(ROOT, full);
   if (rel.startsWith("..") || path.isAbsolute(rel)) throw new StorageKeyError(key);
 
@@ -67,12 +69,12 @@ export async function writeObject(
 }
 
 export async function readObject(key: StorageKey): Promise<Buffer> {
-  return readFile(resolveKey(key));
+  return readFile(/* turbopackIgnore: true */ resolveKey(key));
 }
 
 export async function objectExists(key: StorageKey): Promise<boolean> {
   try {
-    return existsSync(resolveKey(key));
+    return existsSync(/* turbopackIgnore: true */ resolveKey(key));
   } catch {
     return false;
   }
@@ -80,10 +82,69 @@ export async function objectExists(key: StorageKey): Promise<boolean> {
 
 export async function objectSize(key: StorageKey): Promise<number | null> {
   try {
-    return (await stat(resolveKey(key))).size;
+    return (await stat(/* turbopackIgnore: true */ resolveKey(key))).size;
   } catch {
     return null;
   }
+}
+
+export type StoredObject = {
+  key: StorageKey;
+  modifiedAt: Date;
+};
+
+/**
+ * Lists files below one storage prefix without following symbolic links.
+ *
+ * The retention job uses this for uploads which were written successfully but
+ * never attached to a database row (for example, when someone closes the tab
+ * before submitting a payment proof). A missing prefix is simply an empty
+ * list, which keeps a fresh installation's first retention run uneventful.
+ */
+export async function listObjects(prefix: StorageKey): Promise<StoredObject[]> {
+  const base = resolveKey(prefix);
+  const objects: StoredObject[] = [];
+
+  async function walk(directory: string): Promise<void> {
+    let entries;
+    try {
+      entries = await readdir(/* turbopackIgnore: true */ directory, {
+        withFileTypes: true,
+      });
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") return;
+      throw err;
+    }
+
+    for (const entry of entries) {
+      // Storage never creates links. Ignoring one if it appears also prevents
+      // a maintenance scan from following it outside the private root.
+      if (entry.isSymbolicLink()) continue;
+
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+
+      try {
+        const info = await stat(/* turbopackIgnore: true */ full);
+        objects.push({
+          key: path.relative(ROOT, full).split(path.sep).join("/"),
+          modifiedAt: info.mtime,
+        });
+      } catch (err) {
+        // A concurrent cleanup may remove a file between readdir and stat.
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code !== "ENOENT") throw err;
+      }
+    }
+  }
+
+  await walk(base);
+  return objects;
 }
 
 /** Used by the retention job. Missing files are not an error. */

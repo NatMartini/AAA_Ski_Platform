@@ -47,7 +47,18 @@ export type ResolveInput = {
 
 export type ResolveResult =
   | { needsSigning: false; waiver: WaiverRecord; season: Season }
-  | { needsSigning: true; reason: ResolveReason; season: Season };
+  | {
+      needsSigning: true;
+      reason: Exclude<ResolveReason, "aged-out" | "now-minor">;
+      season: Season;
+    }
+  | {
+      needsSigning: true;
+      reason: "aged-out" | "now-minor";
+      season: Season;
+      /** Active row that must be revoked before the corrected signature. */
+      waiver: WaiverRecord;
+    };
 
 export type ResolveReason =
   | "none" // never signed for this coach this season
@@ -90,13 +101,13 @@ export function resolveWaiver(input: ResolveInput): ResolveResult {
 
   // A guardian's signature covers a child, not the adult that child becomes.
   if (waiver.participantWasMinor && !participantIsMinor) {
-    return { needsSigning: true, reason: "aged-out", season };
+    return { needsSigning: true, reason: "aged-out", season, waiver };
   }
   // The reverse is a correction rather than a birthday — someone ticked the
   // box wrongly the first time. Either way the wrong person signed, so the
   // guardian has to sign properly.
   if (!waiver.participantWasMinor && participantIsMinor) {
-    return { needsSigning: true, reason: "now-minor", season };
+    return { needsSigning: true, reason: "now-minor", season, waiver };
   }
 
   return { needsSigning: false, waiver, season };

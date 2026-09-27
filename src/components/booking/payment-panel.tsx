@@ -121,6 +121,7 @@ export function PaymentPanel({
     body.set("file", file);
     body.set("purpose", "payment-proof");
     body.set("bookingCode", bookingCode);
+    if (proofKey) body.set("replacedKey", proofKey);
 
     const res = await fetch("/api/upload", { method: "POST", body });
     setUploading(false);

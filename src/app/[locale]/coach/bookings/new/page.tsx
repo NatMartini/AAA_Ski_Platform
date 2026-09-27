@@ -6,6 +6,7 @@ import { CoachBookingForm } from "@/components/coach/coach-booking-form";
 import { toLocale } from "@/i18n/routing";
 import { toDateKey } from "@/lib/time";
 import { bookingHorizon } from "@/lib/season";
+import { MAX_SUPPORTED_HEADCOUNT } from "@/lib/booking/group";
 
 export default async function CoachNewBookingPage({
   params,
@@ -30,7 +31,10 @@ export default async function CoachNewBookingPage({
     <CoachBookingForm
       locale={toLocale(locale)}
       minHours={profile?.minHours ?? 2}
-      maxGroupSize={profile?.maxGroupSize ?? 3}
+      maxGroupSize={Math.min(
+        profile?.maxGroupSize ?? 1,
+        MAX_SUPPORTED_HEADCOUNT,
+      )}
       days={days.map((day) => ({
         dateKey: day.dateKey,
         resortName: locale === "zh" ? day.resort.nameZh : day.resort.nameEn,

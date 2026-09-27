@@ -6,6 +6,7 @@ import { accessFor, loadBooking } from "@/lib/booking/access";
 import { clausesFor, WARNING } from "@/lib/waiver/template-v1";
 import { WaiverForm } from "@/components/waiver/waiver-form";
 import { toLocale } from "@/i18n/routing";
+import { isSelfServeHoldExpired } from "@/lib/booking/hold";
 
 export default async function SignWaiverPage({
   params,
@@ -28,7 +29,11 @@ export default async function SignWaiverPage({
   }
 
   // Nothing to sign: either already covered, or past that step.
-  if (booking.waiverId || !["HOLD", "AWAITING_WAIVER"].includes(booking.status)) {
+  if (
+    booking.waiverId ||
+    !["HOLD", "AWAITING_WAIVER"].includes(booking.status) ||
+    isSelfServeHoldExpired(booking, new Date())
+  ) {
     redirect({ href: `/booking/${code}`, locale });
   }
 

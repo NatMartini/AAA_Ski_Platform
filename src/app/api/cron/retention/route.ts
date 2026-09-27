@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { deleteObject } from "@/lib/storage";
+import { listObjects } from "@/lib/storage";
+import { deletePaymentProofIfUnreferenced } from "@/lib/payment-proof";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Payment screenshots are kept for two years, then deleted. */
 const PROOF_RETENTION_MONTHS = 24;
+
+/** Leave in-flight, not-yet-submitted uploads alone until the next day. */
+const ORPHAN_GRACE_HOURS = 24;
 
 /**
  * Enforces the retention policy stated in the privacy notice.
@@ -42,17 +46,42 @@ export async function POST(req: Request) {
   let deleted = 0;
   for (const booking of stale) {
     if (!booking.paymentProofKey) continue;
-    await deleteObject(booking.paymentProofKey);
-    await prisma.booking.update({
-      where: { id: booking.id },
+    const key = booking.paymentProofKey;
+    const detached = await prisma.booking.updateMany({
+      where: {
+        id: booking.id,
+        paymentProofKey: key,
+        paymentSubmittedAt: { lt: cutoff },
+      },
       data: { paymentProofKey: null },
     });
-    deleted++;
+    if (detached.count === 0) continue;
+    if (await deletePaymentProofIfUnreferenced(key)) deleted++;
+  }
+
+  // Uploading and attaching a proof are separate requests. If the browser is
+  // closed between them there is no database row to age out, so scan the
+  // private proof prefix as well. The grace period protects active uploads;
+  // the helper then locks the owning booking and re-checks references before
+  // removing anything.
+  const orphanCutoff = new Date(
+    Date.now() - ORPHAN_GRACE_HOURS * 60 * 60 * 1000,
+  );
+  const orphanCandidates = (await listObjects("proofs")).filter(
+    (object) => object.modifiedAt < orphanCutoff,
+  );
+
+  let orphanProofsDeleted = 0;
+  for (const object of orphanCandidates) {
+    if (await deletePaymentProofIfUnreferenced(object.key)) {
+      orphanProofsDeleted++;
+    }
   }
 
   return NextResponse.json({
     ok: true,
     proofsDeleted: deleted,
+    orphanProofsDeleted,
     note: "Waivers are never auto-deleted; review them manually.",
   });
 }

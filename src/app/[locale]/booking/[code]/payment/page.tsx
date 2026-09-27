@@ -8,6 +8,8 @@ import { PaymentPanel } from "@/components/booking/payment-panel";
 import { quoteFromBooking } from "@/lib/pricing";
 import { amountDueCents } from "@/lib/booking/lesson";
 import { toLocale } from "@/i18n/routing";
+import { HoldCountdown } from "@/components/booking/hold-countdown";
+import { isSelfServeHoldExpired } from "@/lib/booking/hold";
 
 export default async function PaymentPage({
   params,
@@ -25,7 +27,9 @@ export default async function PaymentPage({
 
   const access = accessFor(booking, user);
   if (!access.canView) notFound();
-  if (!access.canPay) redirect({ href: `/booking/${code}`, locale });
+  if (!access.canPay || isSelfServeHoldExpired(booking, new Date())) {
+    redirect({ href: `/booking/${code}`, locale });
+  }
 
   const profile = await prisma.coachProfile.findUnique({
     where: { userId: booking.coachId },
@@ -40,6 +44,13 @@ export default async function PaymentPage({
         <p className="text-sm text-muted-foreground">{booking.code}</p>
         <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
       </div>
+
+      {booking.status === "AWAITING_PAYMENT" && booking.holdExpiresAt && (
+        <HoldCountdown
+          expiresAt={booking.holdExpiresAt.toISOString()}
+          locale={toLocale(locale)}
+        />
+      )}
 
       <PaymentPanel
         locale={toLocale(locale)}

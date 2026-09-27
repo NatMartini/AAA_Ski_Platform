@@ -21,8 +21,8 @@ export type LegalContent = {
 
 export type LegalDocId = "terms" | "privacy" | "accessibility";
 
-const UPDATED_EN = "Draft — pending legal review. Last updated 21 July 2026.";
-const UPDATED_ZH = "草稿 —— 尚待法律审阅。最后更新:2026 年 7 月 21 日。";
+const UPDATED_EN = "Draft — pending legal review. Last updated 11 August 2026.";
+const UPDATED_ZH = "草稿 —— 尚待法律审阅。最后更新:2026 年 8 月 11 日。";
 
 export const LEGAL_DOCS: Record<
   LegalDocId,
@@ -150,9 +150,10 @@ export const LEGAL_DOCS: Record<
           heading: "What we collect",
           paragraphs: [
             "Your name and email address from your Google account when you sign in. We request only your basic profile and email — nothing else, and no access to your Google Calendar, Drive or contacts.",
-            "For each participant: their name and date of birth, optionally an emergency contact and ability level. Date of birth is needed to decide whether a guardian must sign the waiver.",
+            "For each participant: their name, whether they are under 18, and optionally an emergency contact and ability level. We do not collect a date of birth; the under-18 flag decides whether a guardian must sign the waiver.",
             "When you sign a waiver: your drawn signature, your typed name, the time, your IP address and your browser's user agent string. These make the signature evidentially meaningful.",
             "When you pay: the screenshot you upload, the method and any reference you enter.",
+            "After a lesson, the instructor may upload short lesson videos for feedback. A clip may contain the participant's image and any caption the instructor adds.",
           ],
         },
         {
@@ -165,14 +166,16 @@ export const LEGAL_DOCS: Record<
         {
           heading: "Children's information",
           paragraphs: [
-            "Information about a participant under 18 is provided and consented to by their parent or guardian through that adult's own account. We collect the minimum needed to run the lesson safely, and no photographs.",
+            "Information about a participant under 18 is provided and consented to by their parent or guardian through that adult's own account. We collect the minimum needed to run the lesson safely. Lesson videos may include that participant and are kept private to the booking account and instructor.",
           ],
         },
         {
           heading: "How long we keep it",
           paragraphs: [
             "Payment screenshots are deleted automatically 24 months after they are submitted. The booking record itself, without the image, is kept.",
-            "Signed waivers are kept for at least seven years. For a participant who was under 18 when it was signed, they are kept until seven years after that person turns 18, because a minor's time limit for bringing a claim does not begin until then. Waivers are never deleted automatically.",
+            "A screenshot that was never submitted, was replaced, or was rejected is removed earlier through routine cleanup once it is no longer attached to a booking.",
+            "Lesson videos have no automatic deletion date. They remain with the booking until the instructor deletes them; you may also ask for a clip to be removed by contacting CONTACT EMAIL.",
+            "Signed waivers are kept for at least seven years and are never deleted automatically. A waiver for someone marked as under 18 requires manual review before deletion because the site does not collect a date of birth and cannot calculate when that person turns 18.",
           ],
         },
         {
@@ -203,9 +206,10 @@ export const LEGAL_DOCS: Record<
           heading: "我们收集什么",
           paragraphs: [
             "登录时从你的 Google 账号获取姓名和邮箱。我们仅申请基本资料与邮箱权限,不读取你的日历、云端硬盘或通讯录。",
-            "每位学员:姓名、出生日期,以及可选的紧急联系人与水平。出生日期用于判断是否需要监护人签署免责协议。",
+            "每位学员:姓名、是否未满 18 周岁,以及可选的紧急联系人与水平。本站不收集出生日期;未成年人标记用于判断是否需要监护人签署免责协议。",
             "签署免责协议时:手写签名、打印姓名、签署时间、IP 地址与浏览器 User-Agent。这些是使签名具备证据意义的必要信息。",
             "付款时:你上传的截图、付款方式与你填写的备注。",
+            "课程结束后,教练可上传用于课后反馈的课程视频片段。片段可能包含学员影像及教练填写的说明。",
           ],
         },
         {
@@ -218,14 +222,16 @@ export const LEGAL_DOCS: Record<
         {
           heading: "未成年人信息",
           paragraphs: [
-            "未满 18 周岁学员的信息,由其父母或监护人通过本人账号提供并同意。我们只收集保障课程安全所必需的最少信息,不收集照片。",
+            "未满 18 周岁学员的信息,由其父母或监护人通过本人账号提供并同意。我们只收集保障课程安全所必需的最少信息。课程视频可能包含该学员,且仅限预定账号与教练查看。",
           ],
         },
         {
           heading: "保留期限",
           paragraphs: [
             "付款截图在提交 24 个月后自动删除;订单记录本身(不含图片)予以保留。",
-            "已签署的免责协议至少保留 7 年。签署时未满 18 周岁的,保留至该学员满 18 周岁后再加 7 年 —— 因为未成年人的诉讼时效在其成年前不起算。免责协议不会被自动删除。",
+            "未完成提交、已被替换或被拒绝的付款截图,会在不再关联任何订单后通过例行清理提前删除。",
+            "课程视频目前不设自动删除日期,会随订单保留至教练删除;你也可联系 联系邮箱 要求删除片段。",
+            "已签署的免责协议至少保留 7 年,且不会自动删除。对于签署时标记为未满 18 周岁的学员,由于本站不收集出生日期、无法自动计算其成年日期,删除前须人工审核。",
           ],
         },
         {

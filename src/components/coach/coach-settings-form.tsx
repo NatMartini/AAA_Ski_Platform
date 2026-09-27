@@ -87,7 +87,7 @@ const COPY = {
     extraPerson: "每增加一人每小时加价(加元)",
     extraPersonHelp: "多人课时,每多一名学员每小时加收此金额。",
     maxGroupSize: "最多人数",
-    maxGroupHelp: "设为 1 则不接受多人课。",
+    maxGroupHelp: "逐人免责流程完成前暂只接受 1 人;此设置会保留供后续启用。",
     minHours: "最少小时数",
     maxHours: "最多小时数",
     leadTime: "最少提前预定小时数",
@@ -158,7 +158,8 @@ const COPY = {
     extraPerson: "Extra per additional student per hour (CAD)",
     extraPersonHelp: "For group lessons, each extra student adds this per hour.",
     maxGroupSize: "Maximum group size",
-    maxGroupHelp: "Set to 1 to not accept group lessons.",
+    maxGroupHelp:
+      "Bookings are limited to one participant until per-person waivers are ready; this setting is kept for later use.",
     minHours: "Minimum hours",
     maxHours: "Maximum hours",
     leadTime: "Minimum notice (hours)",

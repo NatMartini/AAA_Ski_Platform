@@ -10,13 +10,16 @@
  * Creates and removes its own fixtures under __flow_check ids.
  */
 import { PrismaClient } from "@prisma/client";
-import { createBooking } from "../src/lib/booking/create";
+import {
+  createBooking,
+  sweepExpiredHolds,
+} from "../src/lib/booking/create";
 import { signWaiver } from "../src/lib/waiver/sign";
 import { resolveWaiver } from "../src/lib/waiver/validity";
 import { acknowledgementIds } from "../src/lib/waiver/template-v1";
 import { identityKey } from "../src/lib/participants";
 import { dateKeyToDbDate, torontoWallTimeToUtc } from "../src/lib/time";
-import { readObject } from "../src/lib/storage";
+import { deleteObject, readObject } from "../src/lib/storage";
 import {
   amountDueCents,
   balanceCents,
@@ -56,6 +59,13 @@ function check(label: string, condition: boolean, detail = ""): void {
 
 async function cleanup() {
   const users = [COACH, PARENT, ADULT];
+  const waiverFiles = await prisma.waiver.findMany({
+    where: { coachId: COACH },
+    select: { signedPdfKey: true },
+  });
+  for (const waiver of waiverFiles) {
+    await deleteObject(waiver.signedPdfKey).catch(() => undefined);
+  }
   await prisma.waiver.deleteMany({ where: { coachId: COACH } });
   await prisma.booking.deleteMany({ where: { coachId: COACH } });
   await prisma.participant.deleteMany({ where: { accountId: { in: users } } });
@@ -148,7 +158,12 @@ async function main() {
     startHour: 9,
     hours: 2,
     locale: "zh",
-    account: { id: ADULT, participantId: adult.id, participantName: "张伟" },
+    account: {
+      id: ADULT,
+      participantId: adult.id,
+      participantName: "张伟",
+      participantIsMinor: adult.isMinor,
+    },
     now,
   });
   check("9-11 for an adult is accepted", first.ok);
@@ -175,7 +190,12 @@ async function main() {
     startHour: 10,
     hours: 2,
     locale: "zh",
-    account: { id: PARENT, participantId: child.id, participantName: "小明" },
+    account: {
+      id: PARENT,
+      participantId: child.id,
+      participantName: "小明",
+      participantIsMinor: child.isMinor,
+    },
     now,
   });
   check(
@@ -190,7 +210,12 @@ async function main() {
     startHour: 12,
     hours: 2,
     locale: "zh",
-    account: { id: PARENT, participantId: child.id, participantName: "小明" },
+    account: {
+      id: PARENT,
+      participantId: child.id,
+      participantName: "小明",
+      participantIsMinor: child.isMinor,
+    },
     now,
   });
   check(
@@ -205,12 +230,17 @@ async function main() {
     startHour: 9,
     hours: 2,
     locale: "zh",
-    account: { id: ADULT, participantId: adult.id, participantName: "张伟" },
+    account: {
+      id: ADULT,
+      participantId: adult.id,
+      participantName: "张伟",
+      participantIsMinor: adult.isMinor,
+    },
     now,
   });
   check("an out-of-season date is refused", !offSeason.ok && offSeason.reason === "off-season");
 
-  console.log("\ngroup lesson pricing");
+  console.log("\ngroup lesson safety gate");
   const group = await createBooking({
     coachId: COACH,
     dateKey: DAY,
@@ -218,25 +248,18 @@ async function main() {
     hours: 2,
     headcount: 3, // 1-on-3
     locale: "zh",
-    account: { id: ADULT, participantId: adult.id, participantName: "张伟" },
+    account: {
+      id: ADULT,
+      participantId: adult.id,
+      participantName: "张伟",
+      participantIsMinor: adult.isMinor,
+    },
     now,
   });
-  check("a 1-on-3 group booking is accepted", group.ok);
-  const groupRow = group.ok
-    ? await prisma.booking.findUnique({ where: { code: group.code } })
-    : null;
-  // base 8000 + 2 × 3000 = 14000/h; × 2h = 28000; less 1500 = 26500.
   check(
-    "1-on-3 for 2h is $140/h × 2 − $15 = $265",
-    groupRow?.headcount === 3 &&
-      groupRow?.subtotalCents === 28000 &&
-      groupRow?.totalCents === 26500,
-    `total=${groupRow?.totalCents}`,
+    "multi-person booking is refused until every attendee can carry a waiver",
+    !group.ok && group.reason === "group-booking-unavailable",
   );
-  // Release the slot so it does not collide with the reuse test below.
-  if (groupRow) {
-    await prisma.booking.delete({ where: { id: groupRow.id } });
-  }
 
   console.log("\nwaiver signing (adult)");
 
@@ -252,6 +275,15 @@ async function main() {
       waiverInvite: true,
     },
   });
+  // This script uses a historical fixed clock for deterministic slot checks,
+  // while signWaiver correctly uses the real server clock. Keep the fixture's
+  // hold active so this section tests signing rather than expiry.
+  const activeFixtureDeadline = new Date("2099-01-01T00:00:00.000Z");
+  await prisma.booking.update({
+    where: { id: bookingRow!.id },
+    data: { holdExpiresAt: activeFixtureDeadline },
+  });
+  bookingRow!.holdExpiresAt = activeFixtureDeadline;
 
   const signed = await signWaiver({
     booking: bookingRow!,
@@ -326,7 +358,12 @@ async function main() {
     startHour: 14,
     hours: 2,
     locale: "zh",
-    account: { id: ADULT, participantId: adult.id, participantName: "张伟" },
+    account: {
+      id: ADULT,
+      participantId: adult.id,
+      participantName: "张伟",
+      participantIsMinor: adult.isMinor,
+    },
     now,
   });
   check("a second booking with the same coach is accepted", second.ok);
@@ -339,7 +376,30 @@ async function main() {
     participantIsMinor: adult.isMinor,
     lessonStartAt: torontoWallTimeToUtc(DAY, 14),
   });
-  check("the existing signature covers it — no re-signing", !reuse.needsSigning);
+  const secondRow = second.ok
+    ? await prisma.booking.findUnique({ where: { code: second.code } })
+    : null;
+  check(
+    "createBooking reuses the existing signature and goes straight to payment",
+    second.ok &&
+      second.nextStep === "payment" &&
+      secondRow?.status === "AWAITING_PAYMENT" &&
+      secondRow.waiverId === afterSign?.waiverId,
+  );
+  check("the pure resolver agrees that no re-signing is needed", !reuse.needsSigning);
+
+  const sweptAfterWaiver = await sweepExpiredHolds(
+    prisma,
+    COACH,
+    new Date("2026-01-01T12:31:00.000Z"),
+  );
+  const expiredSecond = second.ok
+    ? await prisma.booking.findUnique({ where: { code: second.code } })
+    : null;
+  check(
+    "the original hold still expires while awaiting payment",
+    sweptAfterWaiver === 1 && expiredSecond?.status === "EXPIRED",
+  );
 
   const nextSeason = resolveWaiver({
     waivers: adultWaivers,
@@ -356,7 +416,12 @@ async function main() {
     startHour: 11,
     hours: 2,
     locale: "zh",
-    account: { id: PARENT, participantId: child.id, participantName: "小明" },
+    account: {
+      id: PARENT,
+      participantId: child.id,
+      participantName: "小明",
+      participantIsMinor: child.isMinor,
+    },
     now,
   });
   check("a booking for the child is accepted", childBooking.ok);
@@ -373,6 +438,11 @@ async function main() {
       waiverInvite: true,
     },
   });
+  await prisma.booking.update({
+    where: { id: childRow!.id },
+    data: { holdExpiresAt: activeFixtureDeadline },
+  });
+  childRow!.holdExpiresAt = activeFixtureDeadline;
 
   const guardianSigned = await signWaiver({
     booking: childRow!,
@@ -428,6 +498,7 @@ async function main() {
       id: ADULT,
       participantId: adult.id,
       participantName: "张伟",
+      participantIsMinor: adult.isMinor,
       level: "intermediate",
     },
     now,
@@ -517,7 +588,12 @@ async function main() {
       startHour: 14,
       hours: 2,
       locale: "zh",
-      account: { id: ADULT, participantId: adult.id, participantName: "张伟" },
+      account: {
+        id: ADULT,
+        participantId: adult.id,
+        participantName: "张伟",
+        participantIsMinor: adult.isMinor,
+      },
       now,
     });
     check("the freed hour can be booked again", rebooked.ok);

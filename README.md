@@ -123,12 +123,13 @@ defensible.
 Guardrails against cross-use, in `src/lib/participants.ts`:
 
 1. Participants are picked explicitly, never inferred.
-2. Minor status is derived from date of birth **on the lesson date**, server
-   side. A client-supplied `isMinor` is ignored.
+2. Minor status is stored explicitly on the participant record; the server
+   always uses that stored value rather than trusting booking form input.
 3. A minor's waiver must be signed by their guardian.
 4. Self-serve booking refuses to create an adult who is not the account holder,
    because no adult can sign a waiver for another adult.
-5. Once a minor turns 18 the guardian's signature stops applying.
+5. When a participant is changed to adult, a guardian-signed waiver no longer
+   matches future bookings and the adult must sign for themself.
 
 ### Two ways a booking is made
 
