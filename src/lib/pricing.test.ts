@@ -142,4 +142,10 @@ describe("formatMoneyShort", () => {
     expect(formatMoneyShort(-1500)).toBe("-$15.00");
     expect(formatMoneyShort(0)).toBe("$0.00");
   });
+
+  it("groups thousands", () => {
+    expect(formatMoneyShort(130500)).toBe("$1,305.00");
+    expect(formatMoneyShort(123456789)).toBe("$1,234,567.89");
+    expect(formatMoneyShort(-100000)).toBe("-$1,000.00");
+  });
 });

@@ -105,7 +105,7 @@ export default async function PackagePage({
           <Row term={zh ? "有效期" : "Valid for"} value={formatSeason(pkg.season, loc)} />
           <Row term={zh ? "价格" : "Price"} value={formatMoneyShort(pkg.priceCents)} />
           <Row term={zh ? "付款给" : "Paid to"} value={payeeName} />
-          {access.isPayee && (
+          {!access.isBuyer && (
             <Row
               term={zh ? "购买人" : "Bought by"}
               value={pkg.account.name ?? pkg.account.email}

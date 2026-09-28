@@ -114,6 +114,8 @@
     "availability": "可用日",
     "bookings": "订单",
     "packages": "课时包",
+    "students": "学员",
+    "stats": "数据统计",
     "settings": "设置",
     "newBooking": "代学员建课",
     "icsFeed": "日历订阅地址",

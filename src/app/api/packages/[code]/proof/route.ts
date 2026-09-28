@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * Streams a package payment screenshot to the buyer or the coach they paid —
- * nobody else. Like a booking's, it may show an account number and balance.
+ * not to other coaches, who can see the package but not how it was paid. Like
+ * a booking's, the screenshot may show an account number and balance.
  */
 export async function GET(
   _req: Request,
@@ -22,7 +23,7 @@ export async function GET(
   if (!pkg?.paymentProofKey) {
     return NextResponse.json({ error: "not-found" }, { status: 404 });
   }
-  if (!accessForPackage(pkg, r.user).canView) {
+  if (!accessForPackage(pkg, r.user).canSeeProof) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 

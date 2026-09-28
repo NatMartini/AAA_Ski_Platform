@@ -114,6 +114,8 @@
     "availability": "Availability",
     "bookings": "Bookings",
     "packages": "Packages",
+    "students": "Students",
+    "stats": "Stats",
     "settings": "Settings",
     "newBooking": "Book for a student",
     "icsFeed": "Calendar subscription URL",

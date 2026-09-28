@@ -163,7 +163,7 @@ export const LEGAL_DOCS: Record<
         {
           heading: "Payment screenshots",
           paragraphs: [
-            "These often show a bank balance or account number. They are stored outside the public web root and are readable only by you and the instructor for that booking — never by anyone who simply has a link.",
+            "These often show a bank balance or account number. They are stored outside the public web root and are readable only by you and the instructor you paid — for a booking, its instructor; for a lesson package, the instructor you chose to pay — never by anyone who simply has a link.",
             "Please cover anything you would rather not share before uploading.",
           ],
         },
@@ -185,7 +185,9 @@ export const LEGAL_DOCS: Record<
         {
           heading: "Who we share it with",
           paragraphs: [
-            "Nobody. Your details are visible to you and to the instructor you booked with. There is no analytics, no advertising and no third-party tracking on this site.",
+            "Nobody outside the site's instructors. Your bookings, lesson-package hours and anything still owed are visible to you and to every instructor on the site, because a package bought from one instructor can be used with another and they keep track of it together.",
+            "Payment screenshots and signed waivers are narrower: only you and the instructor concerned can see them.",
+            "There is no visitor analytics, no advertising and no third-party tracking on this site.",
           ],
         },
         {
@@ -219,7 +221,7 @@ export const LEGAL_DOCS: Record<
         {
           heading: "付款截图",
           paragraphs: [
-            "付款截图常包含账户余额或账号。这些文件存放在网站公开目录之外,只有你本人和该订单的教练可以查看 —— 仅凭链接无法访问。",
+            "付款截图常包含账户余额或账号。这些文件存放在网站公开目录之外,只有你本人和你付款的教练可以查看(订单为该订单的教练,课时包为你选择付款的教练)—— 仅凭链接无法访问。",
             "上传前请遮挡你不希望被看到的信息。",
           ],
         },
@@ -241,7 +243,9 @@ export const LEGAL_DOCS: Record<
         {
           heading: "是否对外共享",
           paragraphs: [
-            "不共享。你的信息仅你本人与所约教练可见。本站没有任何分析统计、广告或第三方追踪。",
+            "不对本站教练以外的任何人共享。你的预约、课时包剩余课时和未结清金额,你本人和本站所有教练都能看到 —— 因为向一位教练购买的课时包可以跟另一位教练使用,需要教练们共同记账。",
+            "付款截图和已签署的免责协议范围更小:只有你本人和相关教练可以查看。",
+            "本站没有访客分析统计、广告或第三方追踪。",
           ],
         },
         {

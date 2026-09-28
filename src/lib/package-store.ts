@@ -73,7 +73,12 @@ export type PackageAccess = {
   isBuyer: boolean;
   /** The coach who was paid, or an admin. */
   isPayee: boolean;
+  /** The buyer or the coach who was paid: the two sides of the payment. */
+  isParty: boolean;
+  /** Hours, lessons and status. Any coach, since any coach can teach from it. */
   canView: boolean;
+  /** The payment screenshot, which may show bank details. Parties only. */
+  canSeeProof: boolean;
   canPay: boolean;
   canReview: boolean;
   canCancel: boolean;
@@ -84,8 +89,10 @@ export type PackageAccess = {
  * label read out over WeChat, never a secret: every request is authorised
  * against the row.
  *
- * Only the buyer and the coach they paid can see it. Other coaches see just
- * the lessons they teach from it, on those bookings.
+ * Every coach can read a package — its hours can be spent with any of them,
+ * so each needs to see what a student has left. Everything to do with the
+ * payment itself (the screenshot, paying, reviewing, cancelling) stays with
+ * the buyer and the coach they paid.
  */
 export function packageAccessFor(
   pkg: { accountId: string; payeeCoachId: string; status: PackageStatus },
@@ -96,16 +103,19 @@ export function packageAccessFor(
 ): PackageAccess {
   const isBuyer = pkg.accountId === user.id;
   const isPayee = pkg.payeeCoachId === user.id || user.role === "ADMIN";
-  const canView = isBuyer || isPayee;
+  const isParty = isBuyer || isPayee;
+  const isCoach = user.role === "COACH" || user.role === "ADMIN";
   return {
     isBuyer,
     isPayee,
-    canView,
+    isParty,
+    canView: isParty || isCoach,
+    canSeeProof: isParty,
     // The coach may also upload a screenshot the student sent over WeChat. A
     // rejected proof can always be replaced; the first one must arrive while
     // the early-bird price is still on offer.
     canPay:
-      canView &&
+      isParty &&
       (pkg.status === "PAYMENT_REJECTED" ||
         (pkg.status === "AWAITING_PAYMENT" && onSale)),
     canReview: isPayee && pkg.status === "PENDING_PAYMENT_REVIEW",

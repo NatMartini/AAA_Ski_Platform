@@ -139,6 +139,20 @@ with any coach, early bird only** — is an offer in `src/lib/packages.ts`.
 Packages come off sale after 1 December; an unpaid order can no longer be paid
 after that, though a rejected screenshot can always be replaced.
 
+### What coaches can see
+
+Because a package bought from one coach can be spent with another, the coaches
+keep one set of books. Every coach can open any package and sees, under
+**Students** (`/coach/students`), every student's package hours left, what that
+is worth, what they still owe and their lessons with either coach. **Stats**
+(`/coach/stats`) totals a season for the whole team: money received and
+outstanding, hours taught, packages sold and unused, split by coach, lesson type,
+resort, price and month. The definitions live in `src/lib/stats.ts`.
+
+The narrower things stay narrow: a payment screenshot is visible only to the
+student and the coach who was paid, and a booking page — with its screenshot
+and signed waiver — only to that booking's coach. The privacy notice says so.
+
 ### No double-booking
 
 The `booking_no_overlap` exclusion constraint makes an overlap impossible at

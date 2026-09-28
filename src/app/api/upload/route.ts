@@ -120,7 +120,7 @@ export async function POST(req: Request) {
       isOfferOnSale(pkg.offerKey, pkg.season, toDateKey(new Date())),
       false,
     );
-    if (!access.canView) {
+    if (!access.isParty) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 });
     }
     if (!access.canPay) {

@@ -10,6 +10,8 @@ const ITEMS = [
   { href: "/coach/availability", key: "availability" },
   { href: "/coach/bookings", key: "bookings" },
   { href: "/coach/packages", key: "packages" },
+  { href: "/coach/students", key: "students" },
+  { href: "/coach/stats", key: "stats" },
   { href: "/coach/settings", key: "settings" },
 ] as const;
 
