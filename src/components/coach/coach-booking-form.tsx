@@ -17,7 +17,6 @@ type Day = {
   resortName: string;
   /** Booking it now would be charged the early-bird rate. */
   earlyBird: boolean;
-  handoverDiscountCents: number;
   extraPersonCents: number;
   startOptions: { hour: number; durations: number[] }[];
 };
@@ -135,7 +134,6 @@ export function CoachBookingForm({
       ? quote({
           hours,
           hourlyRateCents: rate.hourlyRateCents,
-          handoverDiscountCents: day.handoverDiscountCents,
           headcount,
           extraPersonCents: day.extraPersonCents,
         })

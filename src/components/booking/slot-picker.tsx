@@ -28,7 +28,6 @@ type Day = {
   dateKey: string;
   /** Booking it now would be charged the early-bird rate. */
   earlyBird: boolean;
-  handoverDiscountCents: number;
   extraPersonCents: number;
   cells: Cell[];
   startOptions: { hour: number; durations: number[] }[];
@@ -88,7 +87,7 @@ const COPY = {
     review: "确认并预定",
     otherTimes: "想约其他时间?微信联系教练",
     handoverNote:
-      "开头 10 分钟用于与上一位学员交接,整点后 10 分开始上课、到整点结束,因此实际授课比预定时段少 10 分钟,因此每单有一次交接扣减。",
+      "开头 10 分钟用于与上一位学员交接,整点后 10 分开始上课、到整点结束,因此实际授课比预定时段少 10 分钟,因此每单减去这 10 分钟的课时费。",
     lessonRuns: "实际授课",
     minutes: "分钟",
     needParticipant: "请选择上课学员",
@@ -131,7 +130,7 @@ const COPY = {
     review: "Review and book",
     otherTimes: "Want a different time? Message the coach on WeChat",
     handoverNote:
-      "The first 10 minutes are the handover from the previous student, so the lesson starts at ten past and runs to the hour — 10 minutes shorter than the booked block, so each booking carries a handover credit.",
+      "The first 10 minutes are the handover from the previous student, so the lesson starts at ten past and runs to the hour — 10 minutes shorter than the booked block, so those ten minutes' fee is taken off each booking.",
     lessonRuns: "Lesson runs",
     minutes: "min",
     needParticipant: "Please choose who is taking the lesson",
@@ -157,6 +156,7 @@ export function SlotPicker({
   rates,
   earlyBirdActive,
   packages,
+  initialDateKey,
   days,
   participants: initialParticipants,
 }: {
@@ -177,6 +177,8 @@ export function SlotPicker({
   /** Early-bird prices are on offer to anyone booking today. */
   earlyBirdActive: boolean;
   packages: UsablePackage[];
+  /** A day to open on, e.g. from the calendar. Must be one of `days`. */
+  initialDateKey?: string;
   days: Day[];
   participants: Participant[];
 }) {
@@ -185,7 +187,7 @@ export function SlotPicker({
 
   const [participants, setParticipants] = useState(initialParticipants);
   const [lessonType, setLessonType] = useState(rates[0]?.lessonType ?? "");
-  const [dateKey, setDateKey] = useState("");
+  const [dateKey, setDateKey] = useState(initialDateKey ?? "");
   const [startHour, setStartHour] = useState<number | null>(null);
   const [hours, setHours] = useState<number>(minHours);
   const [headcount, setHeadcount] = useState(1);
@@ -209,7 +211,6 @@ export function SlotPicker({
       ? quote({
           hours,
           hourlyRateCents: rate.hourlyRateCents,
-          handoverDiscountCents: day.handoverDiscountCents,
           headcount,
           extraPersonCents: day.extraPersonCents,
         })

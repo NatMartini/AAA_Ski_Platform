@@ -28,7 +28,7 @@ export async function POST(
   if (!pkg) return NextResponse.json({ error: "not-found" }, { status: 404 });
 
   const access = accessForPackage(pkg, r.user);
-  if (!access.canView) {
+  if (!access.isParty) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   if (!access.canPay) {
@@ -45,11 +45,16 @@ export async function POST(
     );
   }
   const d = parsed.data;
+  // WeChat carries no screenshot: the coach confirms it in WeChat.
+  const proofKey = d.method === "WECHAT" ? null : (d.proofKey ?? null);
 
   // The key must be one this package's upload produced, or a caller could
   // point their order at somebody else's stored screenshot.
   const expectedPrefix = `${KEY_PREFIX.packageProof(pkg.id)}/`;
-  if (!d.proofKey.startsWith(expectedPrefix) || d.proofKey.includes("..")) {
+  if (
+    proofKey !== null &&
+    (!proofKey.startsWith(expectedPrefix) || proofKey.includes(".."))
+  ) {
     return NextResponse.json({ error: "invalid-proof-key" }, { status: 400 });
   }
 
@@ -67,7 +72,7 @@ export async function POST(
       return { kind: "invalid-state" } as const;
     }
     // A cleanup may have removed a stale upload; never point at a missing file.
-    if (!(await objectExists(d.proofKey))) {
+    if (proofKey !== null && !(await objectExists(proofKey))) {
       return { kind: "proof-not-found" } as const;
     }
     await tx.lessonPackage.update({
@@ -75,7 +80,7 @@ export async function POST(
       data: {
         status: "PENDING_PAYMENT_REVIEW",
         paymentMethod: d.method,
-        paymentProofKey: d.proofKey,
+        paymentProofKey: proofKey,
         paymentReference: d.reference?.trim() || null,
         paymentSubmittedAt: submittedAt,
         reviewNote: null,
@@ -93,7 +98,7 @@ export async function POST(
     return NextResponse.json({ error: "proof-not-found" }, { status: 400 });
   }
 
-  if (attached.previousProofKey && attached.previousProofKey !== d.proofKey) {
+  if (attached.previousProofKey && attached.previousProofKey !== proofKey) {
     await deletePaymentProofIfUnreferenced(attached.previousProofKey).catch(
       () => false,
     );

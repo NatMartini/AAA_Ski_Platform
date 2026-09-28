@@ -139,11 +139,10 @@ export default async function BookingPage({
               : undefined
           }
         />
-        {/* Only the buyer and the coach who was paid can open a package; the
-            coach teaching a lesson from someone else's package cannot. */}
+        {/* The buyer and every coach can open the package. */}
         {booking.package &&
           (access.isCustomer ||
-            booking.package.payeeCoachId === user.id ||
+            user.role === "COACH" ||
             user.role === "ADMIN") && (
           <Link
             href={`/packages/${booking.package.code}`}
@@ -242,7 +241,9 @@ export default async function BookingPage({
             color: "var(--pill-checking-fg)",
           }}
         >
-          {tp("awaitingReview")}
+          {tp(booking.paymentMethod === "WECHAT" && !booking.paymentProofKey
+            ? "awaitingWechat"
+            : "awaitingReview")}
         </p>
       )}
 
@@ -317,12 +318,15 @@ export default async function BookingPage({
         </Card>
       )}
 
-      {/* A package booking has no payment of its own to review. */}
-      {access.isCoach && booking.paymentPlan !== "PACKAGE" && (
+      {/* A package booking has no payment of its own to review. Another coach
+          sees the payment read-only: review and upload stay with this
+          booking's coach. */}
+      {access.isAnyCoach && booking.paymentPlan !== "PACKAGE" && (
         <CoachReviewPanel
           locale={loc}
           target={{ kind: "booking", code: booking.code }}
           confirmed={booking.status === "CONFIRMED"}
+          submitted={booking.status === "PENDING_PAYMENT_REVIEW"}
           hasProof={Boolean(booking.paymentProofKey)}
           proofUploadedBy={booking.proofUploadedBy}
           paymentMethod={booking.paymentMethod}

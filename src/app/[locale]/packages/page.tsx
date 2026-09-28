@@ -7,8 +7,8 @@ import { EarlyBirdTag } from "@/components/booking/price-breakdown";
 import { PackageBuyForm } from "@/components/packages/package-buy-form";
 import { PackageStatusPill } from "@/components/packages/package-status-pill";
 import { listBookableCoaches } from "@/lib/coach";
-import { hoursUsed, offerLabel, offersOnSale } from "@/lib/packages";
-import { packageInclude } from "@/lib/package-store";
+import { offerLabel, offersOnSale, packageTotalHours } from "@/lib/packages";
+import { hoursLeft, packageInclude } from "@/lib/package-store";
 import { lessonTypeLabel } from "@/lib/lesson-types";
 import { formatMoneyShort } from "@/lib/pricing";
 import { formatTorontoDate, toDateKey } from "@/lib/time";
@@ -80,12 +80,12 @@ export default async function PackagesPage({
               <ul className="list-inside list-disc space-y-1 text-sm text-ink-2">
                 {(zh
                   ? [
-                      "可跟任意教练上课,每次预约时可以选不同的教练。",
+                      "买哪位教练的课时包,就只能约这位教练上课。",
                       "可以拆开用,例如 2 小时 + 2 小时;每次预约最少 2 小时。",
                       `仅限 ${sale.season} 雪季内使用;付款截图需在 ${lastDay} 前提交。`,
                     ]
                   : [
-                      "Book any coach — a different one each time if you like.",
+                      "A package books lessons only with the coach you bought it from.",
                       "Split it up, say 2 hours + 2 hours; each booking is at least 2 hours.",
                       `For lessons in the ${sale.season} season; send the payment screenshot by ${lastDay}.`,
                     ]
@@ -121,7 +121,8 @@ export default async function PackagesPage({
         ) : (
           <div className="space-y-2">
             {mine.map((p) => {
-              const left = p.hours - hoursUsed(p.bookings, now);
+              const left = p.status === "ACTIVE" ? hoursLeft(p, now) : 0;
+              const total = packageTotalHours(p);
               return (
                 <Link
                   key={p.id}
@@ -135,8 +136,8 @@ export default async function PackagesPage({
                     </div>
                     <p className="text-sm text-ink-2" data-numeric>
                       {zh
-                        ? `剩余 ${left} / ${p.hours} 小时 · 付给 ${p.payeeCoach.name ?? p.payeeCoach.email}`
-                        : `${left} of ${p.hours} hours left · paid to ${p.payeeCoach.name ?? p.payeeCoach.email}`}
+                        ? `剩余 ${left} / ${total} 小时 · 教练 ${p.payeeCoach.name ?? p.payeeCoach.email}`
+                        : `${left} of ${total} hours left · coach ${p.payeeCoach.name ?? p.payeeCoach.email}`}
                     </p>
                     <p className="font-mono text-xs text-ink-3">
                       {p.code} · {formatMoneyShort(p.priceCents)}

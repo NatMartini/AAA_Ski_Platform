@@ -137,7 +137,6 @@ async function main() {
       csiaParkLevel: 1,
       teachableLevels: ["first_time", "beginner", "intermediate", "advanced"],
       teachableSkills: DEMO_SKILLS,
-      handoverDiscountCents: 1000,
       extraPersonCents: 2000,
     },
     create: {
@@ -145,7 +144,6 @@ async function main() {
       displayName: "Kevin",
       bioEn: "CSIA-certified. Teaches all levels, patient with first-timers.",
       bioZh: "CSIA 认证教练,各水平均可教学,对初学者尤其耐心。",
-      handoverDiscountCents: 1000,
       extraPersonCents: 2000,
       csiaLevel: 2,
       csiaParkLevel: 1,
@@ -176,7 +174,7 @@ async function main() {
   });
   await setRates(kevinProfile.id, PRICE_SHEET.kevin);
 
-  // ── Second coach, so a package can be spent with "any coach" ──
+  // ── Second coach, so there is a choice of whose package to buy ──
   const alisa = await prisma.user.upsert({
     where: { email: SECOND_COACH_EMAIL },
     update: { role: "COACH", name: "Alisa" },
@@ -191,7 +189,6 @@ async function main() {
     where: { userId: alisa.id },
     update: {
       teachableLevels: ["first_time", "beginner", "intermediate"],
-      handoverDiscountCents: 1000,
       extraPersonCents: 2000,
     },
     create: {
@@ -199,7 +196,6 @@ async function main() {
       displayName: "Alisa",
       bioEn: "Patient and methodical; great with first-timers and kids.",
       bioZh: "耐心细致,特别擅长带第一次滑雪的学员和小朋友。",
-      handoverDiscountCents: 1000,
       extraPersonCents: 2000,
       csiaLevel: 1,
       teachableLevels: ["first_time", "beginner", "intermediate"],

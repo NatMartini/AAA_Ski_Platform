@@ -15,6 +15,7 @@ import { isEarlyBird, rateFor } from "../rates";
 import {
   checkPackageUse,
   hoursUsed,
+  packageTotalHours,
   packageValueCents,
   PACKAGE_CONSUMING_STATUSES,
   type PackageUseRefusal,
@@ -159,7 +160,6 @@ export async function createBooking(
   const priced = quote({
     hours: input.hours,
     hourlyRateCents: rate.hourlyRateCents,
-    handoverDiscountCents: profile.handoverDiscountCents,
     headcount,
     extraPersonCents: profile.extraPersonCents,
   });
@@ -204,6 +204,7 @@ export async function createBooking(
         ? await claimPackageHours(tx, {
             packageId: input.packageId!,
             accountId: input.account!.id,
+            coachId: input.coachId,
             resortId: day.resortId,
             lessonType: input.lessonType,
             season: seasonOfDateKey(input.dateKey),
@@ -386,6 +387,7 @@ async function claimPackageHours(
   want: {
     packageId: string;
     accountId: string;
+    coachId: string;
     resortId: string;
     lessonType: string;
     season: string | null;
@@ -404,6 +406,7 @@ async function claimPackageHours(
         where: { status: { in: PACKAGE_CONSUMING_STATUSES } },
         select: { hours: true, status: true, holdExpiresAt: true },
       },
+      adjustments: { select: { hours: true } },
     },
   });
   // Someone else's package id looks exactly like a missing one.
@@ -412,7 +415,11 @@ async function claimPackageHours(
   }
 
   const check = checkPackageUse(
-    { ...pkg, hoursUsed: hoursUsed(pkg.bookings, want.now) },
+    {
+      ...pkg,
+      hours: packageTotalHours(pkg),
+      hoursUsed: hoursUsed(pkg.bookings, want.now),
+    },
     want,
   );
   if (!check.ok) throw new PackageRefused(check.reason);

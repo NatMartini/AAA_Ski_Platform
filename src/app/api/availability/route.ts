@@ -33,7 +33,6 @@ export async function GET(req: Request) {
       dateKey: day.dateKey,
       resort: day.resort,
       earlyBird: day.earlyBird,
-      handoverDiscountCents: day.handoverDiscountCents,
       cells: day.cells.map((cell) => ({
         hour: cell.hour,
         status: cell.status,

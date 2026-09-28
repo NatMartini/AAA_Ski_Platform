@@ -14,8 +14,10 @@ import { usablePackages } from "@/lib/package-store";
 
 export default async function PickSlotPage({
   params,
+  searchParams,
 }: PageProps<"/[locale]/book/[resort]/[coach]">) {
   const { locale, resort: resortSlug, coach: coachId } = await params;
+  const { date: askedDate } = await searchParams;
   setRequestLocale(locale);
 
   const user = await requireUserPage({
@@ -43,17 +45,28 @@ export default async function PickSlotPage({
     to: horizon.to,
   });
 
-  // Only this resort's days; a coach is at one resort per day.
-  const forResort = days.filter((d) => d.resort.slug === resortSlug);
+  // Only this resort's days; a coach is at one resort per day. A day with no
+  // start time left (fully booked, or already past) is left off entirely, so
+  // the calendar only offers days that can still be booked.
+  const forResort = days.filter(
+    (d) => d.resort.slug === resortSlug && d.startOptions.length > 0,
+  );
 
   const [participants, packages] = await Promise.all([
     prisma.participant.findMany({
       where: { accountId: user.id, archivedAt: null },
       orderBy: [{ isSelf: "desc" }, { fullName: "asc" }],
     }),
-    // "Any coach": a package bought from one coach is spendable with this one.
-    usablePackages(user.id, resort.id),
+    // Only packages bought from this coach can pay for a lesson with them.
+    usablePackages(user.id, coachId, resort.id),
   ]);
+
+  // The calendar links here with ?date= so the day arrives picked.
+  const initialDateKey =
+    typeof askedDate === "string" &&
+    forResort.some((d) => d.dateKey === askedDate)
+      ? askedDate
+      : undefined;
 
   return (
     <SlotPicker
@@ -82,10 +95,10 @@ export default async function PickSlotPage({
       }))}
       earlyBirdActive={earlyBirdWindow(today).active}
       packages={packages}
+      initialDateKey={initialDateKey}
       days={forResort.map((day) => ({
         dateKey: day.dateKey,
         earlyBird: day.earlyBird,
-        handoverDiscountCents: day.handoverDiscountCents,
         extraPersonCents: day.extraPersonCents,
         cells: day.cells.map((c) => ({
           hour: c.hour,

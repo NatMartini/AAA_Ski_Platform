@@ -42,7 +42,6 @@ export default async function CoachSettingsPage({
           regularCents: r.regularCents,
           earlyBirdCents: r.earlyBirdCents,
         })),
-        handoverDiscountCents: profile.handoverDiscountCents,
         extraPersonCents: profile.extraPersonCents,
         maxGroupSize: profile.maxGroupSize,
         minHours: profile.minHours,

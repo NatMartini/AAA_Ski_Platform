@@ -91,15 +91,15 @@ export default async function PricesPage({
                   </strong>{" "}
                   / {offer.hours} {zh ? "小时" : "hours"} ·{" "}
                   {lessonTypeLabel(offer.lessonType, loc)} ·{" "}
-                  {zh ? "任意教练" : "any coach"}
+                  {zh ? "每位教练各自出售" : "from either coach"}
                 </p>
               </div>
               {onSale && <EarlyBirdTag label={zh ? "早鸟专享" : "Early bird only"} />}
             </div>
             <CardDescription>
               {zh
-                ? `先买 ${offer.hours} 小时,之后在${resortName(offer.resortSlug)}约${lessonTypeLabel(offer.lessonType, "zh")}时直接抵扣,可拆开用(例如 2 小时 + 2 小时),每次可选不同教练。`
-                : `Buy ${offer.hours} hours up front and spend them on ${lessonTypeLabel(offer.lessonType, "en").toLowerCase()}s at ${resortName(offer.resortSlug)} — split them up (say 2 + 2 hours) and book any coach each time.`}
+                ? `先买 ${offer.hours} 小时,之后在${resortName(offer.resortSlug)}约${lessonTypeLabel(offer.lessonType, "zh")}时直接抵扣,可拆开用(例如 2 小时 + 2 小时)。买哪位教练的,就只能约这位教练。`
+                : `Buy ${offer.hours} hours up front and spend them on ${lessonTypeLabel(offer.lessonType, "en").toLowerCase()}s at ${resortName(offer.resortSlug)} — split them up, say 2 + 2 hours. A package is bought from one coach and books only with them.`}
             </CardDescription>
             {onSale ? (
               <Button asChild className="self-start">
@@ -176,8 +176,8 @@ export default async function PricesPage({
             </table>
             <p className="text-xs leading-relaxed text-ink-3" data-numeric>
               {zh
-                ? `${coach.minHours} 小时起约 · 每单交接扣减 ${formatMoneyShort(coach.handoverDiscountCents)} · 多人课每加一人每小时 +${formatMoneyShort(coach.extraPersonCents)}`
-                : `${coach.minHours}h minimum · ${formatMoneyShort(coach.handoverDiscountCents)} handover credit per booking · +${formatMoneyShort(coach.extraPersonCents)}/h per extra student`}
+                ? `${coach.minHours} 小时起约 · 多人课每加一人每小时 +${formatMoneyShort(coach.extraPersonCents)}`
+                : `${coach.minHours}h minimum · +${formatMoneyShort(coach.extraPersonCents)}/h per extra student`}
             </p>
           </Card>
         ))}
@@ -192,14 +192,14 @@ export default async function PricesPage({
                 `早鸟价于 ${lastDay} 截止,以下单日期为准。`,
                 "付款方式:Interac e-Transfer、微信。",
                 "以上均为最终价,不另加税。",
-                "预约按整点计,开头 10 分钟为交接时间:整点后 10 分开始上课、到整点结束,因此每单减一次交接扣减。",
+                "预约按整点计,开课时间是整点后 10 分钟、到整点结束;开头这 10 分钟的课时费会从每单中减去(按该课小时价计算,例如 $60/小时减 $10)。",
               ]
             : [
                 "All prices are one-on-one. Each extra student in a group lesson adds a per-hour amount, shown for each coach; message your coach on WeChat to arrange a group.",
                 `Early-bird prices end on ${lastDay}, going by the day you book.`,
                 "Pay by Interac e-Transfer or WeChat.",
                 "All prices are final: no tax is added.",
-                "Bookings are on the hour and the first 10 minutes are the handover, so a lesson runs from ten past to the hour and every booking carries a handover credit.",
+                "Bookings are on the hour; the lesson starts ten minutes past and runs to the hour, and those ten minutes' fee is taken off every booking at its hourly rate ($10 at $60/h).",
               ]
           ).map((tip) => (
             <li key={tip}>{tip}</li>

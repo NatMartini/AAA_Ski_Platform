@@ -1,7 +1,7 @@
 import type { BookingStatus, PackageStatus, PaymentPlan } from "@prisma/client";
 import { OCCUPYING_STATUSES } from "./booking/state";
 import { isSelfServeHoldExpired } from "./booking/hold";
-import { hoursUsed, packageValueCents } from "./packages";
+import { hoursUsed, packageTotalHours, packageValueCents } from "./packages";
 import { parseSeasonStartYear, seasonOf, type Season } from "./season";
 import { toDateKey } from "./time";
 
@@ -9,11 +9,6 @@ import { toDateKey } from "./time";
  * Figures for the coach area: what each student has left and still owes, and
  * how a season went. Pure functions over rows the pages load, so the rules
  * are unit-tested and every page agrees on them.
- *
- * A coach sees only their own business — their bookings and the packages
- * paid to them — so callers pass just those rows. The one exception is
- * package hours left, which every coach sees for every student, because any
- * coach can be booked with those hours.
  *
  * Shared definitions:
  *
@@ -64,6 +59,8 @@ export type StatPackage = {
   season: string;
   hours: number;
   priceCents: number;
+  /** A coach's changes to the hours, signed. */
+  adjustments: { hours: number }[];
   /** Bookings spending this package, in any status. */
   bookings: {
     coachId: string;
@@ -93,14 +90,17 @@ function owedOn(b: StatBooking, now: Date): number {
 
 function packageHoursLeft(p: StatPackage, now: Date): number {
   if (p.status !== "ACTIVE") return 0;
-  return Math.max(0, p.hours - hoursUsed(p.bookings, now));
+  return Math.max(0, packageTotalHours(p) - hoursUsed(p.bookings, now));
 }
 
 // ───────────────────────────── Students ─────────────────────────────
 
-/** One student's figures, from whichever rows the caller passed in. */
 export type StudentBalance = {
   accountId: string;
+  /** Unused hours across paid-up packages. */
+  packageHoursLeft: number;
+  /** Those hours at each package's price per hour. */
+  packageValueLeftCents: number;
   /** What live orders still need from this student. */
   owedCents: number;
   /** Money confirmed as received from this student. */
@@ -114,13 +114,14 @@ export type StudentBalance = {
   lastLessonAt: Date | null;
   /** Everyone this account has booked for, most recent first. */
   participantNames: string[];
+  /** Coach ids this student has had lessons with. */
+  coachIds: string[];
 };
 
 /**
- * One line per student account that appears in `bookings` or `packages`.
- * Bookings a coach made for someone who has not signed in yet have no
- * account and are left out; they appear once the student uses the signing
- * link.
+ * One line per student account, from their bookings and packages. Bookings a
+ * coach made for someone who has not signed in yet have no account and are
+ * left out; they appear once the student uses the signing link.
  */
 export function studentBalances(
   bookings: StatBooking[],
@@ -133,6 +134,8 @@ export function studentBalances(
     if (!s) {
       s = {
         accountId,
+        packageHoursLeft: 0,
+        packageValueLeftCents: 0,
         owedCents: 0,
         paidCents: 0,
         lessonCount: 0,
@@ -141,6 +144,7 @@ export function studentBalances(
         nextLessonAt: null,
         lastLessonAt: null,
         participantNames: [],
+        coachIds: [],
       };
       byAccount.set(accountId, s);
     }
@@ -160,6 +164,7 @@ export function studentBalances(
     }
     if (!isLesson(b)) continue;
     s.lessonCount++;
+    if (!s.coachIds.includes(b.coachId)) s.coachIds.push(b.coachId);
     if (b.endAt <= now) {
       s.hoursTaken += b.hours;
       if (!s.lastLessonAt || b.startAt > s.lastLessonAt) s.lastLessonAt = b.startAt;
@@ -173,29 +178,28 @@ export function studentBalances(
     const s = get(p.accountId);
     if (p.status === "ACTIVE") s.paidCents += p.priceCents;
     if (UNPAID_PACKAGE_STATUSES.includes(p.status)) s.owedCents += p.priceCents;
+    const left = packageHoursLeft(p, now);
+    s.packageHoursLeft += left;
+    s.packageValueLeftCents += packageValueCents(p, left);
   }
 
   return [...byAccount.values()];
 }
 
-/**
- * Unused package hours per student account, across every paid-up package
- * whoever was paid for it. Hours only: what the package cost, and where its
- * other hours went, stay with the coach who sold it.
- */
-export function packageHoursLeftByAccount(
-  packages: StatPackage[],
-  now: Date,
-): Map<string, number> {
-  const out = new Map<string, number>();
-  for (const p of packages) {
-    const left = packageHoursLeft(p, now);
-    if (left > 0) out.set(p.accountId, (out.get(p.accountId) ?? 0) + left);
-  }
-  return out;
-}
-
 // ───────────────────────────── Season ─────────────────────────────
+
+export type CoachLine = {
+  coachId: string;
+  lessonCount: number;
+  hours: number;
+  /** Of those hours, how many were paid from a package. */
+  packageHours: number;
+  /** Money received on this coach's bookings. */
+  lessonReceivedCents: number;
+  /** Packages this coach was paid for. */
+  packageReceivedCents: number;
+  owedCents: number;
+};
 
 export type Breakdown = {
   key: string;
@@ -207,8 +211,8 @@ export type Breakdown = {
 export type MonthLine = {
   /** "2026-12" */
   month: string;
-  /** Lesson hours that month. */
-  hours: number;
+  /** Lesson hours per coach id. */
+  hoursByCoach: Record<string, number>;
 };
 
 export type SeasonStats = {
@@ -219,7 +223,7 @@ export type SeasonStats = {
   studentCount: number;
   receivedCents: number;
   owedCents: number;
-  /** Proofs uploaded that have not been checked yet, bookings and packages. */
+  /** Proofs uploaded that a coach has not checked yet, bookings and packages. */
   awaitingReviewCents: number;
   packagesSold: number;
   packageReceivedCents: number;
@@ -229,6 +233,7 @@ export type SeasonStats = {
   earlyBirdHours: number;
   regularHours: number;
   packageHours: number;
+  byCoach: CoachLine[];
   byLessonType: Breakdown[];
   byResort: Breakdown[];
   months: MonthLine[];
@@ -244,14 +249,15 @@ export function seasonMonths(season: Season): string[] {
 }
 
 /**
- * A season at a glance, over the rows passed in — for the stats page, one
- * coach's bookings and the packages paid to that coach. Bookings count when
- * their lesson falls in the season; packages when they were sold for it.
+ * A season at a glance. Bookings are those whose lesson falls in the season;
+ * packages are those sold for it. `coachIds` fixes the coach order, so each
+ * coach keeps the same line and colour whatever the numbers do.
  */
 export function seasonStats(input: {
   season: Season;
   bookings: StatBooking[];
   packages: StatPackage[];
+  coachIds: string[];
   now: Date;
 }): SeasonStats {
   const { season, now } = input;
@@ -259,9 +265,40 @@ export function seasonStats(input: {
   const packages = input.packages.filter((p) => p.season === season);
   const lessons = bookings.filter(isLesson);
 
-  const breakdown = (keyOf: (b: StatBooking) => string) => {
+  const coachLines = new Map<string, CoachLine>(
+    input.coachIds.map((coachId) => [
+      coachId,
+      {
+        coachId,
+        lessonCount: 0,
+        hours: 0,
+        packageHours: 0,
+        lessonReceivedCents: 0,
+        packageReceivedCents: 0,
+        owedCents: 0,
+      },
+    ]),
+  );
+  const coachLine = (coachId: string) => {
+    let line = coachLines.get(coachId);
+    if (!line) {
+      line = {
+        coachId,
+        lessonCount: 0,
+        hours: 0,
+        packageHours: 0,
+        lessonReceivedCents: 0,
+        packageReceivedCents: 0,
+        owedCents: 0,
+      };
+      coachLines.set(coachId, line);
+    }
+    return line;
+  };
+
+  const breakdown = (rows: StatBooking[], keyOf: (b: StatBooking) => string) => {
     const out = new Map<string, Breakdown>();
-    for (const b of bookings) {
+    for (const b of rows) {
       const key = keyOf(b);
       const line =
         out.get(key) ?? { key, lessonCount: 0, hours: 0, receivedCents: 0 };
@@ -278,7 +315,13 @@ export function seasonStats(input: {
   };
 
   const months = new Map<string, MonthLine>(
-    seasonMonths(season).map((month) => [month, { month, hours: 0 }]),
+    seasonMonths(season).map((month) => [
+      month,
+      {
+        month,
+        hoursByCoach: Object.fromEntries(input.coachIds.map((id) => [id, 0])),
+      },
+    ]),
   );
 
   let hoursTaught = 0;
@@ -295,12 +338,24 @@ export function seasonStats(input: {
     else if (b.earlyBird) earlyBirdHours += b.hours;
     else regularHours += b.hours;
     students.add(b.accountId ?? `booking:${b.code}`);
+
+    const line = coachLine(b.coachId);
+    line.lessonCount++;
+    line.hours += b.hours;
+    if (b.paymentPlan === "PACKAGE") line.packageHours += b.hours;
+
     const month = months.get(toDateKey(b.startAt).slice(0, 7));
-    if (month) month.hours += b.hours;
+    if (month) {
+      month.hoursByCoach[b.coachId] =
+        (month.hoursByCoach[b.coachId] ?? 0) + b.hours;
+    }
   }
 
   let awaitingReviewCents = 0;
   for (const b of bookings) {
+    const line = coachLine(b.coachId);
+    line.lessonReceivedCents += receivedOn(b);
+    line.owedCents += owedOn(b, now);
     if (b.status === "PENDING_PAYMENT_REVIEW") {
       awaitingReviewCents += Math.max(0, b.totalCents - b.amountPaidCents);
     }
@@ -315,14 +370,19 @@ export function seasonStats(input: {
     if (p.status === "ACTIVE") {
       packagesSold++;
       packageReceivedCents += p.priceCents;
+      coachLine(p.payeeCoachId).packageReceivedCents += p.priceCents;
     }
-    if (UNPAID_PACKAGE_STATUSES.includes(p.status)) packageOwedCents += p.priceCents;
+    if (UNPAID_PACKAGE_STATUSES.includes(p.status)) {
+      packageOwedCents += p.priceCents;
+      coachLine(p.payeeCoachId).owedCents += p.priceCents;
+    }
     if (p.status === "PENDING_PAYMENT_REVIEW") awaitingReviewCents += p.priceCents;
     const left = packageHoursLeft(p, now);
     packageHoursLeftTotal += left;
     packageValueLeftCents += packageValueCents(p, left);
   }
 
+  const byCoach = [...coachLines.values()];
   return {
     season,
     lessonCount: lessons.length,
@@ -330,7 +390,8 @@ export function seasonStats(input: {
     hoursScheduled,
     studentCount: students.size,
     receivedCents:
-      bookings.reduce((sum, b) => sum + receivedOn(b), 0) + packageReceivedCents,
+      byCoach.reduce((sum, l) => sum + l.lessonReceivedCents, 0) +
+      packageReceivedCents,
     owedCents:
       bookings.reduce((sum, b) => sum + owedOn(b, now), 0) + packageOwedCents,
     awaitingReviewCents,
@@ -341,8 +402,9 @@ export function seasonStats(input: {
     earlyBirdHours,
     regularHours,
     packageHours,
-    byLessonType: breakdown((b) => b.lessonType),
-    byResort: breakdown((b) => b.resortId),
+    byCoach,
+    byLessonType: breakdown(bookings, (b) => b.lessonType),
+    byResort: breakdown(bookings, (b) => b.resortId),
     months: [...months.values()],
   };
 }

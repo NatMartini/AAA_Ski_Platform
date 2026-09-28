@@ -5,14 +5,15 @@ import { addMinutes } from "./time";
  * handover from the previous student, so the lesson starts ten past and runs
  * to the end of the hour. A 1:00-3:00 booking is taught 1:10-3:00.
  *
- * Those ten minutes are credited back as a single flat discount per booking —
- * not per hour — because the handover only happens once no matter how long the
- * lesson is. $60/h for 2h is $120, less $10, so $110.
+ * The fee for those ten minutes is taken off the price — once per booking,
+ * not per hour, because the handover only happens once no matter how long the
+ * lesson is. It is ten minutes at the booked hourly rate: $60/h for 2h is
+ * $120 less $10, so $110; at $70/h the credit is $11.67.
  *
  * Group lessons: the per-hour rate rises by a fixed amount for each additional
  * student. With a $60 base and a $20 per-extra-person rate, one-on-one is
- * $60/h, one-on-two $80/h, one-on-three $100/h. The handover credit is still
- * deducted once per booking, not per person.
+ * $60/h, one-on-two $80/h, one-on-three $100/h. The handover credit is ten
+ * minutes at that group rate, still once per booking.
  *
  * Which base rate applies — lesson type, early bird or regular — is decided in
  * rates.ts. No tax is calculated or displayed anywhere: the published prices
@@ -48,6 +49,14 @@ export type Quote = {
   lessonMinutes: number;
 };
 
+/**
+ * The handover credit: the fee for the ten minutes not taught, at the
+ * effective hourly rate, rounded to the cent.
+ */
+export function handoverCreditCents(perHourCents: number): number {
+  return Math.round((perHourCents * HANDOVER_TOTAL_MINUTES) / 60);
+}
+
 /** Effective per-hour rate for a group of `headcount` students. */
 export function perHourRateCents(
   hourlyRateCents: number,
@@ -60,26 +69,16 @@ export function perHourRateCents(
 export function quote(input: {
   hours: number;
   hourlyRateCents: number;
-  handoverDiscountCents: number;
   headcount?: number;
   extraPersonCents?: number;
 }): Quote {
-  const {
-    hours,
-    hourlyRateCents,
-    handoverDiscountCents,
-    headcount = 1,
-    extraPersonCents = 0,
-  } = input;
+  const { hours, hourlyRateCents, headcount = 1, extraPersonCents = 0 } = input;
 
   if (!Number.isInteger(hours) || hours <= 0) {
     throw new Error(`hours must be a positive integer, got ${hours}`);
   }
   if (!Number.isInteger(hourlyRateCents) || hourlyRateCents < 0) {
     throw new Error(`hourlyRateCents must be a non-negative integer`);
-  }
-  if (!Number.isInteger(handoverDiscountCents) || handoverDiscountCents < 0) {
-    throw new Error(`handoverDiscountCents must be a non-negative integer`);
   }
   if (!Number.isInteger(headcount) || headcount < 1) {
     throw new Error(`headcount must be a positive integer, got ${headcount}`);
@@ -94,8 +93,8 @@ export function quote(input: {
     extraPersonCents,
   );
   const subtotalCents = hours * perHourCents;
-  // Clamp so a misconfigured discount can never produce a negative total.
-  const discount = Math.min(handoverDiscountCents, subtotalCents);
+  // Ten minutes can never cost more than the lesson, but clamp regardless.
+  const discount = Math.min(handoverCreditCents(perHourCents), subtotalCents);
 
   return {
     hours,

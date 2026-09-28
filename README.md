@@ -1,10 +1,11 @@
 # AAA Ski Platform
 
 A private booking site for ski and snowboard lessons. Students pick a resort, a
-coach, a lesson type and a time; sign a liability waiver; pay by e-Transfer,
-WeChat Pay or Alipay and upload a screenshot — or spend hours from a prepaid
-lesson package. Coaches manage their availability and prices, confirm payments,
-and subscribe to their schedule from Google Calendar.
+coach, a lesson type and a time; sign a liability waiver; pay by e-Transfer or
+Alipay (screenshot plus reference) or by WeChat Pay (the coach confirms it) — or
+spend hours from a prepaid lesson package. A shared calendar shows when every
+coach is teaching. Coaches manage their availability and prices, confirm
+payments, and subscribe to their schedule from Google Calendar.
 
 **This site is deliberately not public.** It is handed out as a link in a group
 chat. Every page requires sign-in, nothing is indexable, and a signed-out
@@ -97,15 +98,19 @@ A booking is on the hour with a two-hour minimum. The first ten minutes are the
 coach's handover from the previous student, so the lesson starts at ten past and
 runs to the hour: a 1:00–3:00 booking is taught 1:10–3:00.
 
-Those ten minutes are credited back **once per booking, not per hour**, because
-the handover happens once however long the lesson is:
+Those ten minutes are not charged: **the booking's hourly rate × 10/60 comes off,
+once per booking**, because the handover happens once however long the lesson
+is (`handoverCreditCents` in `src/lib/pricing.ts`). The payment page says so in
+a callout above the amount — start time, end time, and what was taken off.
 
 ```
 Ski lesson · early bird
-$60.00 / hour × 2 hours     $120.00
-Handover credit             −$10.00
-Total (CAD)                 $110.00
+$60.00 / hour × 2 hours          $120.00
+Less the first 10 minutes' fee   −$10.00
+Total (CAD)                      $110.00
 ```
+
+At $70 an hour the ten minutes are $11.67; at $80, $13.33.
 
 A group adds the coach's per-extra-student surcharge ($20/h by default) to the
 base rate, though multi-person booking stays closed until every attendee can
@@ -119,42 +124,67 @@ displayed anywhere.
 
 ### Lesson packages
 
-The price sheet's Blue Mountain package — **four hours of ski lessons for $180,
-with any coach, early bird only** — is an offer in `src/lib/packages.ts`.
+The price sheet's Blue Mountain package — **four hours of ski lessons for
+$180, early bird only** — is an offer in `src/lib/packages.ts`.
 
-- The student orders it on `/packages` and **chooses which coach to pay**. That
-  coach confirms the screenshot, exactly like a booking payment; money still goes
-  straight to a coach and the platform never holds it.
+- The student orders it on `/packages` and **chooses which coach it is from**.
+  That coach is paid and confirms the payment, exactly like a booking payment;
+  money goes straight to them and the platform never holds it.
 - Once confirmed, the hours can be spent on ski lessons at that resort in that
-  season with **any** coach, in bookings of at least two hours. A package pays
-  for a whole booking or none of it, and nothing is owed on that booking; after
-  the waiver it is confirmed directly.
-- Hours left are never stored. They are derived from the bookings that point at
-  the package, so an expired or cancelled booking hands its hours back. Booking
-  takes a row lock on the package, so two requests cannot spend the same hours
-  (`npm run check:flow` proves it).
-- When Alisa teaches hours Kevin was paid for, `/coach/packages` shows who owes
-  whom at the package's price per hour ($45).
+  season **with that coach only**, in bookings of at least two hours. A package
+  pays for a whole booking or none of it, and nothing is owed on that booking;
+  after the waiver it is confirmed directly.
+- The coach can **add or take away hours** on the package page, with a reason
+  (`PackageAdjustment`). The student sees every adjustment, and hours can never
+  be taken below what is already booked.
+- Hours left are never stored: hours bought plus adjustments, minus the
+  bookings that point at the package, so an expired or cancelled booking hands
+  its hours back. Booking and adjusting both take a row lock on the package, so
+  two requests cannot spend the same hours (`npm run check:flow` proves it).
 
 Packages come off sale after 1 December; an unpaid order can no longer be paid
 after that, though a rejected screenshot can always be replaced.
 
+### Payment proof
+
+- **e-Transfer and Alipay** need both a screenshot and the transfer reference
+  (the e-Transfer reference number or the Alipay transaction number). The
+  submit button stays disabled until both are there, and the API refuses one
+  without the other (`paymentProofSchema` in `src/lib/validators.ts`).
+- **WeChat Pay** needs nothing attached. The student presses "I have paid by
+  WeChat", and the coach confirms once the money shows up in WeChat. A coach
+  who was paid over WeChat outside the site can press "Received the student's
+  WeChat payment" to record and confirm it in one step.
+- A coach can still upload a screenshot on a student's behalf; the reference is
+  required there too.
+
+### Calendar
+
+`/calendar` is one week of every coach's days on a shared time axis: which
+resort, the day's hours, each lesson (drawn from ten past), lunch, and the time
+still bookable. Every signed-in user can see it. Coaches see the student,
+lesson type and status of every lesson; a student sees their own lessons and
+everyone else's only as "booked", without a name. "Book this day" opens the
+booking page with that day picked.
+
+The booking page itself only offers what can actually be booked: a day with no
+start time left (fully booked or past) is not in the date picker at all, and a
+day shows only the start times a full lesson fits into.
+
 ### What coaches can see
 
-Each coach sees their own business and nothing of another coach's: their own
-bookings, and the packages paid to them. The single exception is **package
-hours left** — under **Students** (`/coach/students`) every coach sees every
-student's unused hours, because any coach can be booked with them. Money,
-lessons, contact details and who a student books for come only from that
-coach's own bookings and packages.
+The site is run by two coaches who keep one set of books, so **everything is
+open between coaches**: every booking and package (payment screenshots and
+waivers included), every student and their hours left, and one set of season
+stats. `/coach/bookings` defaults to your own and has an "all coaches" view.
 
-A package page opens only for the buyer and the coach who was paid. That
-coach sees their own lessons from it in full and another coach's use only as
-hours per coach, which is what settling up needs.
+Acting stays with the people involved: only a booking's coach reviews its
+payment, settles the balance or cancels it, and only the coach a package was
+bought from confirms its payment, cancels it or adjusts its hours.
 
-**Stats** (`/coach/stats`) totals a season for the coach looking at it: money
-received and outstanding, hours taught and booked, lessons and students,
-packages they sold and those packages' unused hours, by lesson type, resort,
+**Stats** (`/coach/stats`) totals a season across all coaches, with a
+per-coach split: money received and outstanding, hours taught and booked,
+lessons and students, package hours sold and unused, by lesson type, resort,
 price and month. The definitions live in `src/lib/stats.ts`.
 
 ---

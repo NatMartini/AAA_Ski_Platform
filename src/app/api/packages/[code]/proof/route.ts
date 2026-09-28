@@ -7,8 +7,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Streams a package payment screenshot to the buyer or the coach they paid —
- * nobody else. Like a booking's, it may show an account number and balance.
+ * Streams a package payment screenshot to the buyer and the coaches. Like a
+ * booking's, it may show an account number and balance, so nobody else.
  */
 export async function GET(
   _req: Request,

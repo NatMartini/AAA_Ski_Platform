@@ -161,7 +161,7 @@ export function renderDisclosureText(
               ]
             : []),
           `  ${formatMoneyShort(p.perHourCents ?? p.hourlyRateCents)} ${zh ? "/ 小时 ×" : "/ hour ×"} ${snapshot.lesson.hours} ${zh ? "小时" : "hours"}${p.earlyBird ? (zh ? "(早鸟价)" : " (early bird)") : ""} = ${formatMoneyShort(p.subtotalCents)}`,
-          `  ${zh ? "交接扣减(每单 10 分钟)" : "Handover credit (10 min per booking)"} = -${formatMoneyShort(p.handoverDiscountCents)}`,
+          `  ${zh ? "减去开头 10 分钟课时费" : "Less the first 10 minutes' fee"} = -${formatMoneyShort(p.handoverDiscountCents)}`,
         ]),
     `  ${zh ? "实付" : "Total"} = ${formatMoneyShort(p.totalCents)} ${p.currency}`,
     "",

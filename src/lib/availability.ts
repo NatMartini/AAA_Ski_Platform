@@ -15,7 +15,6 @@ export type AvailableDay = DaySlots & {
   resort: { id: string; slug: string; nameEn: string; nameZh: string };
   /** A booking made now for this day would be charged the early-bird rate. */
   earlyBird: boolean;
-  handoverDiscountCents: number;
   extraPersonCents: number;
   maxGroupSize: number;
 };
@@ -96,7 +95,6 @@ export async function getAvailability(opts: {
       coachDayId: day.id,
       resort: day.resort,
       earlyBird: isEarlyBird(today, dateKey),
-      handoverDiscountCents: profile.handoverDiscountCents,
       extraPersonCents: profile.extraPersonCents,
       maxGroupSize: profile.maxGroupSize,
     };

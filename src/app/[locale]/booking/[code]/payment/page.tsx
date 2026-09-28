@@ -6,6 +6,7 @@ import { accessFor, loadBooking } from "@/lib/booking/access";
 import { prisma } from "@/lib/prisma";
 import { PaymentPanel } from "@/components/booking/payment-panel";
 import { PriceBreakdown } from "@/components/booking/price-breakdown";
+import { HandoverNotice } from "@/components/booking/handover-notice";
 import { quoteFromBooking } from "@/lib/pricing";
 import { amountDueCents } from "@/lib/booking/lesson";
 import { toLocale } from "@/i18n/routing";
@@ -63,6 +64,15 @@ export default async function PaymentPage({
         }
         totalCents={booking.totalCents}
         currency={booking.currency}
+        notice={
+          <HandoverNotice
+            locale={toLocale(locale)}
+            lessonStartAt={booking.lessonStartAt}
+            lessonEndAt={booking.lessonEndAt}
+            perHourCents={quoteFromBooking(booking).perHourCents}
+            creditCents={booking.handoverDiscountCents}
+          />
+        }
         breakdown={
           <PriceBreakdown
             quote={quoteFromBooking(booking)}

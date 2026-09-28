@@ -4,15 +4,18 @@ import {
   hoursUsed,
   isOfferOnSale,
   offersOnSale,
+  packageTotalHours,
   packageValueCents,
-  settlementFor,
   type PackageForUse,
 } from "./packages";
 
 const BLUE = "resort_blue";
+const KEVIN = "kevin";
+const ALISA = "alisa";
 
 const pkg = (over: Partial<PackageForUse> = {}): PackageForUse => ({
   status: "ACTIVE",
+  payeeCoachId: KEVIN,
   resortId: BLUE,
   lessonType: "riding",
   season: "2026-27",
@@ -22,6 +25,7 @@ const pkg = (over: Partial<PackageForUse> = {}): PackageForUse => ({
 });
 
 const lesson = {
+  coachId: KEVIN,
   resortId: BLUE,
   lessonType: "riding",
   season: "2026-27",
@@ -99,6 +103,13 @@ describe("checkPackageUse", () => {
     ).toMatchObject({ reason: "package-not-active" });
   });
 
+  it("can only be booked with the coach who sold it", () => {
+    expect(checkPackageUse(pkg(), { ...lesson, coachId: ALISA })).toEqual({
+      ok: false,
+      reason: "package-wrong-coach",
+    });
+  });
+
   it("only pays for what it was sold for", () => {
     expect(
       checkPackageUse(pkg(), { ...lesson, resortId: "resort_msl" }),
@@ -115,72 +126,17 @@ describe("checkPackageUse", () => {
   });
 });
 
-describe("settlementFor", () => {
-  const KEVIN = "kevin";
-  const ALISA = "alisa";
+describe("packageTotalHours", () => {
+  it("adds a coach's adjustments to the hours bought", () => {
+    expect(packageTotalHours({ hours: 4, adjustments: [] })).toBe(4);
+    expect(
+      packageTotalHours({ hours: 4, adjustments: [{ hours: 2 }, { hours: -1 }] }),
+    ).toBe(5);
+  });
+});
 
+describe("packageValueCents", () => {
   it("values package hours pro rata", () => {
     expect(packageValueCents({ priceCents: 18000, hours: 4 }, 2)).toBe(9000);
-  });
-
-  it("makes the paid coach owe the coach who taught", () => {
-    const packages = [
-      {
-        payeeCoachId: KEVIN,
-        priceCents: 18000,
-        hours: 4,
-        uses: [
-          { coachId: KEVIN, hours: 2 },
-          { coachId: ALISA, hours: 2 },
-        ],
-      },
-    ];
-    expect(settlementFor(KEVIN, packages)).toEqual([
-      {
-        otherCoachId: ALISA,
-        theyTaughtHours: 2,
-        iOweCents: 9000,
-        iTaughtHours: 0,
-        owedToMeCents: 0,
-        netCents: -9000,
-      },
-    ]);
-    expect(settlementFor(ALISA, packages)[0]).toMatchObject({
-      otherCoachId: KEVIN,
-      iTaughtHours: 2,
-      owedToMeCents: 9000,
-      netCents: 9000,
-    });
-  });
-
-  it("nets debts in both directions", () => {
-    const packages = [
-      {
-        payeeCoachId: KEVIN,
-        priceCents: 18000,
-        hours: 4,
-        uses: [{ coachId: ALISA, hours: 4 }],
-      },
-      {
-        payeeCoachId: ALISA,
-        priceCents: 18000,
-        hours: 4,
-        uses: [{ coachId: KEVIN, hours: 2 }],
-      },
-    ];
-    expect(settlementFor(KEVIN, packages)[0].netCents).toBe(-18000 + 9000);
-  });
-
-  it("owes nothing when the paid coach taught every hour", () => {
-    expect(
-      settlementFor(KEVIN, [
-        {
-          payeeCoachId: KEVIN,
-          priceCents: 18000,
-          hours: 4,
-          uses: [{ coachId: KEVIN, hours: 4 }],
-        },
-      ]),
-    ).toEqual([]);
   });
 });

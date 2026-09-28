@@ -10,8 +10,9 @@ import { PaymentPanel } from "@/components/booking/payment-panel";
 import { CoachReviewPanel } from "@/components/coach/coach-review-panel";
 import { PackageStatusPill } from "@/components/packages/package-status-pill";
 import { PackageCancel } from "@/components/packages/package-cancel";
-import { accessForPackage, loadPackage } from "@/lib/package-store";
-import { hoursUsed, offerLabel } from "@/lib/packages";
+import { PackageAdjust } from "@/components/packages/package-adjust";
+import { accessForPackage, hoursLeft, loadPackage } from "@/lib/package-store";
+import { offerLabel, packageTotalHours } from "@/lib/packages";
 import { lessonTypeLabel } from "@/lib/lesson-types";
 import { isSelfServeHoldExpired } from "@/lib/booking/hold";
 import { formatMoneyShort } from "@/lib/pricing";
@@ -38,7 +39,8 @@ export default async function PackagePage({
 
   const loc = toLocale(locale);
   const zh = loc === "zh";
-  const used = hoursUsed(pkg.bookings, now);
+  const total = packageTotalHours(pkg);
+  const left = hoursLeft(pkg, now);
   const payeeName = pkg.payeeCoach.name ?? pkg.payeeCoach.email;
   const resortName = zh ? pkg.resort.nameZh : pkg.resort.nameEn;
 
@@ -57,20 +59,7 @@ export default async function PackagePage({
       })
     ).map((c) => [c.userId, c.displayName]),
   );
-  const spent = pkg.bookings.filter((b) => !isSelfServeHoldExpired(b, now));
-  // The buyer sees every lesson. A coach sees their own lessons in full, and
-  // another coach's only as hours per coach — enough to settle up, without
-  // that coach's dates or students.
-  const lessons = access.isBuyer
-    ? spent
-    : spent.filter((b) => b.coachId === user.id);
-  const otherCoachHours = new Map<string, number>();
-  if (!access.isBuyer) {
-    for (const b of spent) {
-      if (b.coachId === user.id) continue;
-      otherCoachHours.set(b.coachId, (otherCoachHours.get(b.coachId) ?? 0) + b.hours);
-    }
-  }
+  const lessons = pkg.bookings.filter((b) => !isSelfServeHoldExpired(b, now));
 
   const summary = (
     <dl className="overflow-hidden rounded-xl border border-border bg-surface-3 text-sm">
@@ -105,29 +94,27 @@ export default async function PackagePage({
 
       <Card className="space-y-3">
         <CardTitle data-numeric>
-          {zh
-            ? `剩余 ${pkg.hours - used} / ${pkg.hours} 小时`
-            : `${pkg.hours - used} of ${pkg.hours} hours left`}
+          {zh ? `剩余 ${left} / ${total} 小时` : `${left} of ${total} hours left`}
         </CardTitle>
         <dl className="space-y-1.5 text-sm">
           <Row term={zh ? "雪场" : "Resort"} value={resortName} />
-          <Row
-            term={zh ? "课程" : "Lesson"}
-            value={`${lessonTypeLabel(pkg.lessonType, loc)} · ${zh ? "任意教练" : "any coach"}`}
-          />
+          <Row term={zh ? "课程" : "Lesson"} value={lessonTypeLabel(pkg.lessonType, loc)} />
           <Row term={zh ? "有效期" : "Valid for"} value={formatSeason(pkg.season, loc)} />
           <Row term={zh ? "价格" : "Price"} value={formatMoneyShort(pkg.priceCents)} />
-          <Row term={zh ? "付款给" : "Paid to"} value={payeeName} />
-          {access.isPayee && (
+          <Row
+            term={zh ? "教练(只能约这位教练)" : "Coach (the only one it books)"}
+            value={payeeName}
+          />
+          {!access.isBuyer && (
             <Row
               term={zh ? "购买人" : "Bought by"}
               value={pkg.account.name ?? pkg.account.email}
             />
           )}
         </dl>
-        {pkg.status === "ACTIVE" && access.isBuyer && pkg.hours - used > 0 && (
+        {pkg.status === "ACTIVE" && access.isBuyer && left > 0 && (
           <Button asChild className="self-start">
-            <Link href={`/book/${pkg.resort.slug}`}>
+            <Link href={`/book/${pkg.resort.slug}/${pkg.payeeCoachId}`}>
               <CalendarPlus aria-hidden />
               {zh ? "用课时包约课" : "Book with this package"}
             </Link>
@@ -135,7 +122,30 @@ export default async function PackagePage({
         )}
       </Card>
 
-      {(lessons.length > 0 || otherCoachHours.size > 0) && (
+      {pkg.adjustments.length > 0 && (
+        <Card className="space-y-2">
+          <CardTitle>{zh ? "课时调整记录" : "Hour adjustments"}</CardTitle>
+          <ul className="divide-y divide-border text-sm">
+            {pkg.adjustments.map((a) => (
+              <li key={a.id} className="flex flex-wrap items-baseline justify-between gap-2 py-2.5">
+                <span>
+                  <strong className="tabular-nums text-ink">
+                    {a.hours > 0 ? `+${a.hours}` : a.hours} {zh ? "小时" : "h"}
+                  </strong>{" "}
+                  <span className="text-ink-2">{a.reason}</span>
+                </span>
+                <span className="text-xs text-ink-3">
+                  {formatTorontoDate(a.createdAt, loc)} · {a.createdBy.name ?? a.createdBy.email}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {access.canAdjust && <PackageAdjust locale={loc} packageCode={pkg.code} />}
+
+      {lessons.length > 0 && (
         <Card className="space-y-2">
           <CardTitle>{zh ? "用这个课时包的课" : "Lessons from this package"}</CardTitle>
           <ul className="divide-y divide-border text-sm">
@@ -148,7 +158,7 @@ export default async function PackagePage({
                 </span>
                 <span className="flex items-center gap-2">
                   <StatusPill status={b.status} locale={loc} />
-                  {(access.isBuyer || b.coachId === user.id) && (
+                  {(access.isBuyer || access.isAnyCoach) && (
                     <Link
                       href={`/booking/${b.code}`}
                       className="font-mono text-xs font-bold text-accent underline underline-offset-2"
@@ -157,13 +167,6 @@ export default async function PackagePage({
                     </Link>
                   )}
                 </span>
-              </li>
-            ))}
-            {[...otherCoachHours].map(([coachId, hours]) => (
-              <li key={coachId} className="py-2.5 text-ink-2">
-                {zh
-                  ? `${coachNames.get(coachId) ?? "其他教练"} 用了 ${hours} 小时`
-                  : `${coachNames.get(coachId) ?? "Another coach"}: ${hours}h`}
               </li>
             ))}
           </ul>
@@ -179,9 +182,13 @@ export default async function PackagePage({
             color: "var(--pill-checking-fg)",
           }}
         >
-          {zh
-            ? `已收到你的付款截图,${payeeName} 确认后课时包即可使用。`
-            : `Your screenshot is in. The package is ready once ${payeeName} confirms it.`}
+          {pkg.paymentMethod === "WECHAT" && !pkg.paymentProofKey
+            ? zh
+              ? `已通知 ${payeeName} 你用微信付了款,确认收款后课时包即可使用。`
+              : `${payeeName} knows you paid by WeChat. The package is ready once they see it arrive.`
+            : zh
+              ? `已收到你的付款截图,${payeeName} 确认后课时包即可使用。`
+              : `Your screenshot is in. The package is ready once ${payeeName} confirms it.`}
         </p>
       )}
 
@@ -215,11 +222,13 @@ export default async function PackagePage({
         />
       )}
 
-      {access.isPayee && (
+      {/* Other coaches see the payment read-only; only the payee acts on it. */}
+      {access.isAnyCoach && (
         <CoachReviewPanel
           locale={loc}
           target={{ kind: "package", code: pkg.code }}
           confirmed={pkg.status === "ACTIVE"}
+          submitted={pkg.status === "PENDING_PAYMENT_REVIEW"}
           hasProof={Boolean(pkg.paymentProofKey)}
           proofUploadedBy={null}
           paymentMethod={pkg.paymentMethod}

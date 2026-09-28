@@ -9,18 +9,19 @@ import type { DateKey } from "./time";
  * Prepaid lesson-hour packages ("课时包").
  *
  * From the price sheet: at Blue Mountain, four hours of ski lessons for $180,
- * with any coach, early bird only. The buyer pays one coach of their choosing;
- * the hours can then be spent with any coach — two hours with Kevin and two
- * with Alisa is fine — so the coach who was paid may owe part of it to the
- * coach who taught. `settlementFor` works that out.
+ * early bird only. The buyer picks which coach's package to buy and pays that
+ * coach, and the hours can only be booked with them. That coach can also add
+ * or take away hours by hand (PackageAdjustment), for a make-up lesson or a
+ * correction.
  *
  * Offers are a code constant, like the lesson-type catalogue. The price, hours
  * and season are copied onto each purchase, so changing an offer never
  * rewrites a package somebody has already bought.
  *
  * Hours are never stored as a running counter. What is left is always derived
- * from the bookings that point at the package, so a booking that expires or is
- * cancelled gives its hours back with no extra bookkeeping.
+ * — the hours bought, plus any adjustments, less the bookings that point at
+ * the package — so a booking that expires or is cancelled gives its hours
+ * back with no extra bookkeeping.
  */
 
 export type PackageOffer = {
@@ -94,6 +95,14 @@ export function isOfferOnSale(
   return sale.season === season && sale.offers.some((o) => o.key === offerKey);
 }
 
+/** Hours a package holds: those bought plus every adjustment since. */
+export function packageTotalHours(pkg: {
+  hours: number;
+  adjustments: { hours: number }[];
+}): number {
+  return pkg.hours + pkg.adjustments.reduce((sum, a) => sum + a.hours, 0);
+}
+
 /**
  * Hours already spent (or held) from a package. A self-serve hold whose timer
  * has run out is not counted even before the sweeper marks it EXPIRED.
@@ -120,15 +129,18 @@ export function hoursUsed(
 
 export type PackageForUse = {
   status: PackageStatus;
+  payeeCoachId: string;
   resortId: string;
   lessonType: string;
   season: string;
+  /** Hours held, adjustments included (packageTotalHours). */
   hours: number;
   hoursUsed: number;
 };
 
 export type PackageUseRefusal =
   | "package-not-active"
+  | "package-wrong-coach"
   | "package-wrong-resort"
   | "package-wrong-lesson-type"
   | "package-wrong-season"
@@ -136,13 +148,15 @@ export type PackageUseRefusal =
   | "package-insufficient-hours";
 
 /**
- * Whether a package can pay for a lesson. A package covers a whole booking or
- * none of it — mixing prepaid hours and cash on one booking would make both
- * the payment review and the coaches' settlement ambiguous.
+ * Whether a package can pay for a lesson: only with the coach who sold it,
+ * and only for the lesson it was sold for. A package covers a whole booking
+ * or none of it — mixing prepaid hours and cash on one booking would make
+ * the payment review ambiguous.
  */
 export function checkPackageUse(
   pkg: PackageForUse,
   lesson: {
+    coachId: string;
     resortId: string;
     lessonType: string;
     season: string | null;
@@ -151,6 +165,9 @@ export function checkPackageUse(
   },
 ): { ok: true } | { ok: false; reason: PackageUseRefusal } {
   if (pkg.status !== "ACTIVE") return { ok: false, reason: "package-not-active" };
+  if (pkg.payeeCoachId !== lesson.coachId) {
+    return { ok: false, reason: "package-wrong-coach" };
+  }
   if (pkg.resortId !== lesson.resortId) {
     return { ok: false, reason: "package-wrong-resort" };
   }
@@ -174,74 +191,6 @@ export function packageValueCents(
   hours: number,
 ): number {
   return Math.round((pkg.priceCents * hours) / pkg.hours);
-}
-
-export type SettlementLine = {
-  otherCoachId: string;
-  /** Hours the other coach taught from packages paid to me. */
-  theyTaughtHours: number;
-  /** What I hold for those hours and should pass on. */
-  iOweCents: number;
-  /** Hours I taught from packages paid to the other coach. */
-  iTaughtHours: number;
-  /** What they hold for my hours and should pass on. */
-  owedToMeCents: number;
-  /** Positive: they owe me. Negative: I owe them. */
-  netCents: number;
-};
-
-/**
- * Who owes whom between coaches, from one coach's point of view.
- *
- * Only cross-coach use creates a debt: hours a coach teaches from a package
- * they were paid for themselves are already in their pocket.
- */
-export function settlementFor(
-  coachId: string,
-  packages: {
-    payeeCoachId: string;
-    priceCents: number;
-    hours: number;
-    uses: { coachId: string; hours: number }[];
-  }[],
-): SettlementLine[] {
-  const lines = new Map<string, SettlementLine>();
-  const line = (otherCoachId: string) => {
-    let existing = lines.get(otherCoachId);
-    if (!existing) {
-      existing = {
-        otherCoachId,
-        theyTaughtHours: 0,
-        iOweCents: 0,
-        iTaughtHours: 0,
-        owedToMeCents: 0,
-        netCents: 0,
-      };
-      lines.set(otherCoachId, existing);
-    }
-    return existing;
-  };
-
-  for (const pkg of packages) {
-    for (const use of pkg.uses) {
-      if (use.coachId === pkg.payeeCoachId) continue;
-      const value = packageValueCents(pkg, use.hours);
-      if (pkg.payeeCoachId === coachId) {
-        const l = line(use.coachId);
-        l.theyTaughtHours += use.hours;
-        l.iOweCents += value;
-      } else if (use.coachId === coachId) {
-        const l = line(pkg.payeeCoachId);
-        l.iTaughtHours += use.hours;
-        l.owedToMeCents += value;
-      }
-    }
-  }
-
-  return [...lines.values()].map((l) => ({
-    ...l,
-    netCents: l.owedToMeCents - l.iOweCents,
-  }));
 }
 
 // ── Display ──

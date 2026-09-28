@@ -2,28 +2,35 @@
 
 import { useEffect, useRef, useState } from "react";
 
-type Month = { month: string; label: string; hours: number };
+type Series = { id: string; name: string };
+type Month = { month: string; label: string; values: number[] };
 
 const H = 240;
 const M = { top: 22, right: 8, bottom: 28, left: 34 };
 const PLOT_H = H - M.top - M.bottom;
+/** Surface-coloured gap between stacked segments. */
+const GAP = 2;
 const MAX_BAR = 24;
 
 /**
- * One coach's lesson hours per month, as columns.
+ * Lesson hours per month, stacked by coach.
  *
- * A single series, so the title names it and there is no legend. Every value
- * is on its column, in the hover/focus tooltip and in the table underneath,
- * so nothing depends on seeing the bars.
+ * Colour follows the coach: `series` arrives in a fixed order and slot N is
+ * always --series-N, so a coach keeps their colour whatever the numbers do.
+ * Identity never rests on colour alone — there is a legend, the tooltip names
+ * each coach, and the same numbers sit in the table underneath.
  */
 export function MonthlyHoursChart({
+  series,
   months,
   labels,
 }: {
+  series: Series[];
   months: Month[];
   labels: {
     title: string;
     hours: string;
+    total: string;
     empty: string;
     table: string;
     month: string;
@@ -45,17 +52,34 @@ export function MonthlyHoursChart({
   }, []);
   const PLOT_W = W - M.left - M.right;
 
-  const max = niceMax(Math.max(0, ...months.map((m) => m.hours)));
+  const totals = months.map((m) => m.values.reduce((a, b) => a + b, 0));
+  const max = niceMax(Math.max(0, ...totals));
   const ticks = Array.from({ length: max.steps + 1 }, (_, i) => i * max.step);
   const band = PLOT_W / months.length;
   const barW = Math.min(MAX_BAR, band * 0.5);
   const y = (v: number) => M.top + PLOT_H - (v / max.value) * PLOT_H;
-  const empty = months.every((m) => m.hours === 0);
+  const color = (i: number) => `var(--series-${i + 1})`;
+
+  const empty = totals.every((t) => t === 0);
 
   return (
     <figure className="space-y-3">
-      <figcaption className="text-base font-extrabold tracking-tight">
-        {labels.title}
+      <figcaption className="flex flex-wrap items-baseline justify-between gap-2">
+        <span className="text-base font-extrabold tracking-tight">{labels.title}</span>
+        {series.length > 1 && (
+          <span className="flex flex-wrap gap-3 text-xs text-ink-2">
+            {series.map((s, i) => (
+              <span key={s.id} className="inline-flex items-center gap-1.5">
+                <span
+                  aria-hidden
+                  className="inline-block size-2.5 rounded-[3px]"
+                  style={{ background: color(i) }}
+                />
+                {s.name}
+              </span>
+            ))}
+          </span>
+        )}
       </figcaption>
 
       {empty ? (
@@ -94,21 +118,25 @@ export function MonthlyHoursChart({
 
             {months.map((m, i) => {
               const cx = M.left + band * (i + 0.5);
-              const top = y(m.hours);
+              const x = cx - barW / 2;
+              const dim = active !== null && active !== i;
+              let base = M.top + PLOT_H;
+              const drawn = m.values
+                .map((v, s) => ({ v, s }))
+                .filter(({ v }) => v > 0);
               return (
                 <g
                   key={m.month}
                   tabIndex={0}
-                  aria-label={`${m.label}: ${m.hours} ${labels.hours}`}
+                  aria-label={`${m.label}: ${m.values
+                    .map((v, s) => `${series[s].name} ${v} ${labels.hours}`)
+                    .join(", ")}`}
                   onPointerEnter={() => setActive(i)}
                   onPointerLeave={() => setActive(null)}
                   onFocus={() => setActive(i)}
                   onBlur={() => setActive(null)}
                   className="cursor-default outline-none"
-                  style={{
-                    opacity: active !== null && active !== i ? 0.45 : 1,
-                    transition: "opacity 120ms",
-                  }}
+                  style={{ opacity: dim ? 0.45 : 1, transition: "opacity 120ms" }}
                 >
                   {/* The hit target is the whole band, not the painted bar. */}
                   <rect
@@ -118,21 +146,31 @@ export function MonthlyHoursChart({
                     height={PLOT_H}
                     fill="transparent"
                   />
-                  {m.hours > 0 && (
-                    <>
+                  {drawn.map(({ v, s }, k) => {
+                    const h = (v / max.value) * PLOT_H;
+                    const top = base - h;
+                    const isTop = k === drawn.length - 1;
+                    // Leave a surface gap under every segment but the first.
+                    const bottom = k === 0 ? base : base - GAP;
+                    base = top;
+                    const segH = Math.max(0, bottom - top);
+                    return (
                       <path
-                        d={roundedTop(cx - barW / 2, top, barW, M.top + PLOT_H - top)}
-                        fill="var(--chart-bar)"
+                        key={series[s].id}
+                        d={isTop ? roundedTop(x, top, barW, segH) : rect(x, top, barW, segH)}
+                        fill={color(s)}
                       />
-                      <text
-                        x={cx}
-                        y={top - 6}
-                        textAnchor="middle"
-                        className="fill-[var(--ink-2)] text-[11px] font-semibold tabular-nums"
-                      >
-                        {m.hours}
-                      </text>
-                    </>
+                    );
+                  })}
+                  {totals[i] > 0 && (
+                    <text
+                      x={cx}
+                      y={y(totals[i]) - 6}
+                      textAnchor="middle"
+                      className="fill-[var(--ink-2)] text-[11px] font-semibold tabular-nums"
+                    >
+                      {totals[i]}
+                    </text>
                   )}
                   <text
                     x={cx}
@@ -162,14 +200,25 @@ export function MonthlyHoursChart({
           {active !== null && (
             <div
               role="status"
-              className="pointer-events-none absolute top-0 z-10 -translate-x-1/2 rounded-xl border border-border bg-surface px-3 py-2 text-xs shadow-[var(--shadow)]"
+              className="pointer-events-none absolute top-0 z-10 min-w-36 -translate-x-1/2 rounded-xl border border-border bg-surface p-3 text-xs shadow-[var(--shadow)]"
               style={{
                 left: `${Math.min(88, Math.max(12, ((M.left + band * (active + 0.5)) / W) * 100))}%`,
               }}
             >
-              <p className="font-bold text-ink">{months[active].label}</p>
-              <p className="text-ink-2">
-                <strong className="tabular-nums text-ink">{months[active].hours}</strong>{" "}
+              <p className="mb-1.5 font-bold text-ink">{months[active].label}</p>
+              {months[active].values.map((v, s) => (
+                <p key={series[s].id} className="flex items-center gap-2 py-0.5">
+                  <span
+                    aria-hidden
+                    className="inline-block h-0.5 w-3 rounded-full"
+                    style={{ background: color(s) }}
+                  />
+                  <strong className="tabular-nums text-ink">{v}</strong>
+                  <span className="text-ink-2">{series[s].name}</span>
+                </p>
+              ))}
+              <p className="mt-1 border-t border-border pt-1 text-ink-2">
+                {labels.total} <strong className="tabular-nums text-ink">{totals[active]}</strong>{" "}
                 {labels.hours}
               </p>
             </div>
@@ -181,24 +230,36 @@ export function MonthlyHoursChart({
         <summary className="cursor-pointer text-xs font-semibold text-ink-2">
           {labels.table}
         </summary>
-        <table className="mt-2 w-full text-left text-xs">
-          <thead>
-            <tr className="text-ink-3">
-              <th className="py-1.5 pr-3 font-semibold">{labels.month}</th>
-              <th className="py-1.5 text-right font-semibold">{labels.hours}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {months.map((m) => (
-              <tr key={m.month}>
-                <th scope="row" className="py-1.5 pr-3 font-semibold text-ink">
-                  {m.label}
-                </th>
-                <td className="py-1.5 text-right tabular-nums">{m.hours}</td>
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="text-ink-3">
+                <th className="py-1.5 pr-3 font-semibold">{labels.month}</th>
+                {series.map((s) => (
+                  <th key={s.id} className="py-1.5 pr-3 text-right font-semibold">
+                    {s.name}
+                  </th>
+                ))}
+                <th className="py-1.5 text-right font-semibold">{labels.total}</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {months.map((m, i) => (
+                <tr key={m.month}>
+                  <th scope="row" className="py-1.5 pr-3 font-semibold text-ink">
+                    {m.label}
+                  </th>
+                  {m.values.map((v, s) => (
+                    <td key={series[s].id} className="py-1.5 pr-3 text-right tabular-nums">
+                      {v}
+                    </td>
+                  ))}
+                  <td className="py-1.5 text-right font-semibold tabular-nums">{totals[i]}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </details>
     </figure>
   );
@@ -216,6 +277,10 @@ function niceMax(max: number): { value: number; step: number; steps: number } {
   }
   const step = Math.ceil(max / 4);
   return { value: step * 4, step, steps: 4 };
+}
+
+function rect(x: number, y: number, w: number, h: number): string {
+  return `M${x},${y}h${w}v${h}h${-w}Z`;
 }
 
 /** 4px rounded data end on top, square at the baseline. */

@@ -19,7 +19,7 @@ import { LEVELS } from "@/lib/skills";
 import { LESSON_TYPES } from "@/lib/lesson-types";
 import type { RateRow } from "@/lib/rates";
 import { cn } from "@/lib/utils";
-import { formatMoneyShort } from "@/lib/pricing";
+import { formatMoneyShort, handoverCreditCents } from "@/lib/pricing";
 import type { Locale } from "@/i18n/routing";
 import { Check, Languages, Loader2, TriangleAlert } from "lucide-react";
 
@@ -34,7 +34,6 @@ export type CoachSettings = {
   teachableLevels: string[];
   /** Offered lesson types only; a type with no row is not offered. */
   rates: RateRow[];
-  handoverDiscountCents: number;
   extraPersonCents: number;
   maxGroupSize: number;
   minHours: number;
@@ -90,9 +89,8 @@ const COPY = {
     regular: "原价(加元/小时)",
     rateRequired: "请填写原价",
     earlyAboveRegular: "早鸟价不能高于原价",
-    handover: "每单交接扣减(加元)",
     handoverHelp:
-      "每张订单固定扣一次,不随时长增加。开头 10 分钟交接,整点后 10 分开始上课、到整点结束。",
+      "每单自动减去开头 10 分钟的课时费(按该课的小时价计算),不随时长增加。整点后 10 分开始上课、到整点结束。",
     extraPerson: "每增加一人每小时加价(加元)",
     extraPersonHelp: "多人课时,每多一名学员每小时加收此金额。",
     maxGroupSize: "最多人数",
@@ -167,9 +165,8 @@ const COPY = {
     regular: "Regular (CAD/h)",
     rateRequired: "Enter a regular price",
     earlyAboveRegular: "The early-bird price cannot be above the regular price",
-    handover: "Handover credit per booking (CAD)",
     handoverHelp:
-      "Deducted once per booking, not per hour. The first ten minutes are the handover; the lesson runs from ten past to the hour.",
+      "Each booking automatically has the first ten minutes' fee taken off, at that lesson's hourly rate — once per booking, not per hour. Lessons run from ten past to the hour.",
     extraPerson: "Extra per additional student per hour (CAD)",
     extraPersonHelp: "For group lessons, each extra student adds this per hour.",
     maxGroupSize: "Maximum group size",
@@ -307,7 +304,6 @@ export function CoachSettingsForm({
         teachableSkills: form.teachableSkills,
         teachableLevels: form.teachableLevels,
         rates,
-        handoverDiscountCents: form.handoverDiscountCents,
         extraPersonCents: form.extraPersonCents,
         maxGroupSize: form.maxGroupSize,
         minHours: form.minHours,
@@ -342,8 +338,8 @@ export function CoachSettingsForm({
   // The worked example uses the first priced lesson type's regular rate.
   const exampleRate =
     toCents(rateDrafts.find((d) => d.enabled && toCents(d.regular))?.regular ?? "") ?? 0;
-  const exampleTotal =
-    exampleRate * 2 - Math.min(form.handoverDiscountCents, exampleRate * 2);
+  const exampleCredit = handoverCreditCents(exampleRate);
+  const exampleTotal = exampleRate * 2 - exampleCredit;
 
   return (
     <div className="space-y-5">
@@ -512,24 +508,17 @@ export function CoachSettingsForm({
           })}
         </div>
         <FieldError>{errors.rates}</FieldError>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <MoneyField
-            id="handoverDiscountCents"
-            label={c.handover}
-            cents={form.handoverDiscountCents}
-            onChange={(v) => set("handoverDiscountCents", v)}
-            hint={c.handoverHelp}
-            error={errors.handoverDiscountCents}
-          />
+        <div className="space-y-1 rounded-lg bg-surface-muted p-3 text-sm">
+          <p>
+            {c.example}
+            <strong>
+              {formatMoneyShort(exampleRate)} × 2 −{" "}
+              {formatMoneyShort(exampleCredit)} ={" "}
+              {formatMoneyShort(exampleTotal)}
+            </strong>
+          </p>
+          <Hint>{c.handoverHelp}</Hint>
         </div>
-        <p className="rounded-lg bg-surface-muted p-3 text-sm">
-          {c.example}
-          <strong>
-            {formatMoneyShort(exampleRate)} × 2 −{" "}
-            {formatMoneyShort(form.handoverDiscountCents)} ={" "}
-            {formatMoneyShort(exampleTotal)}
-          </strong>
-        </p>
         <div className="grid gap-4 sm:grid-cols-2">
           <MoneyField
             id="extraPersonCents"

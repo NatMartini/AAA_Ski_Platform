@@ -6,11 +6,15 @@
   },
   "nav": {
     "book": "预定课程",
+    "bookShort": "约课",
     "myBookings": "我的预定",
+    "myBookingsShort": "我的",
     "prices": "价目表",
+    "calendar": "教练日历",
     "packages": "课时包",
     "participants": "学员管理",
     "coach": "教练后台",
+    "coachShort": "教练",
     "signIn": "登录",
     "signOut": "退出登录",
     "language": "语言"
@@ -41,7 +45,7 @@
     "stepPayment": "付款",
     "hours": "{count} 小时",
     "lessonWindow": "实际授课 {start} – {end}({minutes} 分钟)",
-    "handoverNote": "每节课开头 10 分钟用于与上一位学员交接:整点后 10 分开始上课、到整点结束,实际授课比预定时段少 10 分钟,因此每单有一次交接扣减。",
+    "handoverNote": "每节课开头 10 分钟用于与上一位学员交接:整点后 10 分开始上课、到整点结束,实际授课比预定时段少 10 分钟,因此每单减去这 10 分钟的课时费。",
     "minimum": "最少预定 {count} 小时",
     "noSlots": "该日暂无可预定时段。",
     "offSeason": "雪季为每年 12 月 1 日至次年 5 月 1 日,该日期不在雪季内。",
@@ -87,9 +91,10 @@
     "amount": "金额",
     "uploadProof": "上传付款截图",
     "redactNote": "上传前请遮挡账号余额等无关信息。截图仅教练本人可见。",
-    "reference": "转账备注 / 参考号(可选)",
+    "reference": "转账参考号 Reference(必填)",
     "submit": "提交付款凭证",
     "awaitingReview": "已收到你的付款截图,教练确认后即预定成功。",
+    "awaitingWechat": "已通知教练你用微信付了款,教练在微信里确认收款后即预定成功。",
     "rejected": "教练未通过本次付款,原因:{reason}。请重新上传。"
   },
   "participants": {

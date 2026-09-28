@@ -51,7 +51,7 @@ export function LocaleSwitch({ current }: { current: Locale }) {
           type="button"
           onClick={() => switchTo(locale)}
           aria-current={locale === current ? "true" : undefined}
-          className={`relative z-10 flex min-h-9 min-w-11 items-center justify-center rounded-[6px] px-2 text-xs font-bold transition-colors ${
+          className={`relative z-10 flex min-h-9 min-w-9 items-center justify-center rounded-[6px] px-1.5 text-xs sm:min-w-11 sm:px-2 font-bold transition-colors ${
             locale === current ? "text-ink" : "text-ink-3 hover:text-ink-2"
           }`}
         >

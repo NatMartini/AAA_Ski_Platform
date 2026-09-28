@@ -30,7 +30,12 @@ const COPY = {
     memo: "转账备注请填写编号",
     upload: "上传付款截图",
     redact: "上传前请遮挡账号、余额等无关信息。该截图仅你和教练可见。",
-    reference: "转账备注 / 参考号(选填)",
+    reference: "转账参考号 Reference(必填)",
+    referenceHint: "e-Transfer 的参考号,或支付宝的交易号。教练用它核对收款。",
+    needReference: "请填写转账参考号。",
+    wechatTitle: "微信付款后通知教练",
+    wechatBody: "用微信扫码付款后,点下面的按钮就行,不用上传截图。教练在微信里确认收到后,订单即完成。",
+    wechatPaid: "我已用微信付款",
     choose: "选择图片",
     replace: "重新选择",
     submit: "提交付款凭证",
@@ -57,7 +62,14 @@ const COPY = {
     upload: "Upload payment screenshot",
     redact:
       "Cover your account number, balance and anything else you would rather not share. Only you and your coach can see this.",
-    reference: "Transfer reference (optional)",
+    reference: "Transfer reference (required)",
+    referenceHint:
+      "The e-Transfer reference number, or the Alipay transaction number. Your coach matches it against what arrived.",
+    needReference: "Please enter the transfer reference.",
+    wechatTitle: "Tell your coach once you have paid",
+    wechatBody:
+      "After paying by WeChat, just press the button below — no screenshot needed. Your coach confirms it once it arrives in WeChat.",
+    wechatPaid: "I have paid by WeChat",
     choose: "Choose image",
     replace: "Choose another",
     submit: "Submit payment proof",
@@ -80,6 +92,7 @@ export function PaymentPanel({
   totalCents,
   currency,
   breakdown,
+  notice,
   amountDueCents,
   methods,
   rejectedNote,
@@ -94,6 +107,8 @@ export function PaymentPanel({
   currency: string;
   /** The itemised price, shown under the amount. */
   breakdown: ReactNode;
+  /** Anything the payer must not miss, shown above the amount. */
+  notice?: ReactNode;
   /**
    * What to send now. Equals the total for a pay-in-full booking, and the
    * deposit for a booking that is paying one hour up front — showing the total
@@ -148,8 +163,13 @@ export function PaymentPanel({
       setError(c.needMethod);
       return;
     }
-    if (!proofKey) {
+    // WeChat needs nothing attached; a transfer needs both pieces.
+    if (method !== "WECHAT" && !proofKey) {
       setError(c.needProof);
+      return;
+    }
+    if (method !== "WECHAT" && !reference.trim()) {
+      setError(c.needReference);
       return;
     }
     setBusy(true);
@@ -158,7 +178,11 @@ export function PaymentPanel({
     const res = await fetch(paths.submit, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ method, proofKey, reference: reference || null }),
+      body: JSON.stringify(
+        method === "WECHAT"
+          ? { method }
+          : { method, proofKey, reference: reference.trim() },
+      ),
     });
     setBusy(false);
 
@@ -204,6 +228,8 @@ export function PaymentPanel({
           {c.coachUploading}
         </p>
       )}
+
+      {notice}
 
       <Card className="space-y-4">
         <CardTitle>{c.amount}</CardTitle>
@@ -284,68 +310,87 @@ export function PaymentPanel({
         )}
       </Card>
 
-      <Card className="space-y-4">
-        <CardTitle>{c.upload}</CardTitle>
-        <Hint>{c.redact}</Hint>
-
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) void upload(file);
-            e.target.value = "";
-          }}
-        />
-
-        <div className="flex flex-wrap items-start gap-4">
-          {preview && (
-            // eslint-disable-next-line @next/next/no-img-element -- local blob preview
-            <img
-              src={preview}
-              alt=""
-              className="animate-pop max-h-48 rounded-xl border border-border shadow-[var(--shadow-sm)]"
-            />
-          )}
+      {method === "WECHAT" ? (
+        <Card className="space-y-4">
+          <CardTitle>{c.wechatTitle}</CardTitle>
+          <Hint>{c.wechatBody}</Hint>
+          <FieldError>{error}</FieldError>
           <Button
-            type="button"
-            variant="secondary"
-            disabled={uploading}
-            onClick={() => fileRef.current?.click()}
+            onClick={submit}
+            disabled={busy}
+            size="lg"
+            className="w-full sm:w-auto sm:self-start"
           >
-            {uploading ? (
-              <Loader2 className="animate-spin" aria-hidden />
-            ) : (
-              <Upload aria-hidden />
-            )}
-            {proofKey ? c.replace : c.choose}
+            {busy && <Loader2 className="animate-spin" aria-hidden />}
+            {busy ? c.submitting : c.wechatPaid}
           </Button>
-        </div>
+        </Card>
+      ) : (
+        <Card className="space-y-4">
+          <CardTitle>{c.upload}</CardTitle>
+          <Hint>{c.redact}</Hint>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="reference">{c.reference}</Label>
-          <Input
-            id="reference"
-            value={reference}
-            onChange={(e) => setReference(e.target.value)}
-            maxLength={200}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void upload(file);
+              e.target.value = "";
+            }}
           />
-        </div>
 
-        <FieldError>{error}</FieldError>
+          <div className="flex flex-wrap items-start gap-4">
+            {preview && (
+              // eslint-disable-next-line @next/next/no-img-element -- local blob preview
+              <img
+                src={preview}
+                alt=""
+                className="animate-pop max-h-48 rounded-xl border border-border shadow-[var(--shadow-sm)]"
+              />
+            )}
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={uploading}
+              onClick={() => fileRef.current?.click()}
+            >
+              {uploading ? (
+                <Loader2 className="animate-spin" aria-hidden />
+              ) : (
+                <Upload aria-hidden />
+              )}
+              {proofKey ? c.replace : c.choose}
+            </Button>
+          </div>
 
-        <Button
-          onClick={submit}
-          disabled={busy || uploading || !proofKey}
-          size="lg"
-          className="w-full sm:w-auto sm:self-start"
-        >
-          {busy && <Loader2 className="animate-spin" aria-hidden />}
-          {busy ? c.submitting : c.submit}
-        </Button>
-      </Card>
+          <div className="space-y-1.5">
+            <Label htmlFor="reference">{c.reference}</Label>
+            <Input
+              id="reference"
+              value={reference}
+              required
+              onChange={(e) => setReference(e.target.value)}
+              maxLength={200}
+            />
+            <Hint>{c.referenceHint}</Hint>
+          </div>
+
+          <FieldError>{error}</FieldError>
+
+          <Button
+            onClick={submit}
+            disabled={busy || uploading || !proofKey || !reference.trim()}
+            size="lg"
+            className="w-full sm:w-auto sm:self-start"
+          >
+            {busy && <Loader2 className="animate-spin" aria-hidden />}
+            {busy ? c.submitting : c.submit}
+          </Button>
+        </Card>
+      )}
     </div>
   );
 }

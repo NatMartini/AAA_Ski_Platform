@@ -59,9 +59,21 @@ export async function loadStatPackages(
       season: true,
       hours: true,
       priceCents: true,
+      adjustments: { select: { hours: true } },
       bookings: {
         select: { coachId: true, hours: true, status: true, holdExpiresAt: true },
       },
     },
+  });
+}
+
+/**
+ * Every coach, in a fixed order (by name), so a coach keeps the same row and
+ * the same chart colour however the numbers move.
+ */
+export async function loadCoaches() {
+  return prisma.coachProfile.findMany({
+    select: { userId: true, displayName: true },
+    orderBy: [{ displayName: "asc" }, { createdAt: "asc" }],
   });
 }

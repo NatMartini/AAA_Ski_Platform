@@ -82,7 +82,6 @@ export const coachSettingsSchema = z.object({
       (rates) => new Set(rates.map((r) => r.lessonType)).size === rates.length,
       { message: "Each lesson type can only have one price" },
     ),
-  handoverDiscountCents: z.number().int().min(0).max(1_000_000),
   extraPersonCents: z.number().int().min(0).max(1_000_000),
   maxGroupSize: z.number().int().min(1).max(20),
   csiaLevel: z.number().int().min(1).max(4).nullable(),
@@ -213,14 +212,35 @@ export const waiverSignSchema = z.object({
   guardianRelationship: z.string().trim().max(80).nullable().optional(),
 });
 
-export const paymentProofSchema = z.object({
-  method: z.enum(["EMT", "WECHAT", "ALIPAY"]),
-  /** Which instalment this proof is for. */
-  stage: z.enum(["DEPOSIT", "FULL", "BALANCE"]).default("FULL"),
-  /** Storage key returned by the upload endpoint, not a URL. */
-  proofKey: z.string().min(1).max(300),
-  reference: z.string().trim().max(200).nullable().optional(),
-});
+/**
+ * What a payment claim must carry. A transfer (e-Transfer, Alipay) needs both
+ * its reference and a screenshot, so the coach can match it in their bank.
+ * WeChat needs neither: the coach sees the payment arrive in WeChat and just
+ * confirms it.
+ */
+function requireTransferEvidence(
+  d: { method: "EMT" | "WECHAT" | "ALIPAY"; proofKey?: string | null; reference?: string | null },
+  ctx: z.RefinementCtx,
+) {
+  if (d.method === "WECHAT") return;
+  if (!d.proofKey) {
+    ctx.addIssue({ code: "custom", path: ["proofKey"], message: "Upload the payment screenshot" });
+  }
+  if (!d.reference?.trim()) {
+    ctx.addIssue({ code: "custom", path: ["reference"], message: "Enter the transfer reference" });
+  }
+}
+
+export const paymentProofSchema = z
+  .object({
+    method: z.enum(["EMT", "WECHAT", "ALIPAY"]),
+    /** Which instalment this proof is for. */
+    stage: z.enum(["DEPOSIT", "FULL", "BALANCE"]).default("FULL"),
+    /** Storage key returned by the upload endpoint, not a URL. */
+    proofKey: z.string().min(1).max(300).nullable().optional(),
+    reference: z.string().trim().max(200).nullable().optional(),
+  })
+  .superRefine(requireTransferEvidence);
 
 /** A student orders a lesson package, choosing which coach to pay. */
 export const packagePurchaseSchema = z.object({
@@ -228,13 +248,27 @@ export const packagePurchaseSchema = z.object({
   payeeCoachId: z.string().min(1),
 });
 
-/** Payment proof for a lesson package; one payment, so no stage. */
-export const packagePaymentSchema = z.object({
-  method: z.enum(["EMT", "WECHAT", "ALIPAY"]),
-  /** Storage key returned by the upload endpoint, not a URL. */
-  proofKey: z.string().min(1).max(300),
-  reference: z.string().trim().max(200).nullable().optional(),
+/** A coach adding (+) or taking away (-) hours on a package they sold. */
+export const packageAdjustSchema = z.object({
+  hours: z
+    .number()
+    .int()
+    .min(-20)
+    .max(20)
+    .refine((h) => h !== 0, { message: "Enter a number of hours other than 0" }),
+  /** Shown to the student alongside the change. */
+  reason: z.string().trim().min(1).max(200),
 });
+
+/** Payment proof for a lesson package; one payment, so no stage. */
+export const packagePaymentSchema = z
+  .object({
+    method: z.enum(["EMT", "WECHAT", "ALIPAY"]),
+    /** Storage key returned by the upload endpoint, not a URL. */
+    proofKey: z.string().min(1).max(300).nullable().optional(),
+    reference: z.string().trim().max(200).nullable().optional(),
+  })
+  .superRefine(requireTransferEvidence);
 
 export const translateSchema = z.object({
   /** The policy is capped at 4000 characters, so this is too. */

@@ -48,7 +48,6 @@ export async function PATCH(req: Request) {
       csiaParkLevel: d.csiaParkLevel,
       teachableSkills: sanitizeSkillKeys(d.teachableSkills),
       teachableLevels: sanitizeLevelKeys(d.teachableLevels),
-      handoverDiscountCents: d.handoverDiscountCents,
       extraPersonCents: d.extraPersonCents,
       maxGroupSize: d.maxGroupSize,
       minHours: d.minHours,

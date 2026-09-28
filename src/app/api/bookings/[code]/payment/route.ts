@@ -57,11 +57,17 @@ export async function POST(
     );
   }
   const d = parsed.data;
+  // WeChat carries no screenshot: the coach sees the money arrive in WeChat
+  // and confirms. Anything else has a screenshot and a reference (validated).
+  const proofKey = d.method === "WECHAT" ? null : (d.proofKey ?? null);
 
   // The key must be one this booking's upload produced. Without this check a
   // caller could point their booking at somebody else's stored screenshot.
   const expectedPrefix = `${KEY_PREFIX.proof(booking.id)}/`;
-  if (!d.proofKey.startsWith(expectedPrefix) || d.proofKey.includes("..")) {
+  if (
+    proofKey !== null &&
+    (!proofKey.startsWith(expectedPrefix) || proofKey.includes(".."))
+  ) {
     return NextResponse.json({ error: "invalid-proof-key" }, { status: 400 });
   }
 
@@ -95,7 +101,7 @@ export async function POST(
 
     // An orphan cleanup may have removed a stale upload before this request
     // reached the database. Never create a row which points at a missing file.
-    if (!(await objectExists(d.proofKey))) {
+    if (proofKey !== null && !(await objectExists(proofKey))) {
       return { kind: "proof-not-found" } as const;
     }
 
@@ -104,7 +110,7 @@ export async function POST(
       data: {
         status: "PENDING_PAYMENT_REVIEW",
         paymentMethod: d.method,
-        paymentProofKey: d.proofKey,
+        paymentProofKey: proofKey,
         paymentReference: d.reference?.trim() || null,
         paymentSubmittedAt: submittedAt,
         proofUploadedBy: access.isCustomer ? "CUSTOMER" : "COACH",
@@ -132,7 +138,7 @@ export async function POST(
   // not undo a valid payment submission; the retention job retries it later.
   if (
     attached.previousProofKey &&
-    attached.previousProofKey !== d.proofKey
+    attached.previousProofKey !== proofKey
   ) {
     await deletePaymentProofIfUnreferenced(attached.previousProofKey).catch(
       () => false,

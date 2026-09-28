@@ -28,7 +28,7 @@ import {
 } from "../src/lib/booking/lesson";
 import { OCCUPYING_STATUSES } from "../src/lib/booking/state";
 import { bookingInclude } from "../src/lib/booking/access";
-import { hoursUsed, settlementFor } from "../src/lib/packages";
+import { hoursUsed } from "../src/lib/packages";
 
 for (const file of [".env.local", ".env"]) {
   try {
@@ -120,7 +120,6 @@ async function setup() {
       data: {
         userId,
         displayName: name,
-        handoverDiscountCents: 1000,
         extraPersonCents: 2000,
         minHours: 2,
         maxHours: 8,
@@ -201,8 +200,9 @@ async function main() {
     ? await prisma.booking.findUnique({ where: { code: first.code } })
     : null;
   check(
-    "a ski lesson booked in January is $70x2 less $10 = $130",
-    priced?.totalCents === 13000 &&
+    "a ski lesson booked in January is $70x2 less ten minutes' fee ($11.67) = $128.33",
+    priced?.totalCents === 12833 &&
+      priced?.handoverDiscountCents === 1167 &&
       priced?.subtotalCents === 14000 &&
       priced?.lessonType === "riding" &&
       priced?.earlyBird === false,
@@ -566,13 +566,13 @@ async function main() {
     });
     check(
       "once the deposit clears the booking is confirmed with a balance owing",
-      afterDeposit.status === "CONFIRMED" && balanceCents(afterDeposit) === 6000,
+      afterDeposit.status === "CONFIRMED" && balanceCents(afterDeposit) === 5833,
       `owing=${balanceCents(afterDeposit)}`,
     );
     check(
       "the next payment asked for is the balance, not the deposit again",
       stageOf(afterDeposit) === "BALANCE" &&
-        amountDueCents(afterDeposit) === 6000,
+        amountDueCents(afterDeposit) === 5833,
     );
 
     // What the balance route does when the coach records the rest.
@@ -649,11 +649,11 @@ async function main() {
     ? await prisma.booking.findUnique({ where: { code: early.code } })
     : null;
   check(
-    "a park lesson booked before 1 December is $80x2 less $10 = $150",
+    "a park lesson booked before 1 December is $80x2 less ten minutes' fee ($13.33) = $146.67",
     earlyRow?.lessonType === "park" &&
       earlyRow.earlyBird &&
       earlyRow.hourlyRateCents === 8000 &&
-      earlyRow.totalCents === 15000,
+      earlyRow.totalCents === 14667,
     `rate=${earlyRow?.hourlyRateCents} total=${earlyRow?.totalCents}`,
   );
   if (early.ok) await prisma.booking.delete({ where: { code: early.code } });
@@ -694,7 +694,7 @@ async function main() {
   );
 
   console.log("\nlesson packages");
-  // Four hours for $180, paid to Kevin and already confirmed by him.
+  // Four hours for $180, bought from Alisa and already confirmed by her.
   const pkg = await prisma.lessonPackage.create({
     data: {
       code: "PKG-FLOW01",
@@ -705,11 +705,16 @@ async function main() {
       season: "2025-26",
       hours: 4,
       priceCents: 18000,
-      payeeCoachId: COACH,
+      payeeCoachId: COACH2,
       status: "ACTIVE",
     },
   });
-  const packageBooking = (coachId: string, dateKey: string, startHour: number, lessonType = "riding") =>
+  const packageBooking = (
+    coachId: string,
+    dateKey: string,
+    startHour: number,
+    lessonType = "riding",
+  ) =>
     createBooking({
       coachId,
       dateKey,
@@ -731,34 +736,42 @@ async function main() {
       now,
     );
 
-  const withAlisa = await packageBooking(COACH2, DAY, 9);
-  const alisaRow = withAlisa.ok
-    ? await prisma.booking.findUnique({ where: { code: withAlisa.code }, include: bookingInclude })
+  const withKevin = await packageBooking(COACH, DAY, 14);
+  check(
+    "a package bought from Alisa cannot be spent with Kevin",
+    !withKevin.ok && withKevin.reason === "package-wrong-coach",
+    withKevin.ok ? "booked!" : withKevin.reason,
+  );
+
+  const first2 = await packageBooking(COACH2, DAY, 9);
+  const firstRow = first2.ok
+    ? await prisma.booking.findUnique({ where: { code: first2.code }, include: bookingInclude })
     : null;
   check(
-    "a package paid to Kevin can be spent with Alisa",
-    withAlisa.ok && alisaRow?.packageId === pkg.id && alisaRow.paymentPlan === "PACKAGE",
-    withAlisa.ok ? "" : withAlisa.reason,
+    "it is spent with Alisa, who sold it",
+    first2.ok && firstRow?.packageId === pkg.id && firstRow.paymentPlan === "PACKAGE",
+    first2.ok ? "" : first2.reason,
   );
   check(
     "nothing is owed on a package booking; an hour is valued at $45",
-    alisaRow?.totalCents === 0 &&
-      alisaRow.depositCents === 0 &&
-      alisaRow.hourlyRateCents === 4500,
+    firstRow?.totalCents === 0 &&
+      firstRow.depositCents === 0 &&
+      firstRow.handoverDiscountCents === 0 &&
+      firstRow.hourlyRateCents === 4500,
   );
   check(
     "without a waiver for Alisa it still starts on HOLD",
-    withAlisa.ok && withAlisa.nextStep === "waiver" && alisaRow?.status === "HOLD",
+    first2.ok && first2.nextStep === "waiver" && firstRow?.status === "HOLD",
   );
 
-  if (alisaRow) {
+  if (firstRow) {
     await prisma.booking.update({
-      where: { id: alisaRow.id },
+      where: { id: firstRow.id },
       data: { holdExpiresAt: activeFixtureDeadline },
     });
-    alisaRow.holdExpiresAt = activeFixtureDeadline;
+    firstRow.holdExpiresAt = activeFixtureDeadline;
     const alisaSigned = await signWaiver({
-      booking: alisaRow,
+      booking: firstRow,
       participantId: adult.id,
       participantName: "张伟",
       participantIsMinor: adult.isMinor,
@@ -777,37 +790,37 @@ async function main() {
       ipAddress: "203.0.113.9",
       userAgent: "flow-check",
     });
-    const alisaAfter = await prisma.booking.findUnique({ where: { id: alisaRow.id } });
+    const after = await prisma.booking.findUnique({ where: { id: firstRow.id } });
     check(
       "signing the waiver confirms a package booking outright",
-      alisaSigned.ok && alisaAfter?.status === "CONFIRMED",
-      alisaSigned.ok ? `status=${alisaAfter?.status}` : alisaSigned.reason,
+      alisaSigned.ok && after?.status === "CONFIRMED",
+      alisaSigned.ok ? `status=${after?.status}` : alisaSigned.reason,
     );
   }
 
-  const withKevin = await packageBooking(COACH, DAY2, 9);
-  const kevinRow = withKevin.ok
-    ? await prisma.booking.findUnique({ where: { code: withKevin.code } })
+  const second2 = await packageBooking(COACH2, DAY2, 9);
+  const secondRow2 = second2.ok
+    ? await prisma.booking.findUnique({ where: { code: second2.code } })
     : null;
   check(
     "with a waiver already on file it is confirmed at once",
-    withKevin.ok && withKevin.nextStep === "done" && kevinRow?.status === "CONFIRMED",
-    withKevin.ok ? `status=${kevinRow?.status}` : withKevin.reason,
+    second2.ok && second2.nextStep === "done" && secondRow2?.status === "CONFIRMED",
+    second2.ok ? `status=${secondRow2?.status}` : second2.reason,
   );
   check("all four hours are now spent", (await packageUsage()) === 4);
 
-  const tooMany = await packageBooking(COACH, DAY2, 11);
+  const tooMany = await packageBooking(COACH2, DAY2, 11);
   check(
     "a fifth hour is refused",
     !tooMany.ok && tooMany.reason === "package-insufficient-hours",
   );
-  const parkFromPackage = await packageBooking(COACH, DAY2, 11, "park");
+  const prepFromPackage = await packageBooking(COACH2, DAY2, 11, "csia1_prep");
   check(
-    "a ski-lesson package cannot pay for park",
-    !parkFromPackage.ok && parkFromPackage.reason === "package-wrong-lesson-type",
+    "a ski-lesson package cannot pay for Level 1 prep",
+    !prepFromPackage.ok && prepFromPackage.reason === "package-wrong-lesson-type",
   );
   const notMine = await createBooking({
-    coachId: COACH,
+    coachId: COACH2,
     dateKey: DAY2,
     startHour: 11,
     hours: 2,
@@ -828,13 +841,24 @@ async function main() {
     !notMine.ok && notMine.reason === "package-not-found",
   );
 
-  if (kevinRow) {
+  // What the adjust route records when Alisa gives two hours back.
+  await prisma.packageAdjustment.create({
+    data: { packageId: pkg.id, hours: 2, reason: "补课", createdById: COACH2 },
+  });
+  const afterAdjust = await packageBooking(COACH2, DAY2, 11);
+  check(
+    "hours the coach adds can be booked",
+    afterAdjust.ok && (await packageUsage()) === 6,
+    afterAdjust.ok ? "" : afterAdjust.reason,
+  );
+
+  if (secondRow2) {
     await prisma.booking.update({
-      where: { id: kevinRow.id },
+      where: { id: secondRow2.id },
       data: { status: "CANCELLED", cancelledAt: new Date(), cancelReason: "改期" },
     });
   }
-  check("cancelling a package lesson gives its hours back", (await packageUsage()) === 2);
+  check("cancelling a package lesson gives its hours back", (await packageUsage()) === 4);
 
   // Deterministic proof of the row lock: hold it in another transaction,
   // cancel the package there, and have a booking arrive meanwhile. It must
@@ -863,44 +887,24 @@ async function main() {
     data: { status: "ACTIVE" },
   });
 
-  // Six bookings racing for the last two hours, each on a different free
+  // Four bookings racing for the last two hours, each on a different free
   // slot so only the package can stop them.
   const race = await Promise.all([
-    packageBooking(COACH, DAY, 14),
-    packageBooking(COACH, DAY2, 11),
     packageBooking(COACH2, DAY, 11),
     packageBooking(COACH2, DAY, 14),
     packageBooking(COACH2, DAY2, 9),
-    packageBooking(COACH2, DAY2, 11),
+    packageBooking(COACH2, DAY2, 14),
   ]);
   const winners = race.filter((r) => r.ok).length;
   const losers = race.filter(
     (r) => !r.ok && r.reason === "package-insufficient-hours",
   ).length;
   check(
-    "six bookings racing for the last hours: exactly one wins",
+    "four bookings racing for the last hours: exactly one wins",
     winners === 1 && losers === race.length - 1,
     `won=${winners} refused=${losers}`,
   );
-  check("the package is never overspent", (await packageUsage()) === 4);
-
-  const uses = await prisma.booking.findMany({
-    where: { packageId: pkg.id, status: { in: OCCUPYING_STATUSES } },
-    select: { coachId: true, hours: true },
-  });
-  const alisaHours = uses
-    .filter((u) => u.coachId === COACH2)
-    .reduce((sum, u) => sum + u.hours, 0);
-  const [kevinOwes] = settlementFor(COACH, [
-    { payeeCoachId: COACH, priceCents: 18000, hours: 4, uses },
-  ]);
-  check(
-    "Kevin, who was paid, owes Alisa $45 for each hour she taught",
-    kevinOwes?.otherCoachId === COACH2 &&
-      kevinOwes.iOweCents === alisaHours * 4500 &&
-      kevinOwes.netCents === -alisaHours * 4500,
-    `alisa taught ${alisaHours}h, owed ${kevinOwes?.iOweCents}`,
-  );
+  check("the package is never overspent", (await packageUsage()) === 6);
 
   console.log("\naging out of a guardian signature");
   const agedOut = resolveWaiver({

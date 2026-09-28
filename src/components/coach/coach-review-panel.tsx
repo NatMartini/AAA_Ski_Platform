@@ -14,18 +14,24 @@ const COPY = {
   zh: {
     title: "付款审核",
     method: "付款方式",
-    reference: "转账备注",
+    reference: "参考号",
     uploadedBy: "截图来源",
     byCustomer: "学员上传",
     byCoach: "教练代传",
     noProof: "尚未收到付款截图。",
+    wechatPending: "学员说已用微信付款。请在微信里核对收到这笔钱后再确认。",
+    wechatPendingOther: "学员说已用微信付款,等收款的教练在微信里核对。",
+    wechatDone: "学员用微信付款,没有截图。",
     confirm: "确认收款",
     reject: "驳回付款",
     reason: "驳回原因(会发给学员)",
     needReason: "请填写驳回原因。",
     uploadForStudent: "代学员上传截图",
-    uploaded: "已上传,请提交",
+    uploaded: "已上传。填上参考号后提交。",
+    studentReference: "转账参考号 Reference(必填)",
     submit: "提交",
+    wechatReceived: "已收到学员的微信付款",
+    needReference: "请填写转账参考号。",
     failed: "操作失败,请重试。",
     confirmed: "已确认收款。",
   },
@@ -37,13 +43,21 @@ const COPY = {
     byCustomer: "the student",
     byCoach: "you, on their behalf",
     noProof: "No payment screenshot yet.",
+    wechatPending:
+      "The student says they have paid by WeChat. Check it arrived in WeChat before confirming.",
+    wechatPendingOther:
+      "The student says they have paid by WeChat. The coach being paid checks it in WeChat.",
+    wechatDone: "Paid by WeChat, so there is no screenshot.",
     confirm: "Confirm payment",
     reject: "Reject payment",
     reason: "Reason (sent to the student)",
     needReason: "Please give a reason.",
     uploadForStudent: "Upload screenshot for the student",
-    uploaded: "Uploaded — now submit it",
+    uploaded: "Uploaded. Add the reference, then submit.",
+    studentReference: "Transfer reference (required)",
     submit: "Submit",
+    wechatReceived: "Received the student's WeChat payment",
+    needReference: "Please enter the transfer reference.",
     failed: "That did not work. Please try again.",
     confirmed: "Payment confirmed.",
   },
@@ -53,6 +67,7 @@ export function CoachReviewPanel({
   locale,
   target,
   confirmed,
+  submitted,
   hasProof,
   proofUploadedBy,
   paymentMethod,
@@ -65,6 +80,8 @@ export function CoachReviewPanel({
   target: PaymentTarget;
   /** Payment has already been accepted. */
   confirmed: boolean;
+  /** A payment is in and waiting for the coach's check. */
+  submitted: boolean;
   hasProof: boolean;
   proofUploadedBy: UploadedBy | null;
   paymentMethod: PaymentMethod | null;
@@ -81,6 +98,7 @@ export function CoachReviewPanel({
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [proofKey, setProofKey] = useState<string | null>(null);
+  const [studentReference, setStudentReference] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   async function review(action: "confirm" | "reject") {
@@ -122,17 +140,52 @@ export function CoachReviewPanel({
 
   async function submitProof() {
     if (!proofKey) return;
+    if (!studentReference.trim()) {
+      setError(c.needReference);
+      return;
+    }
     setBusy(true);
+    setError(null);
     const res = await fetch(paths.submit, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ method: "EMT", proofKey, reference: null }),
+      body: JSON.stringify({
+        method: "EMT",
+        proofKey,
+        reference: studentReference.trim(),
+      }),
     });
     setBusy(false);
     if (!res.ok) {
       setError(c.failed);
       return;
     }
+    router.refresh();
+  }
+
+  /**
+   * WeChat has nothing to upload: the coach sees the money arrive and that is
+   * the confirmation. Recorded as a WeChat payment, then confirmed in one go.
+   */
+  async function wechatReceived() {
+    setBusy(true);
+    setError(null);
+    const submitted = await fetch(paths.submit, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ method: "WECHAT" }),
+    });
+    const confirmed =
+      submitted.ok &&
+      (
+        await fetch(paths.review, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-locale": locale },
+          body: JSON.stringify({ action: "confirm", note: null }),
+        })
+      ).ok;
+    setBusy(false);
+    if (!confirmed) setError(c.failed);
     router.refresh();
   }
 
@@ -173,6 +226,14 @@ export function CoachReviewPanel({
             className="max-h-96 rounded-lg border border-border"
           />
         </>
+      ) : paymentMethod === "WECHAT" && (submitted || confirmed) ? (
+        <p className="text-sm text-ink-2">
+          {confirmed
+            ? c.wechatDone
+            : canReview
+              ? c.wechatPending
+              : c.wechatPendingOther}
+        </p>
       ) : (
         <p className="text-sm text-muted-foreground">{c.noProof}</p>
       )}
@@ -242,14 +303,40 @@ export function CoachReviewPanel({
               )}
               {c.uploadForStudent}
             </Button>
-            {proofKey && (
-              <Button onClick={submitProof} disabled={busy}>
-                {c.submit}
-              </Button>
-            )}
+            <Button
+              variant="secondary"
+              disabled={busy || uploading}
+              onClick={wechatReceived}
+            >
+              {busy && !proofKey ? (
+                <Loader2 className="animate-spin" aria-hidden />
+              ) : (
+                <Check aria-hidden />
+              )}
+              {c.wechatReceived}
+            </Button>
           </div>
           {proofKey && (
-            <p className="text-xs text-muted-foreground">{c.uploaded}</p>
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">{c.uploaded}</p>
+              <div className="space-y-1.5">
+                <Label htmlFor="student-reference">{c.studentReference}</Label>
+                <Input
+                  id="student-reference"
+                  value={studentReference}
+                  required
+                  onChange={(e) => setStudentReference(e.target.value)}
+                  maxLength={200}
+                />
+              </div>
+              <Button
+                onClick={submitProof}
+                disabled={busy || !studentReference.trim()}
+              >
+                {busy && <Loader2 className="animate-spin" aria-hidden />}
+                {c.submit}
+              </Button>
+            </div>
           )}
         </div>
       )}

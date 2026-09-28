@@ -67,9 +67,10 @@ model User {
   waivers      Waiver[]      @relation("WaiverSigner")
   coachWaivers Waiver[]      @relation("WaiverCoach")
 
-  packages         LessonPackage[] @relation("PackageAccount")
-  packagesPaidTo   LessonPackage[] @relation("PackagePayee")
-  packagesReviewed LessonPackage[] @relation("PackageReviewer")
+  packages           LessonPackage[]     @relation("PackageAccount")
+  packagesPaidTo     LessonPackage[]     @relation("PackagePayee")
+  packagesReviewed   LessonPackage[]     @relation("PackageReviewer")
+  packageAdjustments PackageAdjustment[] @relation("PackageAdjuster")
 }
 
 model Account {
@@ -141,13 +142,12 @@ model CoachProfile {
   avatarKey   String?
   avatarUrl   String?
 
-  // Pricing. Hourly rates live in CoachRate, one per lesson type.
-  // handoverDiscountCents is deducted ONCE per booking, regardless of length:
-  // the 10-minute handover at the start only happens once per lesson.
-  handoverDiscountCents Int @default(1000)
-  minHours              Int @default(2)
-  maxHours              Int @default(8)
-  leadTimeHours         Int @default(24)
+  // Pricing. Hourly rates live in CoachRate, one per lesson type. The
+  // handover credit is not a setting: it is always the ten minutes' fee at
+  // the booked rate (lib/pricing.ts).
+  minHours      Int @default(2)
+  maxHours      Int @default(8)
+  leadTimeHours Int @default(24)
 
   // Group lessons: each additional student adds this much per hour on top of
   // the base rate. $20 default → 1-on-2 is base+20/h, 1-on-3 base+40/h.
@@ -375,7 +375,7 @@ model Booking {
   earlyBird  Boolean @default(false)
 
   // Actual teaching window: startAt + 10min, endAt. The 10 minutes are the
-  // handover from the previous student, and are why totalCents is discounted.
+  // handover from the previous student; their fee is handoverDiscountCents.
   lessonStartAt DateTime
   lessonEndAt   DateTime
 
@@ -544,7 +544,7 @@ enum PackageStatus {
 }
 
 /// Prepaid lesson hours ("课时包"), e.g. four hours at Blue Mountain for $180
-/// that can be spent with any coach. See lib/packages.ts.
+/// with the coach the buyer paid. See lib/packages.ts.
 ///
 /// Belongs to the account, so a parent can spend it on any of their
 /// participants. Hours left are derived from the bookings pointing at it,
@@ -567,9 +567,8 @@ model LessonPackage {
   priceCents Int
   currency   String @default("CAD")
 
-  /// The coach the buyer chose to pay. They confirm the payment; the hours can
-  /// still be spent with any coach, and settlement between coaches is shown in
-  /// the coach area.
+  /// The coach the buyer chose to pay. They confirm the payment, and the
+  /// hours can only be booked with them.
   payeeCoachId String
 
   status             PackageStatus  @default(AWAITING_PAYMENT)
@@ -588,14 +587,34 @@ model LessonPackage {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  account    User      @relation("PackageAccount", fields: [accountId], references: [id], onDelete: Restrict)
-  payeeCoach User      @relation("PackagePayee", fields: [payeeCoachId], references: [id], onDelete: Restrict)
-  reviewedBy User?     @relation("PackageReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
-  resort     Resort    @relation(fields: [resortId], references: [id], onDelete: Restrict)
-  bookings   Booking[]
+  account     User                @relation("PackageAccount", fields: [accountId], references: [id], onDelete: Restrict)
+  payeeCoach  User                @relation("PackagePayee", fields: [payeeCoachId], references: [id], onDelete: Restrict)
+  reviewedBy  User?               @relation("PackageReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  resort      Resort              @relation(fields: [resortId], references: [id], onDelete: Restrict)
+  bookings    Booking[]
+  adjustments PackageAdjustment[]
 
   @@index([accountId])
   @@index([payeeCoachId, status])
+}
+
+/// A coach changing how many hours a package holds — a make-up lesson, hours
+/// given back, a correction. Append-only like the rest of the money record:
+/// a mistake is fixed with another adjustment, never by editing this one.
+model PackageAdjustment {
+  id          String   @id @default(cuid())
+  packageId   String
+  /// Signed: +2 adds two hours, -1 takes one away.
+  hours       Int
+  /// Why, in the coach's words. Shown to the student.
+  reason      String
+  createdById String
+  createdAt   DateTime @default(now())
+
+  package   LessonPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  createdBy User          @relation("PackageAdjuster", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([packageId])
 }
 
 // ──────────────────────────── Waivers ────────────────────────────

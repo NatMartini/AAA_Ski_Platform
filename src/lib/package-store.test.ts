@@ -19,32 +19,33 @@ const user = (id: string, role: ActiveUser["role"]): ActiveUser => ({
 const pkg = { accountId: "wei", payeeCoachId: "kevin", status: "PENDING_PAYMENT_REVIEW" } as const;
 
 describe("packageAccessFor", () => {
-  it("lets the coach who was paid review it", () => {
-    expect(packageAccessFor(pkg, user("kevin", "COACH"), true, false)).toMatchObject({
-      canView: true,
-      canReview: true,
-    });
+  it("lets every coach read a package: the coaches share one set of books", () => {
+    const alisa = packageAccessFor(pkg, user("alisa", "COACH"), true, false);
+    expect(alisa.canView).toBe(true);
   });
 
-  it("keeps a package away from a coach who was not paid", () => {
-    // Other coaches see a student's hours left on the students page, not the
-    // package itself, its screenshot or who else taught from it.
-    expect(packageAccessFor(pkg, user("alisa", "COACH"), true, false)).toMatchObject({
-      canView: false,
+  it("keeps the review and cancelling with the coach who was paid", () => {
+    const alisa = packageAccessFor(pkg, user("alisa", "COACH"), true, false);
+    expect(alisa).toMatchObject({
+      isParty: false,
+      canView: true,
       canReview: false,
-      canPay: false,
       canCancel: false,
     });
+
+    const kevin = packageAccessFor(pkg, user("kevin", "COACH"), true, false);
+    expect(kevin).toMatchObject({ isParty: true, canReview: true });
   });
 
-  it("lets the buyer re-upload after a rejection, and nobody else but the paid coach", () => {
+  it("does not let a coach who was not paid upload proof for it", () => {
     const rejected = { ...pkg, status: "PAYMENT_REJECTED" } as const;
-    expect(packageAccessFor(rejected, user("wei", "CUSTOMER"), true, false).canPay).toBe(true);
-    expect(packageAccessFor(rejected, user("kevin", "COACH"), true, false).canPay).toBe(true);
     expect(packageAccessFor(rejected, user("alisa", "COACH"), true, false).canPay).toBe(false);
+    expect(packageAccessFor(rejected, user("kevin", "COACH"), true, false).canPay).toBe(true);
+    expect(packageAccessFor(rejected, user("wei", "CUSTOMER"), true, false).canPay).toBe(true);
   });
 
   it("shows nothing to another student", () => {
-    expect(packageAccessFor(pkg, user("lin", "CUSTOMER"), true, false).canView).toBe(false);
+    const other = packageAccessFor(pkg, user("lin", "CUSTOMER"), true, false);
+    expect(other).toMatchObject({ canView: false, canPay: false });
   });
 });

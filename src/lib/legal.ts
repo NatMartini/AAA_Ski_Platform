@@ -44,7 +44,7 @@ export const LEGAL_DOCS: Record<
           heading: "Booking and lesson times",
           paragraphs: [
             "Lessons are booked on the hour, with a two-hour minimum. Every lesson starts ten minutes after the booked hour and runs to the end of the booking, so the instructor can hand over from the previous student. A 1:00–3:00 booking is taught 1:10–3:00.",
-            "Because that handover happens once per booking regardless of length, a fixed credit is deducted once per booking, not per hour. The full breakdown is shown before you confirm.",
+            "The fee for those ten minutes, at the lesson's hourly rate, is taken off the price — once per booking, not per hour, because the handover happens once however long the lesson. The full breakdown is shown before you confirm and again when you pay.",
           ],
         },
         {
@@ -53,7 +53,7 @@ export const LEGAL_DOCS: Record<
             "Payment is made directly to your instructor by Interac e-Transfer, WeChat Pay or Alipay, and confirmed by uploading a screenshot. Your booking is confirmed once the instructor has checked it.",
             "Prices are in Canadian dollars, one-on-one, and final: no tax is added. Each additional student in a group lesson adds a per-hour surcharge shown before you confirm.",
             "Early-bird prices apply to bookings made on or before 1 December for lessons in that season.",
-            "A lesson package is paid to the instructor you choose when you buy it, and its hours can be booked with any instructor for the lesson type and resort it covers, during the season it was bought for.",
+            "A lesson package is bought from, and paid to, the instructor you choose, and its hours can be booked only with that instructor, for the lesson type and resort it covers, during the season it was bought for. The instructor can add or remove hours; every change is recorded with its reason and shown to you.",
           ],
         },
         {
@@ -101,7 +101,7 @@ export const LEGAL_DOCS: Record<
           heading: "预定与上课时间",
           paragraphs: [
             "课程按整点预定,最少两小时。每节课在预定时段开始 10 分钟后开始、到预定时段结束为止,以便教练与上一位学员交接。预定 1:00–3:00,实际授课时间为 1:10–3:00。",
-            "由于交接每张订单只发生一次,与时长无关,因此每张订单固定扣减一次,而非按小时扣减。确认下单前会完整展示价格明细。",
+            "这 10 分钟的课时费(按该课的小时价计算)会从课费中减去 —— 每张订单减一次,而非按小时扣减,因为交接每节课只发生一次。确认下单前和付款时都会完整展示价格明细。",
           ],
         },
         {
@@ -110,7 +110,7 @@ export const LEGAL_DOCS: Record<
             "款项通过 Interac e-Transfer、微信支付或支付宝直接支付给教练,并上传付款截图确认。教练核对后订单即预定成功。",
             "所有价格以加元计,为一对一价格,且为最终价,不另加税。多人课每增加一名学员,每小时另加费用,下单前会显示。",
             "12 月 1 日(含)之前下的订单,按早鸟价收取该雪季的课程费用。",
-            "课时包在购买时付款给你选择的教练,课时可在购买的雪季内、按课时包对应的雪场和课程类型,与任意教练预约使用。",
+            "课时包在购买时付款给你选择的教练,只能在购买的雪季内、按课时包对应的雪场和课程类型,约这位教练使用。教练可以增减课时,每次调整都会注明原因并对你可见。",
           ],
         },
         {
@@ -163,14 +163,14 @@ export const LEGAL_DOCS: Record<
         {
           heading: "Payment screenshots",
           paragraphs: [
-            "These often show a bank balance or account number. They are stored outside the public web root and are readable only by you and the instructor for that booking — never by anyone who simply has a link.",
+            "These often show a bank balance or account number. They are stored outside the public web root and are readable only by you and the site's instructors — never by anyone who simply has a link.",
             "Please cover anything you would rather not share before uploading.",
           ],
         },
         {
           heading: "Children's information",
           paragraphs: [
-            "Information about a participant under 18 is provided and consented to by their parent or guardian through that adult's own account. We collect the minimum needed to run the lesson safely. Lesson videos may include that participant and are kept private to the booking account and instructor.",
+            "Information about a participant under 18 is provided and consented to by their parent or guardian through that adult's own account. We collect the minimum needed to run the lesson safely. Lesson videos may include that participant and are kept private to the booking account and the site's instructors.",
           ],
         },
         {
@@ -185,7 +185,8 @@ export const LEGAL_DOCS: Record<
         {
           heading: "Who we share it with",
           paragraphs: [
-            "Nobody. Your details are visible to you and to the instructor you booked with. There is no analytics, no advertising and no third-party tracking on this site.",
+            "Nobody outside the site's instructors. The instructors on this site keep one set of records together, so everything about your bookings and lesson packages — lessons, payments and payment screenshots, signed waivers and lesson videos — is visible to you and to every instructor on the site.",
+            "There is no visitor analytics, no advertising and no third-party tracking on this site.",
           ],
         },
         {
@@ -219,14 +220,14 @@ export const LEGAL_DOCS: Record<
         {
           heading: "付款截图",
           paragraphs: [
-            "付款截图常包含账户余额或账号。这些文件存放在网站公开目录之外,只有你本人和该订单的教练可以查看 —— 仅凭链接无法访问。",
+            "付款截图常包含账户余额或账号。这些文件存放在网站公开目录之外,只有你本人和本站教练可以查看 —— 仅凭链接无法访问。",
             "上传前请遮挡你不希望被看到的信息。",
           ],
         },
         {
           heading: "未成年人信息",
           paragraphs: [
-            "未满 18 周岁学员的信息,由其父母或监护人通过本人账号提供并同意。我们只收集保障课程安全所必需的最少信息。课程视频可能包含该学员,且仅限预定账号与教练查看。",
+            "未满 18 周岁学员的信息,由其父母或监护人通过本人账号提供并同意。我们只收集保障课程安全所必需的最少信息。课程视频可能包含该学员,且仅限预定账号与本站教练查看。",
           ],
         },
         {
@@ -241,7 +242,8 @@ export const LEGAL_DOCS: Record<
         {
           heading: "是否对外共享",
           paragraphs: [
-            "不共享。你的信息仅你本人与所约教练可见。本站没有任何分析统计、广告或第三方追踪。",
+            "不对本站教练以外的任何人共享。本站教练共同记账,因此你的预约和课时包的全部信息 —— 课程、付款与付款截图、已签署的免责协议和课程视频 —— 你本人和本站所有教练都能看到。",
+            "本站没有访客分析统计、广告或第三方追踪。",
           ],
         },
         {

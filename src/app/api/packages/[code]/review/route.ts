@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * The coach who was paid confirms or rejects the screenshot. Confirming makes
- * the hours spendable with any coach.
+ * the hours spendable with that coach.
  */
 export async function POST(
   req: Request,

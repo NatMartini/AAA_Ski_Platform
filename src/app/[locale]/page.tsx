@@ -3,7 +3,13 @@ import { Link } from "@/i18n/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { getUser } from "@/lib/auth/require-user";
-import { ArrowRight, CalendarDays, Package, Snowflake } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarDays,
+  CalendarRange,
+  Package,
+  Snowflake,
+} from "lucide-react";
 
 export default async function HomePage({ params }: PageProps<"/[locale]">) {
   const { locale } = await params;
@@ -70,7 +76,22 @@ export default async function HomePage({ params }: PageProps<"/[locale]">) {
           </Button>
         </Card>
 
-        <Card interactive className="flex flex-col gap-3 sm:col-span-2">
+        <Card interactive className="flex flex-col gap-3">
+          <CardTitle>{nav("calendar")}</CardTitle>
+          <CardDescription>
+            {locale === "zh"
+              ? "这周每位教练在哪个雪场、什么时间在上课、还有哪些时间可以约。"
+              : "Where each coach is this week, when they are teaching, and what is still free."}
+          </CardDescription>
+          <Button asChild variant="secondary" className="mt-auto self-start">
+            <Link href="/calendar">
+              <CalendarRange aria-hidden />
+              {nav("calendar")}
+            </Link>
+          </Button>
+        </Card>
+
+        <Card interactive className="flex flex-col gap-3">
           <CardTitle>
             {nav("prices")} · {nav("packages")}
           </CardTitle>

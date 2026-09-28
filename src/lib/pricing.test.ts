@@ -1,15 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { formatMoneyShort, lessonWindow, quote } from "./pricing";
+import {
+  formatMoneyShort,
+  handoverCreditCents,
+  lessonWindow,
+  quote,
+} from "./pricing";
 import { torontoWallTimeToUtc } from "./time";
 
 const RATE = 6000; // $60/h — Kevin, ski lesson, early bird
-const HANDOVER = 1000; // $10
 
 describe("quote", () => {
-  it("charges 2 hours as $120 less $10 = $110", () => {
-    expect(
-      quote({ hours: 2, hourlyRateCents: RATE, handoverDiscountCents: HANDOVER }),
-    ).toMatchObject({
+  it("charges 2 hours at $60 as $120 less ten minutes' fee, $10 = $110", () => {
+    expect(quote({ hours: 2, hourlyRateCents: RATE })).toMatchObject({
       subtotalCents: 12000,
       handoverDiscountCents: 1000,
       totalCents: 11000,
@@ -17,102 +19,71 @@ describe("quote", () => {
     });
   });
 
-  it("deducts the handover only once, however long the lesson", () => {
-    const three = quote({
-      hours: 3,
-      hourlyRateCents: RATE,
-      handoverDiscountCents: HANDOVER,
-    });
-    const four = quote({
-      hours: 4,
-      hourlyRateCents: RATE,
-      handoverDiscountCents: HANDOVER,
-    });
-    expect(three.totalCents).toBe(17000); // 180 - 10
-    expect(four.totalCents).toBe(23000); // 240 - 10
-    expect(three.handoverDiscountCents).toBe(HANDOVER);
-    expect(four.handoverDiscountCents).toBe(HANDOVER);
+  it("takes off ten minutes at the booked rate, to the cent", () => {
+    expect(handoverCreditCents(7000)).toBe(1167); // $70/h → $11.67
+    expect(handoverCreditCents(8000)).toBe(1333); // $80/h → $13.33
+    expect(handoverCreditCents(5000)).toBe(833); // $50/h → $8.33
+    expect(quote({ hours: 2, hourlyRateCents: 7000 }).totalCents).toBe(14000 - 1167);
   });
 
-  it("never returns a negative total when the discount exceeds the subtotal", () => {
-    const q = quote({
-      hours: 1,
-      hourlyRateCents: 1000,
-      handoverDiscountCents: 9999,
-    });
-    expect(q.totalCents).toBe(0);
-    expect(q.handoverDiscountCents).toBe(1000);
+  it("deducts the handover only once, however long the lesson", () => {
+    const three = quote({ hours: 3, hourlyRateCents: RATE });
+    const four = quote({ hours: 4, hourlyRateCents: RATE });
+    expect(three.totalCents).toBe(17000); // 180 - 10
+    expect(four.totalCents).toBe(23000); // 240 - 10
+    expect(three.handoverDiscountCents).toBe(1000);
+    expect(four.handoverDiscountCents).toBe(1000);
   });
 
   it("rejects nonsense inputs rather than silently coercing", () => {
-    expect(() =>
-      quote({ hours: 0, hourlyRateCents: RATE, handoverDiscountCents: HANDOVER }),
-    ).toThrow();
-    expect(() =>
-      quote({ hours: 2.5, hourlyRateCents: RATE, handoverDiscountCents: HANDOVER }),
-    ).toThrow();
-    expect(() =>
-      quote({ hours: 2, hourlyRateCents: -1, handoverDiscountCents: HANDOVER }),
-    ).toThrow();
+    expect(() => quote({ hours: 0, hourlyRateCents: RATE })).toThrow();
+    expect(() => quote({ hours: 2.5, hourlyRateCents: RATE })).toThrow();
+    expect(() => quote({ hours: 2, hourlyRateCents: -1 })).toThrow();
   });
 
   it("charges a group at base + $20 per extra student per hour", () => {
-    // 1-on-1 $60/h, 1-on-2 $80/h, 1-on-3 $100/h.
+    // 1-on-1 $60/h, 1-on-2 $80/h, 1-on-3 $100/h; ten minutes at that rate off.
     const two = quote({
       hours: 2,
       hourlyRateCents: RATE,
-      handoverDiscountCents: HANDOVER,
       headcount: 2,
       extraPersonCents: 2000,
     });
     expect(two.perHourCents).toBe(8000);
     expect(two.subtotalCents).toBe(16000); // 80 × 2
-    expect(two.totalCents).toBe(15000); // less 10
+    expect(two.totalCents).toBe(16000 - 1333);
 
     const three = quote({
       hours: 2,
       hourlyRateCents: RATE,
-      handoverDiscountCents: HANDOVER,
       headcount: 3,
       extraPersonCents: 2000,
     });
     expect(three.perHourCents).toBe(10000);
     expect(three.subtotalCents).toBe(20000); // 100 × 2
-    expect(three.totalCents).toBe(19000);
+    expect(three.totalCents).toBe(20000 - 1667);
   });
 
   it("treats a single student as no surcharge", () => {
-    const q = quote({
-      hours: 2,
-      hourlyRateCents: RATE,
-      handoverDiscountCents: HANDOVER,
-      headcount: 1,
-      extraPersonCents: 2000,
-    });
+    const q = quote({ hours: 2, hourlyRateCents: RATE, headcount: 1, extraPersonCents: 2000 });
     expect(q.perHourCents).toBe(RATE);
     expect(q.totalCents).toBe(11000);
   });
 
   it("defaults to one student with no surcharge", () => {
-    const q = quote({ hours: 2, hourlyRateCents: RATE, handoverDiscountCents: HANDOVER });
+    const q = quote({ hours: 2, hourlyRateCents: RATE });
     expect(q.headcount).toBe(1);
     expect(q.perHourCents).toBe(RATE);
   });
 
   it("rejects a headcount below one", () => {
-    expect(() =>
-      quote({ hours: 2, hourlyRateCents: RATE, handoverDiscountCents: HANDOVER, headcount: 0 }),
-    ).toThrow();
+    expect(() => quote({ hours: 2, hourlyRateCents: RATE, headcount: 0 })).toThrow();
   });
 
   it("stays in integer cents for awkward rates", () => {
-    const q = quote({
-      hours: 3,
-      hourlyRateCents: 8333,
-      handoverDiscountCents: HANDOVER,
-    });
+    const q = quote({ hours: 3, hourlyRateCents: 8333 });
     expect(Number.isInteger(q.totalCents)).toBe(true);
-    expect(q.totalCents).toBe(8333 * 3 - HANDOVER);
+    expect(q.totalCents).toBe(8333 * 3 - 1389);
   });
 });
 

@@ -1,5 +1,6 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
+import { Link } from "@/i18n/navigation";
 import { requireCoachPage } from "@/lib/auth/require-user";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { IcsFeedBox } from "@/components/coach/ics-feed-box";
@@ -65,9 +66,17 @@ export default async function CoachSchedulePage({
       )}
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium text-muted-foreground">
-          {t("schedule")}
-        </h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-medium text-muted-foreground">
+            {t("schedule")}
+          </h2>
+          <Link
+            href="/calendar"
+            className="text-xs font-bold text-accent underline underline-offset-2"
+          >
+            {zh ? "所有教练的日历 →" : "Every coach's calendar →"}
+          </Link>
+        </div>
 
         {byDay.size === 0 ? (
           <Card>

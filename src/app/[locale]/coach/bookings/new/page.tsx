@@ -29,6 +29,9 @@ export default async function CoachNewBookingPage({
     to: horizon.to,
   });
 
+  // Fully booked days are left off: there is nothing to pick on them.
+  const bookable = days.filter((day) => day.startOptions.length > 0);
+
   return (
     <CoachBookingForm
       locale={toLocale(locale)}
@@ -42,11 +45,10 @@ export default async function CoachNewBookingPage({
         regularCents: r.regularCents,
         earlyBirdCents: r.earlyBirdCents,
       }))}
-      days={days.map((day) => ({
+      days={bookable.map((day) => ({
         dateKey: day.dateKey,
         resortName: locale === "zh" ? day.resort.nameZh : day.resort.nameEn,
         earlyBird: day.earlyBird,
-        handoverDiscountCents: day.handoverDiscountCents,
         extraPersonCents: day.extraPersonCents,
         startOptions: day.startOptions.map((o) => ({
           hour: o.hour,

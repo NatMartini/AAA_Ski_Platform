@@ -41,16 +41,25 @@ export async function SiteHeader({
         </Link>
 
         {user && (
-          <nav className="ml-1 flex items-center gap-0.5 text-sm">
-            <HeaderLink href="/book">{t("book")}</HeaderLink>
-            {/* No room on a phone; there the home page links to prices, and
-                the coach cards show them anyway. */}
-            <HeaderLink href="/prices" className="hidden sm:inline-block">
+          // Short labels on a phone; wrapped, the Chinese ones stacked one
+          // character per line. Scrolls sideways if even those do not fit.
+          <nav className="ml-1 flex min-w-0 items-center gap-0.5 overflow-x-auto text-sm">
+            <HeaderLink href="/book" short={t("bookShort")}>
+              {t("book")}
+            </HeaderLink>
+            {/* No room on a phone; there the home page links to prices and
+                the calendar, and the coach cards show prices anyway. */}
+            <HeaderLink href="/prices" className="hidden md:inline-block">
               {t("prices")}
             </HeaderLink>
-            <HeaderLink href="/my/bookings">{t("myBookings")}</HeaderLink>
+            <HeaderLink href="/calendar" className="hidden lg:inline-block">
+              {t("calendar")}
+            </HeaderLink>
+            <HeaderLink href="/my/bookings" short={t("myBookingsShort")}>
+              {t("myBookings")}
+            </HeaderLink>
             {isCoach && (
-              <HeaderLink href="/coach" accent>
+              <HeaderLink href="/coach" accent short={t("coachShort")}>
                 {t("coach")}
               </HeaderLink>
             )}
@@ -72,22 +81,32 @@ export async function SiteHeader({
 function HeaderLink({
   href,
   children,
+  short,
   accent,
   className = "",
 }: {
   href: string;
   children: React.ReactNode;
+  /** Shown instead below md, where the full labels do not fit. */
+  short?: string;
   accent?: boolean;
   className?: string;
 }) {
   return (
     <Link
       href={href}
-      className={`press rounded-lg px-3 py-2 font-semibold transition-colors hover:bg-surface-2 ${
+      className={`press whitespace-nowrap rounded-lg px-1.5 py-2 font-semibold transition-colors hover:bg-surface-2 md:px-3 ${
         accent ? "text-accent" : "text-ink-2 hover:text-ink"
       } ${className}`}
     >
-      {children}
+      {short ? (
+        <>
+          <span className="md:hidden">{short}</span>
+          <span className="hidden md:inline">{children}</span>
+        </>
+      ) : (
+        children
+      )}
     </Link>
   );
 }
