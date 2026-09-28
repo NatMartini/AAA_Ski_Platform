@@ -65,14 +65,3 @@ export async function loadStatPackages(
     },
   });
 }
-
-/**
- * Every coach, in a fixed order (by name), so a coach keeps the same row and
- * the same chart colour however the numbers move.
- */
-export async function loadCoaches() {
-  return prisma.coachProfile.findMany({
-    select: { userId: true, displayName: true },
-    orderBy: [{ displayName: "asc" }, { createdAt: "asc" }],
-  });
-}

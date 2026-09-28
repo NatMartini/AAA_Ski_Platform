@@ -141,81 +141,21 @@ after that, though a rejected screenshot can always be replaced.
 
 ### What coaches can see
 
-Because a package bought from one coach can be spent with another, the coaches
-keep one set of books. Every coach can open any package and sees, under
-**Students** (`/coach/students`), every student's package hours left, what that
-is worth, what they still owe and their lessons with either coach. **Stats**
-(`/coach/stats`) totals a season for the whole team: money received and
-outstanding, hours taught, packages sold and unused, split by coach, lesson type,
-resort, price and month. The definitions live in `src/lib/stats.ts`.
+Each coach sees their own business and nothing of another coach's: their own
+bookings, and the packages paid to them. The single exception is **package
+hours left** — under **Students** (`/coach/students`) every coach sees every
+student's unused hours, because any coach can be booked with them. Money,
+lessons, contact details and who a student books for come only from that
+coach's own bookings and packages.
 
-The narrower things stay narrow: a payment screenshot is visible only to the
-student and the coach who was paid, and a booking page — with its screenshot
-and signed waiver — only to that booking's coach. The privacy notice says so.
+A package page opens only for the buyer and the coach who was paid. That
+coach sees their own lessons from it in full and another coach's use only as
+hours per coach, which is what settling up needs.
 
-### No double-booking
-
-The `booking_no_overlap` exclusion constraint makes an overlap impossible at
-the storage layer. An application-level "is this free?" check loses to a race;
-this does not. A lost race surfaces as SQLSTATE 23P01 and becomes a 409.
-
-The status list in that migration must stay in sync with `OCCUPYING_STATUSES`
-in `src/lib/booking/state.ts`. `npm run check:overlap` verifies it.
-
-### Waivers
-
-A waiver is keyed to a **participant**, a **coach**, a **season** and a
-**template version** — never to an account. That is what stops a parent's own
-signature from being credited to their child: they are different rows, so the
-lookup simply misses.
-
-Signed once per coach per season. Booking the same coach again that season
-skips signing; booking the other coach does not.
-
-Waiver rows are **append-only**. There is no update path — a correction means
-signing a new one and setting `revokedAt` on the old. That, plus the stored
-SHA-256 of the PDF and a server-generated audit page, is what makes the record
-defensible.
-
-Guardrails against cross-use, in `src/lib/participants.ts`:
-
-1. Participants are picked explicitly, never inferred.
-2. Minor status is stored explicitly on the participant record; the server
-   always uses that stored value rather than trusting booking form input.
-3. A minor's waiver must be signed by their guardian.
-4. Self-serve booking refuses to create an adult who is not the account holder,
-   because no adult can sign a waiver for another adult.
-5. When a participant is changed to adult, a guardian-signed waiver no longer
-   matches future bookings and the adult must sign for themself.
-
-### Two ways a booking is made
-
-**Self-serve.** The student books, the slot is held for 30 minutes, and they
-sign and pay within that window or it is released.
-
-**Coach-created.** The coach books for a student who may have no account. The
-slot is held with no timer — the coach owns it. A one-time signing link is
-issued to the student's email; opening it requires signing in with *that*
-address, and only then can they sign. The coach cannot sign for them. The link
-is stored only as a SHA-256, expires in 7 days and is single-use.
-
-### Files
-
-Payment screenshots and signed waivers never go under `public/`. Anything there
-is served unauthenticated, and a screenshot routinely shows a bank balance.
-They live in a private `storage/` directory, are referenced by an opaque key
-rather than a URL, and are streamed by route handlers that check the caller.
-Uploads are re-encoded through sharp, which also strips EXIF — phone
-screenshots can carry GPS.
-
-### Calendar
-
-The coach subscribes to an ICS feed at `/api/cal/<icsToken>`. No OAuth, no
-consent screen, no stored token. Google polls external feeds on its own
-schedule, so the schedule page also offers a one-click "add to Google Calendar"
-link for anything needed immediately.
-
-The feed URL is the only thing protecting it, and the UI says so.
+**Stats** (`/coach/stats`) totals a season for the coach looking at it: money
+received and outstanding, hours taught and booked, lessons and students,
+packages they sold and those packages' unused hours, by lesson type, resort,
+price and month. The definitions live in `src/lib/stats.ts`.
 
 ---
 

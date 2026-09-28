@@ -139,10 +139,11 @@ export default async function BookingPage({
               : undefined
           }
         />
-        {/* The buyer and every coach can open the package. */}
+        {/* Only the buyer and the coach who was paid can open a package; the
+            coach teaching a lesson from someone else's package cannot. */}
         {booking.package &&
           (access.isCustomer ||
-            user.role === "COACH" ||
+            booking.package.payeeCoachId === user.id ||
             user.role === "ADMIN") && (
           <Link
             href={`/packages/${booking.package.code}`}

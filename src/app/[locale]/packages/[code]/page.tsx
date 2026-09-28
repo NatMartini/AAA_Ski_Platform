@@ -57,7 +57,20 @@ export default async function PackagePage({
       })
     ).map((c) => [c.userId, c.displayName]),
   );
-  const lessons = pkg.bookings.filter((b) => !isSelfServeHoldExpired(b, now));
+  const spent = pkg.bookings.filter((b) => !isSelfServeHoldExpired(b, now));
+  // The buyer sees every lesson. A coach sees their own lessons in full, and
+  // another coach's only as hours per coach — enough to settle up, without
+  // that coach's dates or students.
+  const lessons = access.isBuyer
+    ? spent
+    : spent.filter((b) => b.coachId === user.id);
+  const otherCoachHours = new Map<string, number>();
+  if (!access.isBuyer) {
+    for (const b of spent) {
+      if (b.coachId === user.id) continue;
+      otherCoachHours.set(b.coachId, (otherCoachHours.get(b.coachId) ?? 0) + b.hours);
+    }
+  }
 
   const summary = (
     <dl className="overflow-hidden rounded-xl border border-border bg-surface-3 text-sm">
@@ -105,7 +118,7 @@ export default async function PackagePage({
           <Row term={zh ? "有效期" : "Valid for"} value={formatSeason(pkg.season, loc)} />
           <Row term={zh ? "价格" : "Price"} value={formatMoneyShort(pkg.priceCents)} />
           <Row term={zh ? "付款给" : "Paid to"} value={payeeName} />
-          {!access.isBuyer && (
+          {access.isPayee && (
             <Row
               term={zh ? "购买人" : "Bought by"}
               value={pkg.account.name ?? pkg.account.email}
@@ -122,7 +135,7 @@ export default async function PackagePage({
         )}
       </Card>
 
-      {lessons.length > 0 && (
+      {(lessons.length > 0 || otherCoachHours.size > 0) && (
         <Card className="space-y-2">
           <CardTitle>{zh ? "用这个课时包的课" : "Lessons from this package"}</CardTitle>
           <ul className="divide-y divide-border text-sm">
@@ -144,6 +157,13 @@ export default async function PackagePage({
                     </Link>
                   )}
                 </span>
+              </li>
+            ))}
+            {[...otherCoachHours].map(([coachId, hours]) => (
+              <li key={coachId} className="py-2.5 text-ink-2">
+                {zh
+                  ? `${coachNames.get(coachId) ?? "其他教练"} 用了 ${hours} 小时`
+                  : `${coachNames.get(coachId) ?? "Another coach"}: ${hours}h`}
               </li>
             ))}
           </ul>

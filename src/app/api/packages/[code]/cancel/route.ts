@@ -35,9 +35,6 @@ export async function POST(
   if (!access.canView) {
     return NextResponse.json({ error: "not-found" }, { status: 404 });
   }
-  if (!access.isParty) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
   if (!access.canCancel) {
     return NextResponse.json({ error: "invalid-state" }, { status: 409 });
   }

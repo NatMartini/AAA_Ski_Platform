@@ -114,17 +114,9 @@
   --pill-cancelled-br: #f0c9c5;
   --pill-cancelled-fg: #b3261e;
 
-  /* Chart series, one per coach, assigned in a fixed order and never cycled.
-     Validated for colour-vision deficiency against --surface in each theme;
-     slots 3-5 sit under 3:1 on white, so every chart also has a table view. */
-  --series-1: #2a78d6;
-  --series-2: #eb6834;
-  --series-3: #1baf7a;
-  --series-4: #eda100;
-  --series-5: #e87ba4;
-  --series-6: #008300;
-  --series-7: #4a3aa7;
-  --series-8: #e34948;
+  /* Chart bars and gridlines. The bar clears 3:1 against --surface in both
+     themes; gridlines stay one step off the surface so the data leads. */
+  --chart-bar: #2a78d6;
   --chart-grid: #e3ebf2;
 }
 
@@ -190,14 +182,7 @@
     --pill-cancelled-br: #57302c;
     --pill-cancelled-fg: #e79790;
 
-    --series-1: #3987e5;
-    --series-2: #d95926;
-    --series-3: #199e70;
-    --series-4: #c98500;
-    --series-5: #d55181;
-    --series-6: #008300;
-    --series-7: #9085e9;
-    --series-8: #e66767;
+    --chart-bar: #3987e5;
     --chart-grid: #22344a;
   }
 }
@@ -259,14 +244,7 @@
   --pill-cancelled-br: #57302c;
   --pill-cancelled-fg: #e79790;
 
-  --series-1: #3987e5;
-  --series-2: #d95926;
-  --series-3: #199e70;
-  --series-4: #c98500;
-  --series-5: #d55181;
-  --series-6: #008300;
-  --series-7: #9085e9;
-  --series-8: #e66767;
+  --chart-bar: #3987e5;
   --chart-grid: #22344a;
 }
 

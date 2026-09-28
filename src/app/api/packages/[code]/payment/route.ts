@@ -28,7 +28,7 @@ export async function POST(
   if (!pkg) return NextResponse.json({ error: "not-found" }, { status: 404 });
 
   const access = accessForPackage(pkg, r.user);
-  if (!access.isParty) {
+  if (!access.canView) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   if (!access.canPay) {

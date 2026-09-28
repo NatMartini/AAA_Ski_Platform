@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  packageHoursLeftByAccount,
   seasonMonths,
   seasonStats,
   studentBalances,
@@ -50,23 +51,48 @@ function pkg(over: Partial<StatPackage> = {}): StatPackage {
   };
 }
 
-describe("studentBalances", () => {
-  it("shows package hours left and what they are worth", () => {
-    const [wei] = studentBalances(
-      [],
+describe("packageHoursLeftByAccount", () => {
+  it("adds up hours left across paid-up packages, whoever was paid", () => {
+    const left = packageHoursLeftByAccount(
       [
         pkg({
-          bookings: [{ coachId: KEVIN, hours: 2, status: "CONFIRMED", holdExpiresAt: null }],
+          payeeCoachId: KEVIN,
+          bookings: [{ coachId: ALISA, hours: 2, status: "CONFIRMED", holdExpiresAt: null }],
+        }),
+        pkg({ code: "PKG-2", payeeCoachId: ALISA }),
+        pkg({ code: "PKG-3", accountId: "lin", status: "PENDING_PAYMENT_REVIEW" }),
+      ],
+      NOW,
+    );
+    expect(left.get("wei")).toBe(6);
+    // An unpaid package has no hours to spend yet.
+    expect(left.has("lin")).toBe(false);
+  });
+
+  it("hands back hours from a hold that ran out", () => {
+    const left = packageHoursLeftByAccount(
+      [
+        pkg({
+          bookings: [
+            {
+              coachId: KEVIN,
+              hours: 2,
+              status: "HOLD",
+              holdExpiresAt: new Date("2027-01-15T11:00:00Z"),
+            },
+          ],
         }),
       ],
       NOW,
     );
-    expect(wei).toMatchObject({
-      packageHoursLeft: 2,
-      packageValueLeftCents: 9000,
-      paidCents: 18000,
-      owedCents: 0,
-    });
+    expect(left.get("wei")).toBe(4);
+  });
+});
+
+describe("studentBalances", () => {
+  it("counts a paid-up package as paid", () => {
+    const [wei] = studentBalances([], [pkg()], NOW);
+    expect(wei).toMatchObject({ paidCents: 18000, owedCents: 0 });
   });
 
   it("counts a deposit balance and an unpaid booking as owed", () => {
@@ -122,7 +148,7 @@ describe("studentBalances", () => {
 
   it("counts an unpaid package order as owed, not paid", () => {
     const [wei] = studentBalances([], [pkg({ status: "PENDING_PAYMENT_REVIEW" })], NOW);
-    expect(wei).toMatchObject({ owedCents: 18000, paidCents: 0, packageHoursLeft: 0 });
+    expect(wei).toMatchObject({ owedCents: 18000, paidCents: 0 });
   });
 
   it("leaves out bookings with no account yet", () => {
@@ -142,21 +168,19 @@ describe("seasonStats", () => {
     ]);
   });
 
-  it("adds up a season across both coaches", () => {
+  it("adds up one coach's season", () => {
     const stats = seasonStats({
       season: "2026-27",
-      coachIds: [ALISA, KEVIN],
       now: NOW,
       bookings: [
-        booking(), // Kevin, taught, early bird, $110
+        booking(), // taught, early bird, $110
         booking({
-          coachId: ALISA,
           paymentPlan: "PACKAGE",
           totalCents: 0,
           amountPaidCents: 0,
           earlyBird: false,
           startAt: torontoWallTimeToUtc("2027-02-10", 9),
-        }), // Alisa, upcoming, package
+        }), // upcoming, from a package
         booking({
           earlyBird: false,
           lessonType: "park",
@@ -164,12 +188,13 @@ describe("seasonStats", () => {
           amountPaidCents: 9000,
           paymentPlan: "DEPOSIT",
           startAt: torontoWallTimeToUtc("2026-12-20", 10),
-        }), // Kevin, taught, regular, balance owing
+        }), // taught, regular, balance owing
         booking({ status: "PENDING_PAYMENT_REVIEW", amountPaidCents: 0 }),
         booking({ startAt: torontoWallTimeToUtc("2027-12-10", 9) }), // next season
       ],
       packages: [
         pkg({
+          payeeCoachId: KEVIN,
           bookings: [{ coachId: ALISA, hours: 2, status: "CONFIRMED", holdExpiresAt: null }],
         }),
         pkg({ code: "PKG-2", season: "2025-26" }),
@@ -191,34 +216,13 @@ describe("seasonStats", () => {
       regularHours: 2,
       packageHours: 2,
     });
-
-    const kevin = stats.byCoach.find((l) => l.coachId === KEVIN)!;
-    const alisa = stats.byCoach.find((l) => l.coachId === ALISA)!;
-    expect(kevin).toMatchObject({ lessonCount: 2, hours: 4, lessonReceivedCents: 20000 });
-    expect(alisa).toMatchObject({
-      lessonCount: 1,
-      hours: 2,
-      packageHours: 2,
-      packageReceivedCents: 18000,
-    });
-
     expect(stats.byLessonType.map((l) => l.key)).toEqual(["riding", "park"]);
-    expect(stats.months.find((m) => m.month === "2026-12")?.hoursByCoach).toEqual({
-      [ALISA]: 0,
-      [KEVIN]: 2,
-    });
-    expect(stats.months.find((m) => m.month === "2027-02")?.hoursByCoach[ALISA]).toBe(2);
+    expect(stats.months.map((m) => m.hours)).toEqual([2, 2, 2, 0, 0, 0]);
   });
 
-  it("keeps a coach with nothing booked on the list, in the given order", () => {
-    const stats = seasonStats({
-      season: "2026-27",
-      coachIds: [ALISA, KEVIN],
-      now: NOW,
-      bookings: [booking()],
-      packages: [],
-    });
-    expect(stats.byCoach.map((l) => l.coachId)).toEqual([ALISA, KEVIN]);
-    expect(stats.byCoach[0].hours).toBe(0);
+  it("gives every month of the season a line, even with nothing booked", () => {
+    const stats = seasonStats({ season: "2026-27", now: NOW, bookings: [], packages: [] });
+    expect(stats.months).toHaveLength(6);
+    expect(stats.lessonCount).toBe(0);
   });
 });
