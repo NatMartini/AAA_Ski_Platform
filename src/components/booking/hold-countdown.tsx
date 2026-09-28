@@ -15,9 +15,12 @@ import { Timer } from "lucide-react";
 export function HoldCountdown({
   expiresAt,
   locale,
+  signOnly = false,
 }: {
   expiresAt: string;
   locale: Locale;
+  /** A lesson-package booking: only the waiver is left, nothing to pay. */
+  signOnly?: boolean;
 }) {
   const router = useRouter();
   const [remaining, setRemaining] = useState(() => msLeft(expiresAt));
@@ -75,7 +78,9 @@ export function HoldCountdown({
           {minutes}:{String(seconds).padStart(2, "0")}
         </strong>
         {locale === "zh"
-          ? " 内完成签署与付款,否则时段将自动释放。"
+          ? signOnly
+            ? " 内完成签署,否则时段将自动释放。"
+            : " 内完成签署与付款,否则时段将自动释放。"
           : " or the slot is released."}
       </span>
     </p>

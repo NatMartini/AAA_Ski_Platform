@@ -47,7 +47,9 @@ export function isActionableByCustomer(status: BookingStatus): boolean {
 }
 
 const TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
-  HOLD: ["AWAITING_PAYMENT", "EXPIRED", "CANCELLED"],
+  // HOLD → CONFIRMED is a lesson-package booking: once the waiver is signed
+  // there is nothing left to pay.
+  HOLD: ["AWAITING_PAYMENT", "CONFIRMED", "EXPIRED", "CANCELLED"],
   AWAITING_WAIVER: ["AWAITING_PAYMENT", "CANCELLED"],
   AWAITING_PAYMENT: ["PENDING_PAYMENT_REVIEW", "CONFIRMED", "EXPIRED", "CANCELLED"],
   PENDING_PAYMENT_REVIEW: ["CONFIRMED", "PAYMENT_REJECTED", "CANCELLED"],

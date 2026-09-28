@@ -5,7 +5,6 @@ import { useRouter } from "@/i18n/navigation";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FieldError, Hint, Input, Label, Select } from "@/components/ui/field";
-import { formatMoneyShort } from "@/lib/pricing";
 import { isWithinSeason, seasonOfDateKey } from "@/lib/season";
 import type { Locale } from "@/i18n/routing";
 import { Loader2, Trash2 } from "lucide-react";
@@ -19,7 +18,6 @@ export type ManagedDay = {
   endHour: number;
   breakStartHour: number | null;
   breakEndHour: number | null;
-  hourlyRateCentsOverride: number | null;
   note: string | null;
   bookingCount: number;
 };
@@ -38,7 +36,6 @@ const COPY = {
     lunch: "午休",
     lunchOn: "13:00–14:00 休息",
     lunchOff: "不设午休",
-    rateOverride: "当日特价(留空用默认价)",
     note: "备注(仅自己可见)",
     add: "保存这一天",
     existing: "已开放的日子",
@@ -61,7 +58,6 @@ const COPY = {
     lunch: "Lunch break",
     lunchOn: "13:00–14:00 break",
     lunchOff: "No break",
-    rateOverride: "Rate for this day (blank uses your default)",
     note: "Note (only you see this)",
     add: "Save this day",
     existing: "Open days",
@@ -81,12 +77,10 @@ export function AvailabilityManager({
   locale,
   resorts,
   initialDays,
-  defaultRateCents,
 }: {
   locale: Locale;
   resorts: Resort[];
   initialDays: ManagedDay[];
-  defaultRateCents: number;
 }) {
   const router = useRouter();
   const c = COPY[locale];
@@ -96,7 +90,6 @@ export function AvailabilityManager({
   const [startHour, setStartHour] = useState(9);
   const [endHour, setEndHour] = useState(16);
   const [lunch, setLunch] = useState(true);
-  const [rateOverride, setRateOverride] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,9 +114,6 @@ export function AvailabilityManager({
         endHour,
         breakStartHour: lunch ? 13 : null,
         breakEndHour: lunch ? 14 : null,
-        hourlyRateCentsOverride: rateOverride
-          ? Math.round(Number(rateOverride) * 100)
-          : null,
         note: note || null,
       }),
     });
@@ -146,7 +136,6 @@ export function AvailabilityManager({
     }
     setDate("");
     setNote("");
-    setRateOverride("");
     router.refresh();
   }
 
@@ -246,20 +235,6 @@ export function AvailabilityManager({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="rate">{c.rateOverride}</Label>
-            <Input
-              id="rate"
-              type="number"
-              min={0}
-              step="0.01"
-              inputMode="decimal"
-              placeholder={(defaultRateCents / 100).toFixed(2)}
-              value={rateOverride}
-              onChange={(e) => setRateOverride(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-1.5">
             <Label htmlFor="note">{c.note}</Label>
             <Input
               id="note"
@@ -298,8 +273,6 @@ export function AvailabilityManager({
                     {String(day.endHour).padStart(2, "0")}:00
                     {day.breakStartHour != null &&
                       ` · ${String(day.breakStartHour).padStart(2, "0")}:00–${String(day.breakEndHour).padStart(2, "0")}:00 ${locale === "zh" ? "午休" : "break"}`}
-                    {day.hourlyRateCentsOverride != null &&
-                      ` · ${formatMoneyShort(day.hourlyRateCentsOverride)}/h`}
                   </p>
                   {day.note && (
                     <p className="text-xs text-muted-foreground">{day.note}</p>

@@ -54,6 +54,8 @@ export type WaiverRenderInput = {
   lessonEndAt: Date;
   totalCents: number;
   currency: string;
+  /** Set when a lesson package paid for the lesson rather than money. */
+  packageCode?: string | null;
   season: string;
 
   participantName: string;
@@ -119,7 +121,9 @@ export async function renderWaiverPdf(
   );
   writer.kv(
     "Fee / 费用",
-    `${formatMoneyShort(input.totalCents)} ${input.currency}`,
+    input.packageCode
+      ? `Lesson package ${input.packageCode} / 课时包 ${input.packageCode}`
+      : `${formatMoneyShort(input.totalCents)} ${input.currency}`,
   );
   writer.kv("Season / 雪季", input.season);
   writer.gap(4);

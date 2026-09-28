@@ -1,12 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useRouter } from "@/i18n/navigation";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FieldError, Hint, Input, Label } from "@/components/ui/field";
-import { PriceBreakdown } from "./price-breakdown";
-import { formatMoneyShort, type Quote } from "@/lib/pricing";
+import { formatMoneyShort } from "@/lib/pricing";
+import { paymentPaths, type PaymentTarget } from "@/lib/payment-target";
 import type { Locale } from "@/i18n/routing";
 import { cn } from "@/lib/utils";
 import { Loader2, TriangleAlert, Upload } from "lucide-react";
@@ -27,7 +27,7 @@ const COPY = {
     wechat: "微信支付",
     alipay: "支付宝",
     scan: "请扫码支付",
-    memo: "转账备注请填写订单号",
+    memo: "转账备注请填写编号",
     upload: "上传付款截图",
     redact: "上传前请遮挡账号、余额等无关信息。该截图仅你和教练可见。",
     reference: "转账备注 / 参考号(选填)",
@@ -53,7 +53,7 @@ const COPY = {
     wechat: "WeChat Pay",
     alipay: "Alipay",
     scan: "Scan to pay",
-    memo: "Put the booking reference in the transfer memo",
+    memo: "Put this reference in the transfer memo",
     upload: "Upload payment screenshot",
     redact:
       "Cover your account number, balance and anything else you would rather not share. Only you and your coach can see this.",
@@ -74,19 +74,26 @@ const COPY = {
 
 export function PaymentPanel({
   locale,
-  bookingCode,
+  target,
   coachId,
   isCoach,
-  quote,
+  totalCents,
+  currency,
+  breakdown,
   amountDueCents,
   methods,
   rejectedNote,
 }: {
   locale: Locale;
-  bookingCode: string;
+  /** The booking or lesson package being paid for. */
+  target: PaymentTarget;
+  /** The coach being paid, whose QR codes are shown. */
   coachId: string;
   isCoach: boolean;
-  quote: Quote;
+  totalCents: number;
+  currency: string;
+  /** The itemised price, shown under the amount. */
+  breakdown: ReactNode;
   /**
    * What to send now. Equals the total for a pay-in-full booking, and the
    * deposit for a booking that is paying one hour up front — showing the total
@@ -99,6 +106,7 @@ export function PaymentPanel({
   const router = useRouter();
   const c = COPY[locale];
   const fileRef = useRef<HTMLInputElement>(null);
+  const paths = paymentPaths(target);
 
   const available = [
     methods.emt ? ("EMT" as const) : null,
@@ -119,8 +127,8 @@ export function PaymentPanel({
     setError(null);
     const body = new FormData();
     body.set("file", file);
-    body.set("purpose", "payment-proof");
-    body.set("bookingCode", bookingCode);
+    body.set("purpose", paths.upload.purpose);
+    body.set(paths.upload.field, target.code);
     if (proofKey) body.set("replacedKey", proofKey);
 
     const res = await fetch("/api/upload", { method: "POST", body });
@@ -147,7 +155,7 @@ export function PaymentPanel({
     setBusy(true);
     setError(null);
 
-    const res = await fetch(`/api/bookings/${bookingCode}/payment`, {
+    const res = await fetch(paths.submit, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ method, proofKey, reference: reference || null }),
@@ -158,7 +166,7 @@ export function PaymentPanel({
       setError(c.failed);
       return;
     }
-    router.push(`/booking/${bookingCode}`);
+    router.push(paths.page);
     router.refresh();
   }
 
@@ -202,21 +210,21 @@ export function PaymentPanel({
         <p className="font-display text-4xl font-extrabold tracking-tight tabular-nums">
           {formatMoneyShort(amountDueCents)}{" "}
           <span className="text-base font-semibold text-ink-3">
-            {quote.currency}
+            {currency}
           </span>
         </p>
-        {amountDueCents < quote.totalCents && (
+        {amountDueCents < totalCents && (
           <p
             className="rounded-xl p-3 text-sm font-semibold"
             style={{ background: "var(--amber-bg)", color: "var(--amber)" }}
           >
             {c.depositNote.replace(
               "{rest}",
-              formatMoneyShort(quote.totalCents - amountDueCents),
+              formatMoneyShort(totalCents - amountDueCents),
             )}
           </p>
         )}
-        <PriceBreakdown quote={quote} locale={locale} />
+        {breakdown}
       </Card>
 
       <Card className="space-y-4">
@@ -257,7 +265,7 @@ export function PaymentPanel({
             )}
             <div className="flex justify-between gap-4 py-1">
               <dt className="text-ink-2">{c.memo}</dt>
-              <dd className="font-mono font-semibold">{bookingCode}</dd>
+              <dd className="font-mono font-semibold">{target.code}</dd>
             </div>
           </dl>
         )}

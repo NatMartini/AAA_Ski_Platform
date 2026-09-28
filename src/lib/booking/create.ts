@@ -4,8 +4,21 @@ import { generateBookingCode } from "./code";
 import { isOverlapViolation } from "./overlap";
 import { depositFor, lessonWindow, quote, type PaymentPlan } from "../pricing";
 import { sanitizeSkillKeys } from "../skills";
-import { torontoWallTimeToUtc, dateKeyToDbDate, type DateKey } from "../time";
-import { isWithinSeason } from "../season";
+import {
+  torontoWallTimeToUtc,
+  dateKeyToDbDate,
+  toDateKey,
+  type DateKey,
+} from "../time";
+import { isWithinSeason, seasonOfDateKey } from "../season";
+import { isEarlyBird, rateFor } from "../rates";
+import {
+  checkPackageUse,
+  hoursUsed,
+  packageValueCents,
+  PACKAGE_CONSUMING_STATUSES,
+  type PackageUseRefusal,
+} from "../packages";
 import { computeDaySlots, isBookable } from "../slots";
 import { OCCUPYING_STATUSES } from "./state";
 import { buildDisclosure, type DisclosureSnapshot } from "./disclosure";
@@ -22,7 +35,8 @@ export type CreateBookingResult =
       ok: true;
       code: string;
       id: string;
-      nextStep: "waiver" | "payment";
+      /** "done" when a package paid for it and a waiver was already on file. */
+      nextStep: "waiver" | "payment" | "done";
     }
   | {
       ok: false;
@@ -30,9 +44,12 @@ export type CreateBookingResult =
         | "off-season"
         | "no-such-day"
         | "coach-unavailable"
+        | "lesson-type-unavailable"
         | "group-booking-unavailable"
         | "slot-unavailable"
-        | "slot-taken";
+        | "slot-taken"
+        | "package-not-found"
+        | PackageUseRefusal;
     };
 
 type CreateInput = {
@@ -40,12 +57,19 @@ type CreateInput = {
   dateKey: DateKey;
   startHour: number;
   hours: number;
+  /** Key from lib/lesson-types.ts; must be one the coach has a rate for. */
+  lessonType: string;
   /** Number of students; defaults to 1. Capped at the coach's maxGroupSize. */
   headcount?: number;
   /** Skill keys the student wants to work on; unknown keys are dropped. */
   requestedSkills?: string[];
-  /** FULL pays everything now; DEPOSIT pays one hour now. Defaults to FULL. */
-  paymentPlan?: PaymentPlan;
+  /**
+   * FULL pays everything now; DEPOSIT pays one hour now; PACKAGE spends
+   * prepaid hours from `packageId`. Defaults to FULL.
+   */
+  paymentPlan?: PaymentPlan | "PACKAGE";
+  /** The account's lesson package, when paymentPlan is PACKAGE. */
+  packageId?: string | null;
   locale: Locale;
   /** Self-serve booking by the account holder. */
   account?: {
@@ -75,6 +99,11 @@ type CreateInput = {
  *
  * Expired holds are swept inside the same transaction as the insert, so a
  * dead hold that the cron has not collected yet cannot block a real booking.
+ *
+ * The rate is the coach's price for the lesson type — early bird when the
+ * booking is made on or before 1 December. A booking paid from a lesson
+ * package costs nothing on its own; the package row is locked while its
+ * remaining hours are checked, so two bookings cannot spend the same hours.
  */
 export async function createBooking(
   input: CreateInput,
@@ -88,8 +117,22 @@ export async function createBooking(
 
   const profile = await prisma.coachProfile.findUnique({
     where: { userId: input.coachId },
+    include: { rates: true },
   });
   if (!profile) return { ok: false, reason: "coach-unavailable" };
+
+  const rate = rateFor(
+    profile.rates,
+    input.lessonType,
+    isEarlyBird(toDateKey(now), input.dateKey),
+  );
+  if (!rate) return { ok: false, reason: "lesson-type-unavailable" };
+
+  const usePackage = input.paymentPlan === "PACKAGE";
+  // Packages belong to a student account; a coach-created booking has none.
+  if (usePackage && (!input.account || !input.packageId)) {
+    return { ok: false, reason: "package-not-found" };
+  }
 
   const day = await prisma.coachDay.findUnique({
     where: {
@@ -113,16 +156,15 @@ export async function createBooking(
     profile.maxGroupSize,
   );
 
-  const rate = day.hourlyRateCentsOverride ?? profile.hourlyRateCents;
   const priced = quote({
     hours: input.hours,
-    hourlyRateCents: rate,
+    hourlyRateCents: rate.hourlyRateCents,
     handoverDiscountCents: profile.handoverDiscountCents,
     headcount,
     extraPersonCents: profile.extraPersonCents,
   });
 
-  const plan: PaymentPlan = input.paymentPlan ?? "FULL";
+  const plan = input.paymentPlan ?? "FULL";
   const depositCents = plan === "DEPOSIT" ? depositFor(priced) : priced.totalCents;
 
   const disclosure = buildDisclosure({
@@ -140,6 +182,8 @@ export async function createBooking(
     lessonStartAt,
     lessonEndAt,
     quote: priced,
+    lessonType: input.lessonType,
+    earlyBird: rate.earlyBird,
     cancellationPolicyZh: profile.cancellationPolicyZh ?? "",
     cancellationPolicyEn: profile.cancellationPolicyEn ?? "",
     participantName: input.account?.participantName ?? input.invite?.name ?? "",
@@ -155,6 +199,19 @@ export async function createBooking(
   try {
     const booking = await prisma.$transaction(async (tx) => {
       await sweepExpiredHolds(tx, input.coachId, now);
+
+      const pkg = usePackage
+        ? await claimPackageHours(tx, {
+            packageId: input.packageId!,
+            accountId: input.account!.id,
+            resortId: day.resortId,
+            lessonType: input.lessonType,
+            season: seasonOfDateKey(input.dateKey),
+            hours: input.hours,
+            headcount,
+            now,
+          })
+        : null;
 
       // A waiver belongs to the participant (not merely the account), coach,
       // lesson season and template version. resolveWaiver also rejects an
@@ -228,33 +285,55 @@ export async function createBooking(
           headcount,
           lessonStartAt,
           lessonEndAt,
+          lessonType: input.lessonType,
+          earlyBird: pkg ? false : rate.earlyBird,
           paymentPlan: plan,
-          depositCents,
+          packageId: pkg?.id ?? null,
+          depositCents: pkg ? 0 : depositCents,
           // Unknown skill keys are dropped rather than stored, so a stale or
           // hand-crafted client cannot write junk into the record.
           requestedSkills: sanitizeSkillKeys(input.requestedSkills ?? []),
           studentLevel: input.account?.level ?? null,
           // hourlyRateCents is the base (one-student) rate; the surcharge is
-          // stored separately so the effective rate stays re-derivable.
-          hourlyRateCents: priced.hourlyRateCents,
-          extraPersonCents: priced.extraPersonCents,
-          subtotalCents: priced.subtotalCents,
-          handoverDiscountCents: priced.handoverDiscountCents,
-          totalCents: priced.totalCents,
-          currency: priced.currency,
-          disclosureSnapshot: disclosure as unknown as Prisma.InputJsonValue,
+          // stored separately so the effective rate stays re-derivable. A
+          // package booking records what a package hour is worth and owes
+          // nothing, because the package was paid for up front.
+          ...(pkg
+            ? {
+                hourlyRateCents: packageValueCents(pkg, 1),
+                extraPersonCents: 0,
+                subtotalCents: 0,
+                handoverDiscountCents: 0,
+                totalCents: 0,
+                currency: pkg.currency,
+              }
+            : {
+                hourlyRateCents: priced.hourlyRateCents,
+                extraPersonCents: priced.extraPersonCents,
+                subtotalCents: priced.subtotalCents,
+                handoverDiscountCents: priced.handoverDiscountCents,
+                totalCents: priced.totalCents,
+                currency: priced.currency,
+              }),
+          disclosureSnapshot: (pkg
+            ? withPackage(disclosure, pkg, input.hours)
+            : disclosure) as unknown as Prisma.InputJsonValue,
           inviteName: input.invite?.name ?? null,
           inviteEmail: input.invite?.email.toLowerCase() ?? null,
           inviteIsMinor: input.invite?.isMinor ?? false,
           participantNameSnapshot:
             input.account?.participantName ?? input.invite?.name ?? null,
           notes: input.notes ?? null,
+          // Nothing is owed on a package booking, so once a waiver is on file
+          // it is confirmed outright.
           status: createdByCoach
             ? "AWAITING_WAIVER"
             : reusableWaiverId
-              ? "AWAITING_PAYMENT"
+              ? pkg
+                ? "CONFIRMED"
+                : "AWAITING_PAYMENT"
               : "HOLD",
-          holdExpiresAt,
+          holdExpiresAt: pkg && reusableWaiverId ? null : holdExpiresAt,
           waiverId: reusableWaiverId,
         },
         select: { id: true, code: true, status: true },
@@ -265,11 +344,19 @@ export async function createBooking(
       ok: true,
       code: booking.code,
       id: booking.id,
-      nextStep: booking.status === "AWAITING_PAYMENT" ? "payment" : "waiver",
+      nextStep:
+        booking.status === "CONFIRMED"
+          ? "done"
+          : booking.status === "AWAITING_PAYMENT"
+            ? "payment"
+            : "waiver",
     };
   } catch (err) {
     if (err instanceof SlotUnavailable) {
       return { ok: false, reason: "slot-unavailable" };
+    }
+    if (err instanceof PackageRefused) {
+      return { ok: false, reason: err.reason };
     }
     // Lost the race to another request between the check and the insert.
     if (isOverlapViolation(err)) return { ok: false, reason: "slot-taken" };
@@ -278,6 +365,82 @@ export async function createBooking(
 }
 
 class SlotUnavailable extends Error {}
+
+class PackageRefused extends Error {
+  constructor(readonly reason: PackageUseRefusal | "package-not-found") {
+    super(reason);
+  }
+}
+
+/**
+ * Checks a package can pay for this lesson, holding a row lock on it until
+ * the booking transaction commits. Two bookings racing for the last two hours
+ * serialise here: the second one re-counts after the first has inserted.
+ *
+ * Holds whose timer has run out are not counted even if the sweeper has not
+ * reached them yet — they may belong to another coach, whose holds this
+ * transaction's sweep does not touch.
+ */
+async function claimPackageHours(
+  tx: Prisma.TransactionClient,
+  want: {
+    packageId: string;
+    accountId: string;
+    resortId: string;
+    lessonType: string;
+    season: string | null;
+    hours: number;
+    headcount: number;
+    now: Date;
+  },
+) {
+  await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM "LessonPackage" WHERE "id" = ${want.packageId} FOR UPDATE
+  `;
+  const pkg = await tx.lessonPackage.findUnique({
+    where: { id: want.packageId },
+    include: {
+      bookings: {
+        where: { status: { in: PACKAGE_CONSUMING_STATUSES } },
+        select: { hours: true, status: true, holdExpiresAt: true },
+      },
+    },
+  });
+  // Someone else's package id looks exactly like a missing one.
+  if (!pkg || pkg.accountId !== want.accountId) {
+    throw new PackageRefused("package-not-found");
+  }
+
+  const check = checkPackageUse(
+    { ...pkg, hoursUsed: hoursUsed(pkg.bookings, want.now) },
+    want,
+  );
+  if (!check.ok) throw new PackageRefused(check.reason);
+  return pkg;
+}
+
+/** Records on the frozen disclosure that a package paid for this lesson. */
+function withPackage(
+  disclosure: DisclosureSnapshot,
+  pkg: { code: string; priceCents: number; hours: number },
+  hours: number,
+): DisclosureSnapshot {
+  return {
+    ...disclosure,
+    price: {
+      ...disclosure.price,
+      subtotalCents: 0,
+      handoverDiscountCents: 0,
+      totalCents: 0,
+      earlyBird: false,
+      package: {
+        code: pkg.code,
+        hours,
+        valueCents: packageValueCents(pkg, hours),
+      },
+    },
+  };
+}
 
 /**
  * Releases holds whose timer ran out.

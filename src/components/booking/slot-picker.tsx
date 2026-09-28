@@ -5,7 +5,7 @@ import { useRouter } from "@/i18n/navigation";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FieldError, Label, Select } from "@/components/ui/field";
-import { PriceBreakdown } from "./price-breakdown";
+import { EarlyBirdTag, PriceBreakdown } from "./price-breakdown";
 import { AddParticipantDialog } from "./add-participant-dialog";
 import { SkillPicker } from "./skill-picker";
 import { DateCalendar } from "./date-calendar";
@@ -16,6 +16,9 @@ import {
   depositFor,
 } from "@/lib/pricing";
 import { formatTorontoDate, formatTorontoTime } from "@/lib/time";
+import { rateFor, type RateRow } from "@/lib/rates";
+import { LESSON_TYPES, lessonTypeLabel } from "@/lib/lesson-types";
+import { seasonOfDateKey } from "@/lib/season";
 import type { Locale } from "@/i18n/routing";
 import { cn } from "@/lib/utils";
 import { Clock, Loader2, MessageCircle } from "lucide-react";
@@ -23,11 +26,20 @@ import { Clock, Loader2, MessageCircle } from "lucide-react";
 type Cell = { hour: number; startIso: string };
 type Day = {
   dateKey: string;
-  hourlyRateCents: number;
+  /** Booking it now would be charged the early-bird rate. */
+  earlyBird: boolean;
   handoverDiscountCents: number;
   extraPersonCents: number;
   cells: Cell[];
   startOptions: { hour: number; durations: number[] }[];
+};
+/** A paid-up lesson package this account could spend here. */
+type UsablePackage = {
+  id: string;
+  code: string;
+  lessonType: string;
+  season: string;
+  hoursLeft: number;
 };
 type Participant = {
   id: string;
@@ -42,6 +54,10 @@ type Participant = {
 
 const COPY = {
   zh: {
+    lessonType: "课程类型",
+    earlyBird: "早鸟价",
+    regular: "原价",
+    perHour: "/小时",
     pickDay: "选择日期",
     prevMonth: "上一月",
     nextMonth: "下一月",
@@ -58,6 +74,8 @@ const COPY = {
     plan: "付款方式",
     planFull: "一次付清",
     planDeposit: "先付定金(一小时课费),上课后付余款",
+    planPackage: "用课时包 {code}",
+    packageAfter: "用后剩余",
     depositNow: "现在支付",
     balanceLater: "课后支付",
     oneOnN: "1 对 {n}",
@@ -70,14 +88,19 @@ const COPY = {
     review: "确认并预定",
     otherTimes: "想约其他时间?微信联系教练",
     handoverNote:
-      "首尾各留 5 分钟与下一位学员交接,因此实际授课比预定时段少 10 分钟。",
+      "开头 10 分钟用于与上一位学员交接,整点后 10 分开始上课、到整点结束,因此实际授课比预定时段少 10 分钟,因此每单有一次交接扣减。",
     lessonRuns: "实际授课",
     minutes: "分钟",
     needParticipant: "请选择上课学员",
     slotTaken: "抱歉,该时段刚被他人预定,请另选时间。",
+    packageFailed: "课时包剩余时长不足或已不可用,请刷新后重试,或改为直接付款。",
     failed: "预定失败,请重试。",
   },
   en: {
+    lessonType: "Lesson type",
+    earlyBird: "Early bird",
+    regular: "Regular",
+    perHour: "/h",
     pickDay: "Choose a day",
     prevMonth: "Previous month",
     nextMonth: "Next month",
@@ -94,6 +117,8 @@ const COPY = {
     plan: "Payment",
     planFull: "Pay in full",
     planDeposit: "Deposit now (one hour), balance after the lesson",
+    planPackage: "Use package {code}",
+    packageAfter: "Left afterwards",
     depositNow: "Due now",
     balanceLater: "Due after the lesson",
     oneOnN: "1-on-{n}",
@@ -106,11 +131,13 @@ const COPY = {
     review: "Review and book",
     otherTimes: "Want a different time? Message the coach on WeChat",
     handoverNote:
-      "Five minutes at each end are the handover to the next student, so teaching time is 10 minutes shorter than the booked block.",
+      "The first 10 minutes are the handover from the previous student, so the lesson starts at ten past and runs to the hour — 10 minutes shorter than the booked block, so each booking carries a handover credit.",
     lessonRuns: "Lesson runs",
     minutes: "min",
     needParticipant: "Please choose who is taking the lesson",
     slotTaken: "Sorry — someone just took that slot. Please pick another time.",
+    packageFailed:
+      "That package no longer has enough hours for this lesson. Refresh and try again, or pay instead.",
     failed: "Could not create the booking. Please try again.",
   },
 } as const;
@@ -127,6 +154,9 @@ export function SlotPicker({
   resortName,
   minHours,
   maxGroupSize,
+  rates,
+  earlyBirdActive,
+  packages,
   days,
   participants: initialParticipants,
 }: {
@@ -142,6 +172,11 @@ export function SlotPicker({
   resortName: string;
   minHours: number;
   maxGroupSize: number;
+  /** The coach's rate card, offered types only, in price-sheet order. */
+  rates: RateRow[];
+  /** Early-bird prices are on offer to anyone booking today. */
+  earlyBirdActive: boolean;
+  packages: UsablePackage[];
   days: Day[];
   participants: Participant[];
 }) {
@@ -149,12 +184,13 @@ export function SlotPicker({
   const c = COPY[locale];
 
   const [participants, setParticipants] = useState(initialParticipants);
+  const [lessonType, setLessonType] = useState(rates[0]?.lessonType ?? "");
   const [dateKey, setDateKey] = useState("");
   const [startHour, setStartHour] = useState<number | null>(null);
   const [hours, setHours] = useState<number>(minHours);
   const [headcount, setHeadcount] = useState(1);
   const [skills, setSkills] = useState<string[]>([]);
-  const [plan, setPlan] = useState<"FULL" | "DEPOSIT">("FULL");
+  const [plan, setPlan] = useState<"FULL" | "DEPOSIT" | "PACKAGE">("FULL");
   const [participantId, setParticipantId] = useState(
     initialParticipants.find((p) => p.isSelf)?.id ?? "",
   );
@@ -167,16 +203,30 @@ export function SlotPicker({
   );
   const option = day?.startOptions.find((o) => o.hour === startHour);
 
+  const rate = day ? rateFor(rates, lessonType, day.earlyBird) : null;
   const priced =
-    day && option
+    day && option && rate
       ? quote({
           hours,
-          hourlyRateCents: day.hourlyRateCents,
+          hourlyRateCents: rate.hourlyRateCents,
           handoverDiscountCents: day.handoverDiscountCents,
           headcount,
           extraPersonCents: day.extraPersonCents,
         })
       : null;
+
+  // A package pays for a whole one-on-one lesson of its own type and season,
+  // or not at all. The server re-checks all of this under a row lock.
+  const usablePackage = day
+    ? packages.find(
+        (p) =>
+          p.lessonType === lessonType &&
+          p.season === seasonOfDateKey(day.dateKey) &&
+          p.hoursLeft >= hours &&
+          headcount === 1,
+      )
+    : undefined;
+  const effectivePlan = plan === "PACKAGE" && !usablePackage ? "FULL" : plan;
 
   const window =
     day && startHour != null
@@ -217,24 +267,32 @@ export function SlotPicker({
         date: day.dateKey,
         startHour,
         hours,
+        lessonType,
         headcount,
         participantId,
         requestedSkills: skills,
-        paymentPlan: plan,
+        paymentPlan: effectivePlan,
+        packageId: effectivePlan === "PACKAGE" ? usablePackage?.id : null,
       }),
     });
     setBusy(false);
 
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as { error?: string };
-      setError(body.error === "slot-taken" ? c.slotTaken : c.failed);
+      setError(
+        body.error === "slot-taken"
+          ? c.slotTaken
+          : body.error?.startsWith("package-")
+            ? c.packageFailed
+            : c.failed,
+      );
       router.refresh();
       return;
     }
 
     const { code, nextStep } = (await res.json()) as {
       code: string;
-      nextStep: "waiver" | "payment";
+      nextStep: "waiver" | "payment" | "done";
     };
     router.push(
       nextStep === "payment"
@@ -277,6 +335,22 @@ export function SlotPicker({
       )}
 
       <Card className="space-y-4">
+        {rates.length > 0 && (
+          <LessonTypePicker
+            locale={locale}
+            rates={rates}
+            earlyBirdActive={earlyBirdActive}
+            selected={lessonType}
+            onSelect={setLessonType}
+            labels={{
+              title: c.lessonType,
+              earlyBird: c.earlyBird,
+              regular: c.regular,
+              perHour: c.perHour,
+            }}
+          />
+        )}
+
         <div className="space-y-1.5">
           <Label>{c.pickDay}</Label>
           <DateCalendar
@@ -388,7 +462,17 @@ export function SlotPicker({
             </p>
           </div>
 
-          <PriceBreakdown quote={priced} locale={locale} />
+          <PriceBreakdown
+            quote={priced}
+            locale={locale}
+            lessonType={lessonType}
+            earlyBird={rate?.earlyBird}
+            packageUse={
+              effectivePlan === "PACKAGE" && usablePackage
+                ? { code: usablePackage.code, hours }
+                : undefined
+            }
+          />
 
           <div className="space-y-1.5">
             <Label>{c.skills}</Label>
@@ -405,15 +489,26 @@ export function SlotPicker({
           <div className="space-y-1.5">
             <Label>{c.plan}</Label>
             <div className="grid gap-2 sm:grid-cols-2">
+              {usablePackage && (
+                <PlanOption
+                  selected={effectivePlan === "PACKAGE"}
+                  onSelect={() => setPlan("PACKAGE")}
+                  title={c.planPackage.replace("{code}", usablePackage.code)}
+                  amountLabel={c.depositNow}
+                  amount={formatMoneyShort(0)}
+                  secondaryLabel={c.packageAfter}
+                  secondary={`${usablePackage.hoursLeft - hours} ${c.hours}`}
+                />
+              )}
               <PlanOption
-                selected={plan === "FULL"}
+                selected={effectivePlan === "FULL"}
                 onSelect={() => setPlan("FULL")}
                 title={c.planFull}
                 amountLabel={c.depositNow}
                 amount={formatMoneyShort(priced.totalCents)}
               />
               <PlanOption
-                selected={plan === "DEPOSIT"}
+                selected={effectivePlan === "DEPOSIT"}
                 onSelect={() => setPlan("DEPOSIT")}
                 title={c.planDeposit}
                 amountLabel={c.depositNow}
@@ -480,6 +575,82 @@ export function SlotPicker({
           </Button>
         </Card>
       )}
+    </div>
+  );
+}
+
+/**
+ * One tile per lesson type the coach teaches, with its price. During the
+ * early-bird window both prices show, the regular one struck through, so the
+ * saving is visible before a student commits to a time.
+ */
+function LessonTypePicker({
+  locale,
+  rates,
+  earlyBirdActive,
+  selected,
+  onSelect,
+  labels,
+}: {
+  locale: Locale;
+  rates: RateRow[];
+  earlyBirdActive: boolean;
+  selected: string;
+  onSelect: (lessonType: string) => void;
+  labels: { title: string; earlyBird: string; regular: string; perHour: string };
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label>{labels.title}</Label>
+      <div
+        role="group"
+        aria-label={labels.title}
+        className="grid gap-2 sm:grid-cols-3"
+      >
+        {rates.map((r) => {
+          const isSelected = r.lessonType === selected;
+          const early = earlyBirdActive && r.earlyBirdCents != null;
+          const hint = LESSON_TYPES.find((t) => t.key === r.lessonType);
+          return (
+            <button
+              key={r.lessonType}
+              type="button"
+              aria-pressed={isSelected}
+              onClick={() => onSelect(r.lessonType)}
+              className={cn(
+                "press rounded-xl border p-3 text-left",
+                isSelected
+                  ? "border-accent bg-[var(--accent-soft)]"
+                  : "border-border bg-surface hover:border-accent",
+              )}
+            >
+              <span className="block text-sm font-bold text-ink">
+                {lessonTypeLabel(r.lessonType, locale)}
+              </span>
+              <span className="mt-1 flex flex-wrap items-baseline gap-x-1.5 text-xs text-ink-2" data-numeric>
+                <strong className="text-sm text-ink">
+                  {formatMoneyShort(early ? r.earlyBirdCents! : r.regularCents)}
+                  {labels.perHour}
+                </strong>
+                {early && (
+                  <>
+                    <s className="text-ink-3">
+                      <span className="sr-only">{labels.regular} </span>
+                      {formatMoneyShort(r.regularCents)}
+                    </s>
+                    <EarlyBirdTag label={labels.earlyBird} />
+                  </>
+                )}
+              </span>
+              {hint && (
+                <span className="mt-1 block text-[11px] leading-snug text-ink-3">
+                  {locale === "zh" ? hint.zhHint : hint.enHint}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -5,8 +5,9 @@ import { useRouter } from "@/i18n/navigation";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FieldError, Input, Label } from "@/components/ui/field";
-import type { BookingStatus, PaymentMethod, UploadedBy } from "@prisma/client";
+import type { PaymentMethod, UploadedBy } from "@prisma/client";
 import type { Locale } from "@/i18n/routing";
+import { paymentPaths, type PaymentTarget } from "@/lib/payment-target";
 import { Check, Loader2, Upload, X } from "lucide-react";
 
 const COPY = {
@@ -50,8 +51,8 @@ const COPY = {
 
 export function CoachReviewPanel({
   locale,
-  bookingCode,
-  status,
+  target,
+  confirmed,
   hasProof,
   proofUploadedBy,
   paymentMethod,
@@ -60,8 +61,10 @@ export function CoachReviewPanel({
   canUploadProof,
 }: {
   locale: Locale;
-  bookingCode: string;
-  status: BookingStatus;
+  /** The booking or lesson package whose payment is being reviewed. */
+  target: PaymentTarget;
+  /** Payment has already been accepted. */
+  confirmed: boolean;
   hasProof: boolean;
   proofUploadedBy: UploadedBy | null;
   paymentMethod: PaymentMethod | null;
@@ -72,6 +75,7 @@ export function CoachReviewPanel({
   const router = useRouter();
   const c = COPY[locale];
   const fileRef = useRef<HTMLInputElement>(null);
+  const paths = paymentPaths(target);
 
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -86,7 +90,7 @@ export function CoachReviewPanel({
     }
     setBusy(true);
     setError(null);
-    const res = await fetch(`/api/bookings/${bookingCode}/review`, {
+    const res = await fetch(paths.review, {
       method: "POST",
       headers: { "content-type": "application/json", "x-locale": locale },
       body: JSON.stringify({ action, note: reason.trim() || null }),
@@ -104,8 +108,8 @@ export function CoachReviewPanel({
     setError(null);
     const body = new FormData();
     body.set("file", file);
-    body.set("purpose", "payment-proof");
-    body.set("bookingCode", bookingCode);
+    body.set("purpose", paths.upload.purpose);
+    body.set(paths.upload.field, target.code);
     const res = await fetch("/api/upload", { method: "POST", body });
     setUploading(false);
     if (!res.ok) {
@@ -119,7 +123,7 @@ export function CoachReviewPanel({
   async function submitProof() {
     if (!proofKey) return;
     setBusy(true);
-    const res = await fetch(`/api/bookings/${bookingCode}/payment`, {
+    const res = await fetch(paths.submit, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ method: "EMT", proofKey, reference: null }),
@@ -164,7 +168,7 @@ export function CoachReviewPanel({
           {/* eslint-disable-next-line @next/next/no-img-element -- streamed from
               an authenticated route, never a static asset */}
           <img
-            src={`/api/bookings/${bookingCode}/proof`}
+            src={paths.proof}
             alt=""
             className="max-h-96 rounded-lg border border-border"
           />
@@ -173,7 +177,7 @@ export function CoachReviewPanel({
         <p className="text-sm text-muted-foreground">{c.noProof}</p>
       )}
 
-      {status === "CONFIRMED" && (
+      {confirmed && (
         <p className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
           <Check className="size-4" aria-hidden />
           {c.confirmed}

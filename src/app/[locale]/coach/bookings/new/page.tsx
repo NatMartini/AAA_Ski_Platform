@@ -7,6 +7,7 @@ import { toLocale } from "@/i18n/routing";
 import { toDateKey } from "@/lib/time";
 import { bookingHorizon } from "@/lib/season";
 import { MAX_SUPPORTED_HEADCOUNT } from "@/lib/booking/group";
+import { offeredRates } from "@/lib/rates";
 
 export default async function CoachNewBookingPage({
   params,
@@ -18,6 +19,7 @@ export default async function CoachNewBookingPage({
 
   const profile = await prisma.coachProfile.findUnique({
     where: { userId: user.id },
+    include: { rates: true },
   });
 
   const horizon = bookingHorizon(toDateKey(new Date()));
@@ -35,10 +37,15 @@ export default async function CoachNewBookingPage({
         profile?.maxGroupSize ?? 1,
         MAX_SUPPORTED_HEADCOUNT,
       )}
+      rates={offeredRates(profile?.rates ?? []).map((r) => ({
+        lessonType: r.lessonType,
+        regularCents: r.regularCents,
+        earlyBirdCents: r.earlyBirdCents,
+      }))}
       days={days.map((day) => ({
         dateKey: day.dateKey,
         resortName: locale === "zh" ? day.resort.nameZh : day.resort.nameEn,
-        hourlyRateCents: day.hourlyRateCents,
+        earlyBird: day.earlyBird,
         handoverDiscountCents: day.handoverDiscountCents,
         extraPersonCents: day.extraPersonCents,
         startOptions: day.startOptions.map((o) => ({

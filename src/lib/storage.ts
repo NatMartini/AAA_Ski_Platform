@@ -163,6 +163,7 @@ export function sha256(data: Buffer): string {
 
 export const KEY_PREFIX = {
   proof: (bookingId: string) => `proofs/${bookingId}`,
+  packageProof: (packageId: string) => `package-proofs/${packageId}`,
   waiver: () => `waivers`,
   qr: (coachId: string) => `qr/${coachId}`,
   avatar: (coachId: string) => `avatars/${coachId}`,

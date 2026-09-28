@@ -1,9 +1,10 @@
 # AAA Ski Platform
 
 A private booking site for ski and snowboard lessons. Students pick a resort, a
-coach and a time; sign a liability waiver; pay by e-Transfer, WeChat Pay or
-Alipay and upload a screenshot. Coaches manage their availability and pricing,
-confirm payments, and subscribe to their schedule from Google Calendar.
+coach, a lesson type and a time; sign a liability waiver; pay by e-Transfer,
+WeChat Pay or Alipay and upload a screenshot — or spend hours from a prepaid
+lesson package. Coaches manage their availability and prices, confirm payments,
+and subscribe to their schedule from Google Calendar.
 
 **This site is deliberately not public.** It is handed out as a link in a group
 chat. Every page requires sign-in, nothing is indexable, and a signed-out
@@ -22,10 +23,11 @@ npm run launch
 ```
 
 This finds a working Postgres (an already-running one, or it starts the
-container, or falls back to a native install), applies migrations, seeds a demo
-coach and student, turns on the development sign-in bypass, starts the dev
-server and opens the browser. No Google OAuth or account setup needed — the
-sign-in page lets you pick **Kevin** (coach) or **Wei Zhang** (student).
+container, or falls back to a native install), applies migrations, seeds two
+demo coaches on the published price sheet and a student, turns on the
+development sign-in bypass, starts the dev server and opens the browser. No
+Google OAuth or account setup needed — the sign-in page lets you pick **Kevin**
+or **Alisa** (coaches) or **Wei Zhang** (student).
 `stop.bat` shuts it all down.
 
 ### Manual
@@ -81,20 +83,61 @@ and bookings are rejected, which is why `seasonOf` never has to guess.
 
 ### Pricing
 
-A booking is on the hour with a two-hour minimum, but the lesson runs five
-minutes short at each end so the coach can hand over to the next student. A
-1:00–3:00 booking is taught 1:05–2:55.
+Each coach has a **rate card**: an hourly one-on-one price per lesson type —
+滑行课 ski lesson (`riding`), 一级考前培训 CSIA Level 1 prep (`csia1_prep`) and
+公园 park (`park`), catalogued in `src/lib/lesson-types.ts` — each with a regular
+price and an optional early-bird one (`CoachRate`). A coach offers a type by
+pricing it; Alisa has no park rate, so she is never offered for park.
+
+**Early bird** is decided by the day the booking is *made*: anything booked on
+or before **1 December** (the season's opening day) pays the early-bird price for
+any lesson that season. The rule lives in `src/lib/rates.ts`.
+
+A booking is on the hour with a two-hour minimum. The first ten minutes are the
+coach's handover from the previous student, so the lesson starts at ten past and
+runs to the hour: a 1:00–3:00 booking is taught 1:10–3:00.
 
 Those ten minutes are credited back **once per booking, not per hour**, because
 the handover happens once however long the lesson is:
 
 ```
-$80.00 / hour × 2 hours     $160.00
-Handover credit             −$15.00
-Total (CAD)                 $145.00
+Ski lesson · early bird
+$60.00 / hour × 2 hours     $120.00
+Handover credit             −$10.00
+Total (CAD)                 $110.00
 ```
 
-All money is integer cents. No tax is calculated or displayed anywhere.
+A group adds the coach's per-extra-student surcharge ($20/h by default) to the
+base rate, though multi-person booking stays closed until every attendee can
+carry their own waiver (`src/lib/booking/group.ts`).
+
+Every price is snapshotted onto the booking — type, early-bird flag, rate,
+totals — so a coach editing their rate card never rewrites an existing booking.
+
+All money is integer cents. Published prices are final: no tax is calculated or
+displayed anywhere.
+
+### Lesson packages
+
+The price sheet's Blue Mountain package — **four hours of ski lessons for $180,
+with any coach, early bird only** — is an offer in `src/lib/packages.ts`.
+
+- The student orders it on `/packages` and **chooses which coach to pay**. That
+  coach confirms the screenshot, exactly like a booking payment; money still goes
+  straight to a coach and the platform never holds it.
+- Once confirmed, the hours can be spent on ski lessons at that resort in that
+  season with **any** coach, in bookings of at least two hours. A package pays
+  for a whole booking or none of it, and nothing is owed on that booking; after
+  the waiver it is confirmed directly.
+- Hours left are never stored. They are derived from the bookings that point at
+  the package, so an expired or cancelled booking hands its hours back. Booking
+  takes a row lock on the package, so two requests cannot spend the same hours
+  (`npm run check:flow` proves it).
+- When Alisa teaches hours Kevin was paid for, `/coach/packages` shows who owes
+  whom at the package's price per hour ($45).
+
+Packages come off sale after 1 December; an unpaid order can no longer be paid
+after that, though a rejected screenshot can always be replaced.
 
 ### No double-booking
 
@@ -172,6 +215,10 @@ The feed URL is the only thing protecting it, and the UI says so.
       covers teaching independently at the resorts you use.
 - [ ] Write the cancellation/refund policy in coach settings — a coach cannot
       take bookings until both language versions are filled in.
+- [ ] Have each coach enter their rate card in coach settings: early-bird and
+      regular price for every lesson type they teach. The migration carried an
+      existing coach's single hourly rate over as their regular ski-lesson price
+      only, with no early-bird price and no other types.
 - [ ] Confirm the site is not reachable by search: `/robots.txt` disallows
       everything and every response carries `X-Robots-Tag: noindex`.
 

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { isDateKey } from "./time";
 import { isWithinSeason } from "./season";
 import { MAX_SUPPORTED_HEADCOUNT } from "./booking/group";
+import { isLessonTypeKey, LESSON_TYPES } from "./lesson-types";
 
 /**
  * All request bodies are parsed here before anything touches the database.
@@ -27,7 +28,6 @@ export const coachDaySchema = z
     endHour: hourSchema,
     breakStartHour: hourSchema.nullable().optional(),
     breakEndHour: hourSchema.nullable().optional(),
-    hourlyRateCentsOverride: z.number().int().min(0).max(1_000_000).nullable().optional(),
     note: z.string().max(300).nullable().optional(),
   })
   .refine((d) => d.endHour > d.startHour, {
@@ -49,12 +49,39 @@ export const coachDaySchema = z
     { message: "Break must sit inside the working window", path: ["breakStartHour"] },
   );
 
+export const lessonTypeSchema = z
+  .string()
+  .refine(isLessonTypeKey, { message: "Unknown lesson type" });
+
+const moneySchema = z.number().int().min(1).max(1_000_000);
+
+/** One row of a coach's rate card. Leaving a type out means not offered. */
+export const coachRateSchema = z
+  .object({
+    lessonType: lessonTypeSchema,
+    regularCents: moneySchema,
+    earlyBirdCents: moneySchema.nullable(),
+  })
+  .refine(
+    (r) => r.earlyBirdCents == null || r.earlyBirdCents <= r.regularCents,
+    {
+      message: "The early-bird price cannot be above the regular price",
+      path: ["earlyBirdCents"],
+    },
+  );
+
 export const coachSettingsSchema = z.object({
   displayName: z.string().trim().min(1).max(80),
   /** Coach introduction shown at the top of the booking page. */
   bioZh: z.string().trim().max(2000).nullable().optional(),
   bioEn: z.string().trim().max(2000).nullable().optional(),
-  hourlyRateCents: z.number().int().min(0).max(1_000_000),
+  rates: z
+    .array(coachRateSchema)
+    .max(LESSON_TYPES.length)
+    .refine(
+      (rates) => new Set(rates.map((r) => r.lessonType)).size === rates.length,
+      { message: "Each lesson type can only have one price" },
+    ),
   handoverDiscountCents: z.number().int().min(0).max(1_000_000),
   extraPersonCents: z.number().int().min(0).max(1_000_000),
   maxGroupSize: z.number().int().min(1).max(20),
@@ -129,18 +156,26 @@ const headcountSchema = z
   .max(MAX_SUPPORTED_HEADCOUNT)
   .default(1);
 
-export const createBookingSchema = z.object({
-  coachId: z.string().min(1),
-  date: seasonDateSchema,
-  startHour: hourSchema,
-  hours: z.number().int().min(1).max(12),
-  headcount: headcountSchema,
-  participantId: z.string().min(1),
-  /** Skill keys the student wants to work on; unknown keys are dropped. */
-  requestedSkills: z.array(z.string().max(40)).max(12).default([]),
-  paymentPlan: z.enum(["FULL", "DEPOSIT"]).default("FULL"),
-  notes: z.string().trim().max(1000).nullable().optional(),
-});
+export const createBookingSchema = z
+  .object({
+    coachId: z.string().min(1),
+    date: seasonDateSchema,
+    startHour: hourSchema,
+    hours: z.number().int().min(1).max(12),
+    lessonType: lessonTypeSchema,
+    headcount: headcountSchema,
+    participantId: z.string().min(1),
+    /** Skill keys the student wants to work on; unknown keys are dropped. */
+    requestedSkills: z.array(z.string().max(40)).max(12).default([]),
+    paymentPlan: z.enum(["FULL", "DEPOSIT", "PACKAGE"]).default("FULL"),
+    /** The lesson package to spend, when paymentPlan is PACKAGE. */
+    packageId: z.string().min(1).nullable().optional(),
+    notes: z.string().trim().max(1000).nullable().optional(),
+  })
+  .refine((d) => d.paymentPlan !== "PACKAGE" || Boolean(d.packageId), {
+    message: "Choose which lesson package to use",
+    path: ["packageId"],
+  });
 
 export const quoteSchema = z.object({
   coachId: z.string().min(1),
@@ -153,6 +188,7 @@ export const coachCreateBookingSchema = z.object({
   date: seasonDateSchema,
   startHour: hourSchema,
   hours: z.number().int().min(1).max(12),
+  lessonType: lessonTypeSchema,
   headcount: headcountSchema,
   studentName: z.string().trim().min(1).max(120),
   /** The signing link is issued to this address and only it can sign. */
@@ -181,6 +217,20 @@ export const paymentProofSchema = z.object({
   method: z.enum(["EMT", "WECHAT", "ALIPAY"]),
   /** Which instalment this proof is for. */
   stage: z.enum(["DEPOSIT", "FULL", "BALANCE"]).default("FULL"),
+  /** Storage key returned by the upload endpoint, not a URL. */
+  proofKey: z.string().min(1).max(300),
+  reference: z.string().trim().max(200).nullable().optional(),
+});
+
+/** A student orders a lesson package, choosing which coach to pay. */
+export const packagePurchaseSchema = z.object({
+  offerKey: z.string().min(1).max(60),
+  payeeCoachId: z.string().min(1),
+});
+
+/** Payment proof for a lesson package; one payment, so no stage. */
+export const packagePaymentSchema = z.object({
+  method: z.enum(["EMT", "WECHAT", "ALIPAY"]),
   /** Storage key returned by the upload endpoint, not a URL. */
   proofKey: z.string().min(1).max(300),
   reference: z.string().trim().max(200).nullable().optional(),

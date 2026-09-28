@@ -5,6 +5,7 @@ import { requireUserPage } from "@/lib/auth/require-user";
 import { accessFor, loadBooking } from "@/lib/booking/access";
 import { prisma } from "@/lib/prisma";
 import { PaymentPanel } from "@/components/booking/payment-panel";
+import { PriceBreakdown } from "@/components/booking/price-breakdown";
 import { quoteFromBooking } from "@/lib/pricing";
 import { amountDueCents } from "@/lib/booking/lesson";
 import { toLocale } from "@/i18n/routing";
@@ -54,13 +55,22 @@ export default async function PaymentPage({
 
       <PaymentPanel
         locale={toLocale(locale)}
-        bookingCode={booking.code}
+        target={{ kind: "booking", code: booking.code }}
         coachId={booking.coachId}
         isCoach={access.isCoach}
         rejectedNote={
           booking.status === "PAYMENT_REJECTED" ? booking.reviewNote : null
         }
-        quote={quoteFromBooking(booking)}
+        totalCents={booking.totalCents}
+        currency={booking.currency}
+        breakdown={
+          <PriceBreakdown
+            quote={quoteFromBooking(booking)}
+            locale={toLocale(locale)}
+            lessonType={booking.lessonType}
+            earlyBird={booking.earlyBird}
+          />
+        }
         amountDueCents={amountDueCents(booking)}
         methods={{
           emt:

@@ -66,6 +66,8 @@ export default async function CoachBookingsPage({
                 lessonStartAt: b.lessonStartAt,
                 lessonEndAt: b.lessonEndAt,
                 totalCents: b.totalCents,
+                lessonType: b.lessonType,
+                paidByPackage: b.paymentPlan === "PACKAGE",
                 resortName: zh ? b.resort.nameZh : b.resort.nameEn,
                 otherPartyName:
                   b.participantNameSnapshot ??
@@ -97,6 +99,8 @@ export default async function CoachBookingsPage({
                   lessonStartAt: b.lessonStartAt,
                   lessonEndAt: b.lessonEndAt,
                   totalCents: b.totalCents,
+                  lessonType: b.lessonType,
+                  paidByPackage: b.paymentPlan === "PACKAGE",
                   resortName: zh ? b.resort.nameZh : b.resort.nameEn,
                   otherPartyName:
                     b.participantNameSnapshot ??

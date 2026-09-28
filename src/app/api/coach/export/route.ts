@@ -13,7 +13,12 @@ export async function GET() {
 
   const bookings = await prisma.booking.findMany({
     where: { coachId: r.user.id },
-    include: { resort: true, participant: true, waiver: true },
+    include: {
+      resort: true,
+      participant: true,
+      waiver: true,
+      package: { select: { code: true } },
+    },
     orderBy: { startAt: "desc" },
   });
 
@@ -26,6 +31,9 @@ export async function GET() {
     "resort",
     "student",
     "status",
+    "lesson_type",
+    "early_bird",
+    "package",
     "hourly_rate",
     "subtotal",
     "handover_credit",
@@ -48,6 +56,9 @@ export async function GET() {
     b.resort.nameEn,
     b.participantNameSnapshot ?? b.participant?.fullName ?? b.inviteName ?? "",
     b.status,
+    b.lessonType,
+    b.earlyBird ? "yes" : "no",
+    b.package?.code ?? "",
     money(b.hourlyRateCents),
     money(b.subtotalCents),
     money(b.handoverDiscountCents),

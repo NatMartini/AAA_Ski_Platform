@@ -20,6 +20,11 @@ export function generateBookingCode(): string {
   return `SKI-${out}`;
 }
 
+/** Same alphabet for a lesson package, e.g. "PKG-8F3K2M". */
+export function generatePackageCode(): string {
+  return generateBookingCode().replace(/^SKI-/, "PKG-");
+}
+
 export function isBookingCode(value: string): boolean {
   return new RegExp(`^SKI-[${ALPHABET}]{${LENGTH}}$`).test(value);
 }

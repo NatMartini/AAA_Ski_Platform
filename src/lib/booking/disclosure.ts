@@ -1,6 +1,7 @@
 import type { Quote } from "../pricing";
 import { formatMoneyShort } from "../pricing";
 import { formatTorontoDate, formatTorontoTime } from "../time";
+import { lessonTypeLabel } from "../lesson-types";
 import type { Locale } from "@/i18n/routing";
 
 /**
@@ -36,6 +37,12 @@ export type DisclosureSnapshot = {
     /** Effective per-hour rate charged (base + group surcharge). */
     perHourCents?: number;
     headcount?: number;
+    /** Key from lib/lesson-types.ts. Absent on bookings made before types. */
+    lessonType?: string;
+    /** The early-bird rate applied. */
+    earlyBird?: boolean;
+    /** Set when a lesson package paid for the booking instead of money. */
+    package?: { code: string; hours: number; valueCents: number };
     subtotalCents: number;
     handoverDiscountCents: number;
     totalCents: number;
@@ -60,6 +67,8 @@ export function buildDisclosure(input: {
   lessonStartAt: Date;
   lessonEndAt: Date;
   quote: Quote;
+  lessonType: string;
+  earlyBird: boolean;
   cancellationPolicyZh: string;
   cancellationPolicyEn: string;
   participantName: string;
@@ -83,6 +92,8 @@ export function buildDisclosure(input: {
       hourlyRateCents: input.quote.hourlyRateCents,
       perHourCents: input.quote.perHourCents,
       headcount: input.quote.headcount,
+      lessonType: input.lessonType,
+      earlyBird: input.earlyBird,
       subtotalCents: input.quote.subtotalCents,
       handoverDiscountCents: input.quote.handoverDiscountCents,
       totalCents: input.quote.totalCents,
@@ -126,17 +137,32 @@ export function renderDisclosureText(
     zh
       ? `实际授课:${formatTorontoTime(start, "zh")} – ${formatTorontoTime(end, "zh")}(${snapshot.lesson.lessonMinutes} 分钟)`
       : `Lesson runs: ${formatTorontoTime(start, "en")} – ${formatTorontoTime(end, "en")} (${snapshot.lesson.lessonMinutes} min)`,
-    "",
-    zh ? "价格明细" : "Price breakdown",
-    ...((p.headcount ?? 1) > 1
+    ...(p.lessonType
       ? [
           zh
-            ? `  人数:1 对 ${p.headcount}`
-            : `  Group of ${p.headcount}`,
+            ? `课程:${lessonTypeLabel(p.lessonType, "zh")}`
+            : `Lesson: ${lessonTypeLabel(p.lessonType, "en")}`,
         ]
       : []),
-    `  ${formatMoneyShort(p.perHourCents ?? p.hourlyRateCents)} ${zh ? "/ 小时 ×" : "/ hour ×"} ${snapshot.lesson.hours} ${zh ? "小时" : "hours"} = ${formatMoneyShort(p.subtotalCents)}`,
-    `  ${zh ? "交接扣减(每单 10 分钟)" : "Handover credit (10 min per booking)"} = -${formatMoneyShort(p.handoverDiscountCents)}`,
+    "",
+    zh ? "价格明细" : "Price breakdown",
+    ...(p.package
+      ? [
+          zh
+            ? `  课时包 ${p.package.code} 抵扣 ${p.package.hours} 小时`
+            : `  ${p.package.hours} hours from lesson package ${p.package.code}`,
+        ]
+      : [
+          ...((p.headcount ?? 1) > 1
+            ? [
+                zh
+                  ? `  人数:1 对 ${p.headcount}`
+                  : `  Group of ${p.headcount}`,
+              ]
+            : []),
+          `  ${formatMoneyShort(p.perHourCents ?? p.hourlyRateCents)} ${zh ? "/ 小时 ×" : "/ hour ×"} ${snapshot.lesson.hours} ${zh ? "小时" : "hours"}${p.earlyBird ? (zh ? "(早鸟价)" : " (early bird)") : ""} = ${formatMoneyShort(p.subtotalCents)}`,
+          `  ${zh ? "交接扣减(每单 10 分钟)" : "Handover credit (10 min per booking)"} = -${formatMoneyShort(p.handoverDiscountCents)}`,
+        ]),
     `  ${zh ? "实付" : "Total"} = ${formatMoneyShort(p.totalCents)} ${p.currency}`,
     "",
     zh ? "取消与退款政策" : "Cancellation and refund policy",

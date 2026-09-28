@@ -34,7 +34,44 @@ if (process.env.NODE_ENV === "production") {
 const prisma = new PrismaClient({ log: ["error"] });
 
 const COACH_EMAIL = "kevin.demo@example.com";
+const SECOND_COACH_EMAIL = "alisa.demo@example.com";
 const STUDENT_EMAIL = "student.demo@example.com";
+
+/**
+ * The published 2026-27 price sheet, in cents per hour, one-on-one. Alisa
+ * does not teach park, so she has no park rate at all.
+ */
+const PRICE_SHEET = {
+  kevin: [
+    { lessonType: "riding", earlyBirdCents: 6000, regularCents: 7000 },
+    { lessonType: "csia1_prep", earlyBirdCents: 7000, regularCents: 8000 },
+    { lessonType: "park", earlyBirdCents: 8000, regularCents: 9000 },
+  ],
+  alisa: [
+    { lessonType: "riding", earlyBirdCents: 5000, regularCents: 6000 },
+    { lessonType: "csia1_prep", earlyBirdCents: 6000, regularCents: 7000 },
+  ],
+};
+
+/** Replaces a coach's rate card with the given rows. */
+async function setRates(
+  profileId: string,
+  rates: { lessonType: string; earlyBirdCents: number; regularCents: number }[],
+) {
+  await prisma.coachRate.deleteMany({
+    where: {
+      profileId,
+      lessonType: { notIn: rates.map((r) => r.lessonType) },
+    },
+  });
+  for (const r of rates) {
+    await prisma.coachRate.upsert({
+      where: { profileId_lessonType: { profileId, lessonType: r.lessonType } },
+      update: { earlyBirdCents: r.earlyBirdCents, regularCents: r.regularCents },
+      create: { profileId, ...r },
+    });
+  }
+}
 
 /** Cookie name NextAuth v5 uses over plain http. */
 const COOKIE_NAME = "authjs.session-token";
@@ -91,7 +128,7 @@ async function main() {
     },
   });
 
-  await prisma.coachProfile.upsert({
+  const kevinProfile = await prisma.coachProfile.upsert({
     where: { userId: coach.id },
     // Refreshed rather than left alone: re-running the demo after adding a
     // profile field should show that field, not the row from three weeks ago.
@@ -100,14 +137,16 @@ async function main() {
       csiaParkLevel: 1,
       teachableLevels: ["first_time", "beginner", "intermediate", "advanced"],
       teachableSkills: DEMO_SKILLS,
+      handoverDiscountCents: 1000,
+      extraPersonCents: 2000,
     },
     create: {
       userId: coach.id,
       displayName: "Kevin",
       bioEn: "CSIA-certified. Teaches all levels, patient with first-timers.",
       bioZh: "CSIA 认证教练,各水平均可教学,对初学者尤其耐心。",
-      hourlyRateCents: 8000,
-      handoverDiscountCents: 1500,
+      handoverDiscountCents: 1000,
+      extraPersonCents: 2000,
       csiaLevel: 2,
       csiaParkLevel: 1,
       teachableLevels: ["first_time", "beginner", "intermediate", "advanced"],
@@ -135,6 +174,55 @@ async function main() {
       isPublished: true,
     },
   });
+  await setRates(kevinProfile.id, PRICE_SHEET.kevin);
+
+  // ── Second coach, so a package can be spent with "any coach" ──
+  const alisa = await prisma.user.upsert({
+    where: { email: SECOND_COACH_EMAIL },
+    update: { role: "COACH", name: "Alisa" },
+    create: {
+      email: SECOND_COACH_EMAIL,
+      name: "Alisa",
+      role: "COACH",
+      emailVerified: new Date(),
+    },
+  });
+  const alisaProfile = await prisma.coachProfile.upsert({
+    where: { userId: alisa.id },
+    update: {
+      teachableLevels: ["first_time", "beginner", "intermediate"],
+      handoverDiscountCents: 1000,
+      extraPersonCents: 2000,
+    },
+    create: {
+      userId: alisa.id,
+      displayName: "Alisa",
+      bioEn: "Patient and methodical; great with first-timers and kids.",
+      bioZh: "耐心细致,特别擅长带第一次滑雪的学员和小朋友。",
+      handoverDiscountCents: 1000,
+      extraPersonCents: 2000,
+      csiaLevel: 1,
+      teachableLevels: ["first_time", "beginner", "intermediate"],
+      minHours: 2,
+      maxHours: 8,
+      leadTimeHours: 24,
+      emtEnabled: true,
+      emtEmail: SECOND_COACH_EMAIL,
+      emtName: "Alisa W.",
+      wechatId: "alisa-ski-demo",
+      contactEmail: SECOND_COACH_EMAIL,
+      cancellationPolicyEn:
+        "Cancel more than 48 hours before the lesson for a full refund. " +
+        "Within 48 hours the lesson is not refundable. If the resort closes " +
+        "the hill, you get a full refund or a free reschedule.",
+      cancellationPolicyZh:
+        "课前 48 小时以上取消可全额退款;48 小时以内取消不退款。" +
+        "若雪场关闭导致无法上课,可全额退款或免费改期。",
+      icsToken: randomUUID().replace(/-/g, ""),
+      isPublished: true,
+    },
+  });
+  await setRates(alisaProfile.id, PRICE_SHEET.alisa);
 
   // ── Availability, spread across the bookable season ──
   const horizon = bookingHorizon(toDateKey(new Date()));
@@ -170,6 +258,29 @@ async function main() {
         breakStartHour: p.lunch ? 13 : null,
         breakEndHour: p.lunch ? 14 : null,
       },
+    });
+  }
+
+  const alisaPlan = [
+    { offset: 0, resort: blue ?? msl, startHour: 9, endHour: 16, lunch: true },
+    { offset: 3, resort: blue ?? msl, startHour: 9, endHour: 16, lunch: true },
+    { offset: 4, resort: msl, startHour: 10, endHour: 15, lunch: false },
+    { offset: 7, resort: blue ?? msl, startHour: 9, endHour: 16, lunch: true },
+  ];
+  for (const p of alisaPlan) {
+    const date = new Date(start);
+    date.setUTCDate(date.getUTCDate() + p.offset);
+    const window = {
+      resortId: p.resort.id,
+      startHour: p.startHour,
+      endHour: p.endHour,
+      breakStartHour: p.lunch ? 13 : null,
+      breakEndHour: p.lunch ? 14 : null,
+    };
+    await prisma.coachDay.upsert({
+      where: { coachId_date: { coachId: alisa.id, date } },
+      update: window,
+      create: { coachId: alisa.id, date, ...window },
     });
   }
 
@@ -220,7 +331,7 @@ async function main() {
   console.log(`
 Demo data ready — season ${horizon.season}, availability from ${horizon.from}
 
-  coach    ${COACH_EMAIL}
+  coaches  ${COACH_EMAIL}, ${SECOND_COACH_EMAIL}
   student  ${STUDENT_EMAIL}   (participants: Wei Zhang, 小明)
 
 Sign in by setting this cookie on http://localhost:3000 —

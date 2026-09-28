@@ -13,6 +13,7 @@ export default async function CoachSettingsPage({
   const user = await requireCoachPage({ locale });
   const profile = await prisma.coachProfile.findUnique({
     where: { userId: user.id },
+    include: { rates: true },
   });
 
   if (!profile) {
@@ -36,7 +37,11 @@ export default async function CoachSettingsPage({
         csiaParkLevel: profile.csiaParkLevel,
         teachableSkills: profile.teachableSkills,
         teachableLevels: profile.teachableLevels,
-        hourlyRateCents: profile.hourlyRateCents,
+        rates: profile.rates.map((r) => ({
+          lessonType: r.lessonType,
+          regularCents: r.regularCents,
+          earlyBirdCents: r.earlyBirdCents,
+        })),
         handoverDiscountCents: profile.handoverDiscountCents,
         extraPersonCents: profile.extraPersonCents,
         maxGroupSize: profile.maxGroupSize,

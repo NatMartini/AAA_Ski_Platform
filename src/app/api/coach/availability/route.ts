@@ -83,7 +83,6 @@ export async function PUT(req: Request) {
       endHour: d.endHour,
       breakStartHour: d.breakStartHour ?? null,
       breakEndHour: d.breakEndHour ?? null,
-      hourlyRateCentsOverride: d.hourlyRateCentsOverride ?? null,
       note: d.note ?? null,
     },
     create: {
@@ -94,7 +93,6 @@ export async function PUT(req: Request) {
       endHour: d.endHour,
       breakStartHour: d.breakStartHour ?? null,
       breakEndHour: d.breakEndHour ?? null,
-      hourlyRateCentsOverride: d.hourlyRateCentsOverride ?? null,
       note: d.note ?? null,
     },
   });

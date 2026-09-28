@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { buildCalendar, type IcsEvent } from "@/lib/ics";
 import { OCCUPYING_STATUSES } from "@/lib/booking/state";
 import { formatMoneyShort } from "@/lib/pricing";
+import { lessonTypeLabel } from "@/lib/lesson-types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,7 +16,7 @@ export const dynamic = "force-dynamic";
  * the secret: it is only ever shown to the coach, with a warning not to share
  * it, and it can be rotated from the settings page.
  *
- * The events carry the *lesson* window (13:05–14:55), not the booked block, so
+ * The events carry the *lesson* window (13:10–15:00), not the booked block, so
  * the calendar shows the time actually being taught.
  */
 export async function GET(
@@ -39,7 +40,11 @@ export async function GET(
       coachId: profile.userId,
       status: { in: [...OCCUPYING_STATUSES, "CANCELLED", "COMPLETED"] },
     },
-    include: { resort: true, participant: true },
+    include: {
+      resort: true,
+      participant: true,
+      package: { select: { code: true } },
+    },
     orderBy: { startAt: "asc" },
     take: 500,
   });
@@ -55,13 +60,15 @@ export async function GET(
       sequence: Math.floor(b.updatedAt.getTime() / 1000) % 2_000_000_000,
       start: b.lessonStartAt,
       end: b.lessonEndAt,
-      summary: `${student} · ${b.resort.nameEn}`,
+      summary: `${student} · ${lessonTypeLabel(b.lessonType, "en")} · ${b.resort.nameEn}`,
       description: [
         `Booking: ${b.code}`,
         `Status: ${b.status}`,
         `Student: ${student}`,
         `Booked block: ${b.startAt.toISOString()} – ${b.endAt.toISOString()}`,
-        `Fee: ${formatMoneyShort(b.totalCents)} ${b.currency}`,
+        b.package
+          ? `Paid from lesson package ${b.package.code}`
+          : `Fee: ${formatMoneyShort(b.totalCents)} ${b.currency}${b.earlyBird ? " (early bird)" : ""}`,
         b.waiverId ? "Waiver: signed" : "Waiver: NOT SIGNED",
         b.notes ? `Notes: ${b.notes}` : "",
       ]

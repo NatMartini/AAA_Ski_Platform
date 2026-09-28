@@ -21,8 +21,8 @@ export type LegalContent = {
 
 export type LegalDocId = "terms" | "privacy" | "accessibility";
 
-const UPDATED_EN = "Draft — pending legal review. Last updated 11 August 2026.";
-const UPDATED_ZH = "草稿 —— 尚待法律审阅。最后更新:2026 年 8 月 11 日。";
+const UPDATED_EN = "Draft — pending legal review. Last updated 28 September 2026.";
+const UPDATED_ZH = "草稿 —— 尚待法律审阅。最后更新:2026 年 9 月 28 日。";
 
 export const LEGAL_DOCS: Record<
   LegalDocId,
@@ -43,7 +43,7 @@ export const LEGAL_DOCS: Record<
         {
           heading: "Booking and lesson times",
           paragraphs: [
-            "Lessons are booked on the hour, with a two-hour minimum. Every lesson starts five minutes after the booked hour and finishes five minutes before it ends, so the instructor can hand over to the next student. A 1:00–3:00 booking is taught 1:05–2:55.",
+            "Lessons are booked on the hour, with a two-hour minimum. Every lesson starts ten minutes after the booked hour and runs to the end of the booking, so the instructor can hand over from the previous student. A 1:00–3:00 booking is taught 1:10–3:00.",
             "Because that handover happens once per booking regardless of length, a fixed credit is deducted once per booking, not per hour. The full breakdown is shown before you confirm.",
           ],
         },
@@ -51,7 +51,9 @@ export const LEGAL_DOCS: Record<
           heading: "Payment",
           paragraphs: [
             "Payment is made directly to your instructor by Interac e-Transfer, WeChat Pay or Alipay, and confirmed by uploading a screenshot. Your booking is confirmed once the instructor has checked it.",
-            "Prices are in Canadian dollars.",
+            "Prices are in Canadian dollars, one-on-one, and final: no tax is added. Each additional student in a group lesson adds a per-hour surcharge shown before you confirm.",
+            "Early-bird prices apply to bookings made on or before 1 December for lessons in that season.",
+            "A lesson package is paid to the instructor you choose when you buy it, and its hours can be booked with any instructor for the lesson type and resort it covers, during the season it was bought for.",
           ],
         },
         {
@@ -98,7 +100,7 @@ export const LEGAL_DOCS: Record<
         {
           heading: "预定与上课时间",
           paragraphs: [
-            "课程按整点预定,最少两小时。每节课在预定时段开始 5 分钟后开始、结束前 5 分钟结束,以便教练与下一位学员交接。预定 1:00–3:00,实际授课时间为 1:05–2:55。",
+            "课程按整点预定,最少两小时。每节课在预定时段开始 10 分钟后开始、到预定时段结束为止,以便教练与上一位学员交接。预定 1:00–3:00,实际授课时间为 1:10–3:00。",
             "由于交接每张订单只发生一次,与时长无关,因此每张订单固定扣减一次,而非按小时扣减。确认下单前会完整展示价格明细。",
           ],
         },
@@ -106,7 +108,9 @@ export const LEGAL_DOCS: Record<
           heading: "付款",
           paragraphs: [
             "款项通过 Interac e-Transfer、微信支付或支付宝直接支付给教练,并上传付款截图确认。教练核对后订单即预定成功。",
-            "所有价格以加元计。",
+            "所有价格以加元计,为一对一价格,且为最终价,不另加税。多人课每增加一名学员,每小时另加费用,下单前会显示。",
+            "12 月 1 日(含)之前下的订单,按早鸟价收取该雪季的课程费用。",
+            "课时包在购买时付款给你选择的教练,课时可在购买的雪季内、按课时包对应的雪场和课程类型,与任意教练预约使用。",
           ],
         },
         {

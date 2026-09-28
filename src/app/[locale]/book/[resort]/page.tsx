@@ -5,7 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { requireUserPage } from "@/lib/auth/require-user";
 import { Card, CardDescription } from "@/components/ui/card";
 import { listBookableCoaches } from "@/lib/coach";
-import { formatMoneyShort } from "@/lib/pricing";
+import { RateList } from "@/components/booking/rate-list";
+import { earlyBirdWindow } from "@/lib/rates";
+import { toDateKey } from "@/lib/time";
 import { LevelMatch } from "@/components/booking/level-match";
 import { csiaLabel, levelLabel, skillLabel } from "@/lib/skills";
 import { toLocale } from "@/i18n/routing";
@@ -35,6 +37,7 @@ export default async function ChooseCoachPage({
   if (!resort?.isActive) notFound();
 
   const coaches = await listBookableCoaches(resortSlug);
+  const earlyBirdActive = earlyBirdWindow(toDateKey(new Date())).active;
 
   return (
     <div className="space-y-5">
@@ -158,17 +161,18 @@ export default async function ChooseCoachPage({
                       </ul>
                     )}
 
-                    <p className="mt-auto text-sm" data-numeric>
-                      <strong className="font-display text-base">
-                        {formatMoneyShort(coach.hourlyRateCents)}
-                      </strong>
-                      {zh ? " / 小时" : " / hour"}
-                      <span className="text-ink-3">
+                    <div className="mt-auto space-y-1.5 border-t border-border pt-3">
+                      <RateList
+                        rates={coach.rates}
+                        locale={loc}
+                        earlyBirdActive={earlyBirdActive}
+                      />
+                      <p className="text-xs text-ink-3">
                         {zh
-                          ? ` · 最少 ${coach.minHours} 小时`
-                          : ` · ${coach.minHours}h minimum`}
-                      </span>
-                    </p>
+                          ? `一对一价格 · 最少 ${coach.minHours} 小时`
+                          : `One-on-one · ${coach.minHours}h minimum`}
+                      </p>
+                    </div>
                     {/* Set expectations before they invest time in picking a slot. */}
                     <p className="text-xs text-ink-3">{tw("seasonNote")}</p>
                   </Card>

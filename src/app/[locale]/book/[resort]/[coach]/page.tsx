@@ -9,6 +9,8 @@ import { toLocale } from "@/i18n/routing";
 import { toDateKey } from "@/lib/time";
 import { bookingHorizon } from "@/lib/season";
 import { MAX_SUPPORTED_HEADCOUNT } from "@/lib/booking/group";
+import { earlyBirdWindow, offeredRates } from "@/lib/rates";
+import { usablePackages } from "@/lib/package-store";
 
 export default async function PickSlotPage({
   params,
@@ -23,14 +25,18 @@ export default async function PickSlotPage({
 
   const [resort, profile] = await Promise.all([
     prisma.resort.findUnique({ where: { slug: resortSlug } }),
-    prisma.coachProfile.findUnique({ where: { userId: coachId } }),
+    prisma.coachProfile.findUnique({
+      where: { userId: coachId },
+      include: { rates: true },
+    }),
   ]);
   if (!resort?.isActive || !profile || !canAcceptBookings(profile)) notFound();
 
   // Runs to the end of the season rather than a fixed number of days, so
   // December dates are visible during the autumn rather than falling off the
   // end of a rolling window.
-  const horizon = bookingHorizon(toDateKey(new Date()));
+  const today = toDateKey(new Date());
+  const horizon = bookingHorizon(today);
   const days = await getAvailability({
     coachId,
     from: horizon.from,
@@ -40,10 +46,14 @@ export default async function PickSlotPage({
   // Only this resort's days; a coach is at one resort per day.
   const forResort = days.filter((d) => d.resort.slug === resortSlug);
 
-  const participants = await prisma.participant.findMany({
-    where: { accountId: user.id, archivedAt: null },
-    orderBy: [{ isSelf: "desc" }, { fullName: "asc" }],
-  });
+  const [participants, packages] = await Promise.all([
+    prisma.participant.findMany({
+      where: { accountId: user.id, archivedAt: null },
+      orderBy: [{ isSelf: "desc" }, { fullName: "asc" }],
+    }),
+    // "Any coach": a package bought from one coach is spendable with this one.
+    usablePackages(user.id, resort.id),
+  ]);
 
   return (
     <SlotPicker
@@ -65,9 +75,16 @@ export default async function PickSlotPage({
         profile.maxGroupSize,
         MAX_SUPPORTED_HEADCOUNT,
       )}
+      rates={offeredRates(profile.rates).map((r) => ({
+        lessonType: r.lessonType,
+        regularCents: r.regularCents,
+        earlyBirdCents: r.earlyBirdCents,
+      }))}
+      earlyBirdActive={earlyBirdWindow(today).active}
+      packages={packages}
       days={forResort.map((day) => ({
         dateKey: day.dateKey,
-        hourlyRateCents: day.hourlyRateCents,
+        earlyBird: day.earlyBird,
         handoverDiscountCents: day.handoverDiscountCents,
         extraPersonCents: day.extraPersonCents,
         cells: day.cells.map((c) => ({

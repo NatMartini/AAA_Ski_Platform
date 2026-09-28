@@ -5,15 +5,18 @@ import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FieldError, Hint, Input, Label, Select } from "@/components/ui/field";
 import { PriceBreakdown } from "@/components/booking/price-breakdown";
-import { quote } from "@/lib/pricing";
+import { formatMoneyShort, quote } from "@/lib/pricing";
 import { formatTorontoDate } from "@/lib/time";
+import { rateFor, type RateRow } from "@/lib/rates";
+import { lessonTypeLabel } from "@/lib/lesson-types";
 import type { Locale } from "@/i18n/routing";
 import { Check, Copy, Loader2 } from "lucide-react";
 
 type Day = {
   dateKey: string;
   resortName: string;
-  hourlyRateCents: number;
+  /** Booking it now would be charged the early-bird rate. */
+  earlyBird: boolean;
   handoverDiscountCents: number;
   extraPersonCents: number;
   startOptions: { hour: number; durations: number[] }[];
@@ -24,6 +27,9 @@ const COPY = {
     title: "代学员建课",
     intro:
       "为还没有账号的学员占一个时段。建好后会生成一条签字链接 —— 学员用链接里指定的邮箱登录后自己签署免责协议。你不能代签。",
+    lessonType: "课程类型",
+    earlyBird: "早鸟",
+    noRates: "请先在「设置」里填写各课程类型的价格。",
     day: "日期",
     start: "开始时间",
     duration: "时长",
@@ -53,6 +59,9 @@ const COPY = {
     title: "Book for a student",
     intro:
       "Hold a slot for a student who has no account yet. You will get a signing link — they open it, sign in with the address you specify, and sign the waiver themselves. You cannot sign for them.",
+    lessonType: "Lesson type",
+    earlyBird: "early bird",
+    noRates: "Set your lesson prices under Settings first.",
     day: "Day",
     start: "Start time",
     duration: "Duration",
@@ -87,13 +96,17 @@ export function CoachBookingForm({
   days,
   minHours,
   maxGroupSize,
+  rates,
 }: {
   locale: Locale;
   days: Day[];
   minHours: number;
   maxGroupSize: number;
+  /** The coach's rate card, offered types only, in price-sheet order. */
+  rates: RateRow[];
 }) {
   const c = COPY[locale];
+  const [lessonType, setLessonType] = useState(rates[0]?.lessonType ?? "");
 
   const [dateKey, setDateKey] = useState(days[0]?.dateKey ?? "");
   const [startHour, setStartHour] = useState<number | null>(null);
@@ -116,11 +129,12 @@ export function CoachBookingForm({
   );
   const option = day?.startOptions.find((o) => o.hour === startHour);
 
+  const rate = day ? rateFor(rates, lessonType, day.earlyBird) : null;
   const priced =
-    day && option
+    day && option && rate
       ? quote({
           hours,
-          hourlyRateCents: day.hourlyRateCents,
+          hourlyRateCents: rate.hourlyRateCents,
           handoverDiscountCents: day.handoverDiscountCents,
           headcount,
           extraPersonCents: day.extraPersonCents,
@@ -139,6 +153,7 @@ export function CoachBookingForm({
         date: day.dateKey,
         startHour,
         hours,
+        lessonType,
         headcount,
         studentName,
         studentEmail,
@@ -213,10 +228,12 @@ export function CoachBookingForm({
     );
   }
 
-  if (days.length === 0) {
+  if (days.length === 0 || rates.length === 0) {
     return (
       <Card>
-        <CardDescription>{c.noDays}</CardDescription>
+        <CardDescription>
+          {rates.length === 0 ? c.noRates : c.noDays}
+        </CardDescription>
       </Card>
     );
   }
@@ -230,6 +247,26 @@ export function CoachBookingForm({
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="lessonType">{c.lessonType}</Label>
+            <Select
+              id="lessonType"
+              value={lessonType}
+              onChange={(e) => setLessonType(e.target.value)}
+            >
+              {rates.map((r) => {
+                const early = Boolean(day?.earlyBird && r.earlyBirdCents != null);
+                return (
+                  <option key={r.lessonType} value={r.lessonType}>
+                    {lessonTypeLabel(r.lessonType, locale)} ·{" "}
+                    {formatMoneyShort(early ? r.earlyBirdCents! : r.regularCents)}
+                    {early ? ` (${c.earlyBird})` : ""}
+                  </option>
+                );
+              })}
+            </Select>
+          </div>
+
           <div className="space-y-1.5">
             <Label htmlFor="day">{c.day}</Label>
             <Select
@@ -308,7 +345,14 @@ export function CoachBookingForm({
           )}
         </div>
 
-        {priced && <PriceBreakdown quote={priced} locale={locale} />}
+        {priced && (
+          <PriceBreakdown
+            quote={priced}
+            locale={locale}
+            lessonType={lessonType}
+            earlyBird={rate?.earlyBird}
+          />
+        )}
       </Card>
 
       <Card className="space-y-4">

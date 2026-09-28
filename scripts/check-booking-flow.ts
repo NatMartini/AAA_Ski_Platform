@@ -3,7 +3,8 @@
  *
  * Covers what unit tests cannot: the create-booking transaction, the waiver
  * signing pipeline (including PDF generation), waiver reuse across bookings,
- * and the guardian/aged-out rules — all against live Postgres.
+ * the guardian/aged-out rules, lesson-type and early-bird pricing, and
+ * spending a lesson package with two coaches — all against live Postgres.
  *
  *   npm run check:flow
  *
@@ -26,6 +27,8 @@ import {
   stageOf,
 } from "../src/lib/booking/lesson";
 import { OCCUPYING_STATUSES } from "../src/lib/booking/state";
+import { bookingInclude } from "../src/lib/booking/access";
+import { hoursUsed, settlementFor } from "../src/lib/packages";
 
 for (const file of [".env.local", ".env"]) {
   try {
@@ -38,6 +41,8 @@ for (const file of [".env.local", ".env"]) {
 const prisma = new PrismaClient({ log: ["error"] });
 
 const COACH = "__flow_check_coach";
+// A second coach, to spend a package paid to the first one.
+const COACH2 = "__flow_check_coach2";
 const PARENT = "__flow_check_parent";
 const ADULT = "__flow_check_adult";
 const RESORT_SLUG = "__flow_check_resort";
@@ -58,19 +63,21 @@ function check(label: string, condition: boolean, detail = ""): void {
 }
 
 async function cleanup() {
-  const users = [COACH, PARENT, ADULT];
+  const users = [COACH, COACH2, PARENT, ADULT];
+  const coaches = [COACH, COACH2];
   const waiverFiles = await prisma.waiver.findMany({
-    where: { coachId: COACH },
+    where: { coachId: { in: coaches } },
     select: { signedPdfKey: true },
   });
   for (const waiver of waiverFiles) {
     await deleteObject(waiver.signedPdfKey).catch(() => undefined);
   }
-  await prisma.waiver.deleteMany({ where: { coachId: COACH } });
-  await prisma.booking.deleteMany({ where: { coachId: COACH } });
+  await prisma.waiver.deleteMany({ where: { coachId: { in: coaches } } });
+  await prisma.booking.deleteMany({ where: { coachId: { in: coaches } } });
+  await prisma.lessonPackage.deleteMany({ where: { accountId: { in: users } } });
   await prisma.participant.deleteMany({ where: { accountId: { in: users } } });
-  await prisma.coachDay.deleteMany({ where: { coachId: COACH } });
-  await prisma.coachProfile.deleteMany({ where: { userId: COACH } });
+  await prisma.coachDay.deleteMany({ where: { coachId: { in: coaches } } });
+  await prisma.coachProfile.deleteMany({ where: { userId: { in: coaches } } });
   await prisma.user.deleteMany({ where: { id: { in: users } } });
   await prisma.resort.deleteMany({ where: { slug: RESORT_SLUG } });
 }
@@ -78,6 +85,9 @@ async function cleanup() {
 async function setup() {
   await prisma.user.create({
     data: { id: COACH, email: "__flow_coach@example.invalid", name: "Kevin", role: "COACH" },
+  });
+  await prisma.user.create({
+    data: { id: COACH2, email: "__flow_coach2@example.invalid", name: "Alisa", role: "COACH" },
   });
   await prisma.user.create({
     data: { id: PARENT, email: "__flow_parent@example.invalid", name: "张丽" },
@@ -90,36 +100,54 @@ async function setup() {
     data: { slug: RESORT_SLUG, nameEn: "Flow Test Hill", nameZh: "测试雪场" },
   });
 
-  await prisma.coachProfile.create({
-    data: {
-      userId: COACH,
-      displayName: "Kevin",
-      hourlyRateCents: 8000,
-      handoverDiscountCents: 1500,
-      minHours: 2,
-      maxHours: 8,
-      leadTimeHours: 0,
-      emtEnabled: true,
-      emtEmail: "__flow_coach@example.invalid",
-      cancellationPolicyEn: "48h full refund.",
-      cancellationPolicyZh: "48 小时前全额退款。",
-      icsToken: "__flow_check_token",
-      isPublished: true,
-    },
-  });
-
-  for (const day of [DAY, DAY2]) {
-    await prisma.coachDay.create({
+  // The price sheet: Kevin teaches all three types; Alisa has no park rate.
+  const sheet = {
+    [COACH]: [
+      { lessonType: "riding", earlyBirdCents: 6000, regularCents: 7000 },
+      { lessonType: "csia1_prep", earlyBirdCents: 7000, regularCents: 8000 },
+      { lessonType: "park", earlyBirdCents: 8000, regularCents: 9000 },
+    ],
+    [COACH2]: [
+      { lessonType: "riding", earlyBirdCents: 5000, regularCents: 6000 },
+      { lessonType: "csia1_prep", earlyBirdCents: 6000, regularCents: 7000 },
+    ],
+  };
+  for (const [userId, name] of [
+    [COACH, "Kevin"],
+    [COACH2, "Alisa"],
+  ] as const) {
+    await prisma.coachProfile.create({
       data: {
-        coachId: COACH,
-        resortId: resort.id,
-        date: dateKeyToDbDate(day),
-        startHour: 9,
-        endHour: 16,
-        breakStartHour: 13,
-        breakEndHour: 14,
+        userId,
+        displayName: name,
+        handoverDiscountCents: 1000,
+        extraPersonCents: 2000,
+        minHours: 2,
+        maxHours: 8,
+        leadTimeHours: 0,
+        emtEnabled: true,
+        emtEmail: `${userId}@example.invalid`,
+        cancellationPolicyEn: "48h full refund.",
+        cancellationPolicyZh: "48 小时前全额退款。",
+        icsToken: `${userId}_token`,
+        isPublished: true,
+        rates: { create: sheet[userId] },
       },
     });
+
+    for (const day of [DAY, DAY2]) {
+      await prisma.coachDay.create({
+        data: {
+          coachId: userId,
+          resortId: resort.id,
+          date: dateKeyToDbDate(day),
+          startHour: 9,
+          endHour: 16,
+          breakStartHour: 13,
+          breakEndHour: 14,
+        },
+      });
+    }
   }
 
   const child = await prisma.participant.create({
@@ -141,12 +169,12 @@ async function setup() {
     },
   });
 
-  return { child, adult };
+  return { child, adult, resort };
 }
 
 async function main() {
   await cleanup();
-  const { child, adult } = await setup();
+  const { child, adult, resort } = await setup();
   // Fixed "now" well before the lesson so lead time never interferes.
   const now = new Date("2026-01-01T12:00:00Z");
 
@@ -157,6 +185,7 @@ async function main() {
     dateKey: DAY,
     startHour: 9,
     hours: 2,
+    lessonType: "riding",
     locale: "zh",
     account: {
       id: ADULT,
@@ -172,14 +201,17 @@ async function main() {
     ? await prisma.booking.findUnique({ where: { code: first.code } })
     : null;
   check(
-    "price is $80x2 less $15 = $145",
-    priced?.totalCents === 14500 && priced?.subtotalCents === 16000,
+    "a ski lesson booked in January is $70x2 less $10 = $130",
+    priced?.totalCents === 13000 &&
+      priced?.subtotalCents === 14000 &&
+      priced?.lessonType === "riding" &&
+      priced?.earlyBird === false,
     `total=${priced?.totalCents}`,
   );
   check(
-    "lesson window is 9:05-10:55",
-    priced?.lessonStartAt.toISOString() === "2026-01-08T14:05:00.000Z" &&
-      priced?.lessonEndAt.toISOString() === "2026-01-08T15:55:00.000Z",
+    "lesson window is 9:10-11:00",
+    priced?.lessonStartAt.toISOString() === "2026-01-08T14:10:00.000Z" &&
+      priced?.lessonEndAt.toISOString() === "2026-01-08T16:00:00.000Z",
   );
   check("self-serve booking starts on HOLD with a timer", priced?.status === "HOLD" && priced?.holdExpiresAt !== null);
   check("disclosure snapshot is frozen onto the booking", priced?.disclosureSnapshot !== null);
@@ -189,6 +221,7 @@ async function main() {
     dateKey: DAY,
     startHour: 10,
     hours: 2,
+    lessonType: "riding",
     locale: "zh",
     account: {
       id: PARENT,
@@ -209,6 +242,7 @@ async function main() {
     dateKey: DAY,
     startHour: 12,
     hours: 2,
+    lessonType: "riding",
     locale: "zh",
     account: {
       id: PARENT,
@@ -229,6 +263,7 @@ async function main() {
     dateKey: "2026-07-21",
     startHour: 9,
     hours: 2,
+    lessonType: "riding",
     locale: "zh",
     account: {
       id: ADULT,
@@ -246,6 +281,7 @@ async function main() {
     dateKey: DAY,
     startHour: 14,
     hours: 2,
+    lessonType: "riding",
     headcount: 3, // 1-on-3
     locale: "zh",
     account: {
@@ -265,15 +301,7 @@ async function main() {
 
   const bookingRow = await prisma.booking.findUnique({
     where: { code: first.ok ? first.code : "" },
-    include: {
-      coach: { select: { id: true, name: true, email: true } },
-      resort: true,
-      coachDay: true,
-      participant: true,
-      account: { select: { id: true, email: true, name: true } },
-      waiver: true,
-      waiverInvite: true,
-    },
+    include: bookingInclude,
   });
   // This script uses a historical fixed clock for deterministic slot checks,
   // while signWaiver correctly uses the real server clock. Keep the fixture's
@@ -357,6 +385,7 @@ async function main() {
     dateKey: DAY,
     startHour: 14,
     hours: 2,
+    lessonType: "riding",
     locale: "zh",
     account: {
       id: ADULT,
@@ -415,6 +444,7 @@ async function main() {
     dateKey: DAY,
     startHour: 11,
     hours: 2,
+    lessonType: "riding",
     locale: "zh",
     account: {
       id: PARENT,
@@ -428,15 +458,7 @@ async function main() {
 
   const childRow = await prisma.booking.findUnique({
     where: { code: childBooking.ok ? childBooking.code : "" },
-    include: {
-      coach: { select: { id: true, name: true, email: true } },
-      resort: true,
-      coachDay: true,
-      participant: true,
-      account: { select: { id: true, email: true, name: true } },
-      waiver: true,
-      waiverInvite: true,
-    },
+    include: bookingInclude,
   });
   await prisma.booking.update({
     where: { id: childRow!.id },
@@ -491,6 +513,7 @@ async function main() {
     dateKey: DAY2,
     startHour: 14,
     hours: 2,
+    lessonType: "riding",
     paymentPlan: "DEPOSIT",
     requestedSkills: ["carving", "short_turn", "not_a_real_skill"],
     locale: "zh",
@@ -515,7 +538,7 @@ async function main() {
 
   check(
     "the deposit is one hour at the booked rate",
-    depositRow?.depositCents === 8000,
+    depositRow?.depositCents === 7000,
     `deposit=${depositRow?.depositCents} total=${depositRow?.totalCents}`,
   );
   check(
@@ -533,7 +556,7 @@ async function main() {
   if (depositRow) {
     check(
       "before anything clears, the deposit is what is due",
-      stageOf(depositRow) === "DEPOSIT" && amountDueCents(depositRow) === 8000,
+      stageOf(depositRow) === "DEPOSIT" && amountDueCents(depositRow) === 7000,
     );
 
     // What the review route does when the coach confirms the first screenshot.
@@ -543,13 +566,13 @@ async function main() {
     });
     check(
       "once the deposit clears the booking is confirmed with a balance owing",
-      afterDeposit.status === "CONFIRMED" && balanceCents(afterDeposit) === 6500,
+      afterDeposit.status === "CONFIRMED" && balanceCents(afterDeposit) === 6000,
       `owing=${balanceCents(afterDeposit)}`,
     );
     check(
       "the next payment asked for is the balance, not the deposit again",
       stageOf(afterDeposit) === "BALANCE" &&
-        amountDueCents(afterDeposit) === 6500,
+        amountDueCents(afterDeposit) === 6000,
     );
 
     // What the balance route does when the coach records the rest.
@@ -587,6 +610,7 @@ async function main() {
       dateKey: DAY2,
       startHour: 14,
       hours: 2,
+      lessonType: "riding",
       locale: "zh",
       account: {
         id: ADULT,
@@ -601,6 +625,282 @@ async function main() {
       await prisma.booking.delete({ where: { code: rebooked.code } });
     }
   }
+
+  const adultAccount = {
+    id: ADULT,
+    participantId: adult.id,
+    participantName: "张伟",
+    participantIsMinor: adult.isMinor,
+  };
+
+  console.log("\nlesson types and early bird");
+  // Booked on 20 November, before the 2025-26 early bird closes on 1 December.
+  const early = await createBooking({
+    coachId: COACH,
+    dateKey: DAY2,
+    startHour: 9,
+    hours: 2,
+    lessonType: "park",
+    locale: "zh",
+    account: adultAccount,
+    now: new Date("2025-11-20T15:00:00Z"),
+  });
+  const earlyRow = early.ok
+    ? await prisma.booking.findUnique({ where: { code: early.code } })
+    : null;
+  check(
+    "a park lesson booked before 1 December is $80x2 less $10 = $150",
+    earlyRow?.lessonType === "park" &&
+      earlyRow.earlyBird &&
+      earlyRow.hourlyRateCents === 8000 &&
+      earlyRow.totalCents === 15000,
+    `rate=${earlyRow?.hourlyRateCents} total=${earlyRow?.totalCents}`,
+  );
+  if (early.ok) await prisma.booking.delete({ where: { code: early.code } });
+
+  const regular = await createBooking({
+    coachId: COACH,
+    dateKey: DAY2,
+    startHour: 9,
+    hours: 2,
+    lessonType: "csia1_prep",
+    locale: "zh",
+    account: adultAccount,
+    now,
+  });
+  const regularRow = regular.ok
+    ? await prisma.booking.findUnique({ where: { code: regular.code } })
+    : null;
+  check(
+    "Level 1 prep booked in January is the regular $80/h",
+    regularRow?.earlyBird === false && regularRow.hourlyRateCents === 8000,
+    `rate=${regularRow?.hourlyRateCents}`,
+  );
+  if (regular.ok) await prisma.booking.delete({ where: { code: regular.code } });
+
+  const noPark = await createBooking({
+    coachId: COACH2,
+    dateKey: DAY2,
+    startHour: 9,
+    hours: 2,
+    lessonType: "park",
+    locale: "zh",
+    account: adultAccount,
+    now,
+  });
+  check(
+    "a coach with no park rate cannot be booked for park",
+    !noPark.ok && noPark.reason === "lesson-type-unavailable",
+  );
+
+  console.log("\nlesson packages");
+  // Four hours for $180, paid to Kevin and already confirmed by him.
+  const pkg = await prisma.lessonPackage.create({
+    data: {
+      code: "PKG-FLOW01",
+      accountId: ADULT,
+      offerKey: "blue-mountain-4h",
+      resortId: resort.id,
+      lessonType: "riding",
+      season: "2025-26",
+      hours: 4,
+      priceCents: 18000,
+      payeeCoachId: COACH,
+      status: "ACTIVE",
+    },
+  });
+  const packageBooking = (coachId: string, dateKey: string, startHour: number, lessonType = "riding") =>
+    createBooking({
+      coachId,
+      dateKey,
+      startHour,
+      hours: 2,
+      lessonType,
+      paymentPlan: "PACKAGE",
+      packageId: pkg.id,
+      locale: "zh",
+      account: adultAccount,
+      now,
+    });
+  const packageUsage = async () =>
+    hoursUsed(
+      await prisma.booking.findMany({
+        where: { packageId: pkg.id },
+        select: { hours: true, status: true, holdExpiresAt: true },
+      }),
+      now,
+    );
+
+  const withAlisa = await packageBooking(COACH2, DAY, 9);
+  const alisaRow = withAlisa.ok
+    ? await prisma.booking.findUnique({ where: { code: withAlisa.code }, include: bookingInclude })
+    : null;
+  check(
+    "a package paid to Kevin can be spent with Alisa",
+    withAlisa.ok && alisaRow?.packageId === pkg.id && alisaRow.paymentPlan === "PACKAGE",
+    withAlisa.ok ? "" : withAlisa.reason,
+  );
+  check(
+    "nothing is owed on a package booking; an hour is valued at $45",
+    alisaRow?.totalCents === 0 &&
+      alisaRow.depositCents === 0 &&
+      alisaRow.hourlyRateCents === 4500,
+  );
+  check(
+    "without a waiver for Alisa it still starts on HOLD",
+    withAlisa.ok && withAlisa.nextStep === "waiver" && alisaRow?.status === "HOLD",
+  );
+
+  if (alisaRow) {
+    await prisma.booking.update({
+      where: { id: alisaRow.id },
+      data: { holdExpiresAt: activeFixtureDeadline },
+    });
+    alisaRow.holdExpiresAt = activeFixtureDeadline;
+    const alisaSigned = await signWaiver({
+      booking: alisaRow,
+      participantId: adult.id,
+      participantName: "张伟",
+      participantIsMinor: adult.isMinor,
+      signerUserId: ADULT,
+      signerName: "张伟",
+      signerEmail: "__flow_adult@example.invalid",
+      typedName: "张伟",
+      signatureImage: SIG,
+      consentToElectronic: true,
+      agreedCheckboxes: Object.fromEntries(
+        acknowledgementIds("adult").map((id) => [id, true]),
+      ) as Record<string, true>,
+      guardianName: null,
+      guardianPhone: null,
+      guardianRelationship: null,
+      ipAddress: "203.0.113.9",
+      userAgent: "flow-check",
+    });
+    const alisaAfter = await prisma.booking.findUnique({ where: { id: alisaRow.id } });
+    check(
+      "signing the waiver confirms a package booking outright",
+      alisaSigned.ok && alisaAfter?.status === "CONFIRMED",
+      alisaSigned.ok ? `status=${alisaAfter?.status}` : alisaSigned.reason,
+    );
+  }
+
+  const withKevin = await packageBooking(COACH, DAY2, 9);
+  const kevinRow = withKevin.ok
+    ? await prisma.booking.findUnique({ where: { code: withKevin.code } })
+    : null;
+  check(
+    "with a waiver already on file it is confirmed at once",
+    withKevin.ok && withKevin.nextStep === "done" && kevinRow?.status === "CONFIRMED",
+    withKevin.ok ? `status=${kevinRow?.status}` : withKevin.reason,
+  );
+  check("all four hours are now spent", (await packageUsage()) === 4);
+
+  const tooMany = await packageBooking(COACH, DAY2, 11);
+  check(
+    "a fifth hour is refused",
+    !tooMany.ok && tooMany.reason === "package-insufficient-hours",
+  );
+  const parkFromPackage = await packageBooking(COACH, DAY2, 11, "park");
+  check(
+    "a ski-lesson package cannot pay for park",
+    !parkFromPackage.ok && parkFromPackage.reason === "package-wrong-lesson-type",
+  );
+  const notMine = await createBooking({
+    coachId: COACH,
+    dateKey: DAY2,
+    startHour: 11,
+    hours: 2,
+    lessonType: "riding",
+    paymentPlan: "PACKAGE",
+    packageId: pkg.id,
+    locale: "zh",
+    account: {
+      id: PARENT,
+      participantId: child.id,
+      participantName: "小明",
+      participantIsMinor: child.isMinor,
+    },
+    now,
+  });
+  check(
+    "someone else's package cannot be spent",
+    !notMine.ok && notMine.reason === "package-not-found",
+  );
+
+  if (kevinRow) {
+    await prisma.booking.update({
+      where: { id: kevinRow.id },
+      data: { status: "CANCELLED", cancelledAt: new Date(), cancelReason: "改期" },
+    });
+  }
+  check("cancelling a package lesson gives its hours back", (await packageUsage()) === 2);
+
+  // Deterministic proof of the row lock: hold it in another transaction,
+  // cancel the package there, and have a booking arrive meanwhile. It must
+  // wait for the lock and then see the cancellation. Without FOR UPDATE it
+  // would read the package as still ACTIVE and spend its hours.
+  const [, blocked] = await Promise.all([
+    prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "LessonPackage" WHERE "id" = ${pkg.id} FOR UPDATE`;
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await tx.lessonPackage.update({
+        where: { id: pkg.id },
+        data: { status: "CANCELLED" },
+      });
+    }),
+    new Promise((resolve) => setTimeout(resolve, 50)).then(() =>
+      packageBooking(COACH2, DAY, 11),
+    ),
+  ]);
+  check(
+    "a booking waits for the package lock and sees the package cancelled",
+    !blocked.ok && blocked.reason === "package-not-active",
+    blocked.ok ? "booked!" : blocked.reason,
+  );
+  await prisma.lessonPackage.update({
+    where: { id: pkg.id },
+    data: { status: "ACTIVE" },
+  });
+
+  // Six bookings racing for the last two hours, each on a different free
+  // slot so only the package can stop them.
+  const race = await Promise.all([
+    packageBooking(COACH, DAY, 14),
+    packageBooking(COACH, DAY2, 11),
+    packageBooking(COACH2, DAY, 11),
+    packageBooking(COACH2, DAY, 14),
+    packageBooking(COACH2, DAY2, 9),
+    packageBooking(COACH2, DAY2, 11),
+  ]);
+  const winners = race.filter((r) => r.ok).length;
+  const losers = race.filter(
+    (r) => !r.ok && r.reason === "package-insufficient-hours",
+  ).length;
+  check(
+    "six bookings racing for the last hours: exactly one wins",
+    winners === 1 && losers === race.length - 1,
+    `won=${winners} refused=${losers}`,
+  );
+  check("the package is never overspent", (await packageUsage()) === 4);
+
+  const uses = await prisma.booking.findMany({
+    where: { packageId: pkg.id, status: { in: OCCUPYING_STATUSES } },
+    select: { coachId: true, hours: true },
+  });
+  const alisaHours = uses
+    .filter((u) => u.coachId === COACH2)
+    .reduce((sum, u) => sum + u.hours, 0);
+  const [kevinOwes] = settlementFor(COACH, [
+    { payeeCoachId: COACH, priceCents: 18000, hours: 4, uses },
+  ]);
+  check(
+    "Kevin, who was paid, owes Alisa $45 for each hour she taught",
+    kevinOwes?.otherCoachId === COACH2 &&
+      kevinOwes.iOweCents === alisaHours * 4500 &&
+      kevinOwes.netCents === -alisaHours * 4500,
+    `alisa taught ${alisaHours}h, owed ${kevinOwes?.iOweCents}`,
+  );
 
   console.log("\naging out of a guardian signature");
   const agedOut = resolveWaiver({

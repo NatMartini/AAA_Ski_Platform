@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { BookingStatus, Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { renderWaiverPdf } from "./render";
 import {
@@ -129,6 +129,7 @@ export async function signWaiver(input: SignInput): Promise<SignResult> {
     lessonEndAt: booking.lessonEndAt,
     totalCents: booking.totalCents,
     currency: booking.currency,
+    packageCode: booking.package?.code ?? null,
     season,
     participantName: input.participantName,
     participantIsMinor,
@@ -318,6 +319,11 @@ async function attachWaiverToBookings(
   now: Date,
   replacesWaiverId: string | null = null,
 ): Promise<void> {
+  // A booking paid for from a lesson package owes nothing, so the signature is
+  // the last step: it is confirmed rather than sent on to payment.
+  const nextStatus =
+    input.booking.paymentPlan === "PACKAGE" ? "CONFIRMED" : "AWAITING_PAYMENT";
+
   const current = await tx.booking.updateMany({
     where: {
       id: input.booking.id,
@@ -329,7 +335,7 @@ async function attachWaiverToBookings(
         { status: "HOLD", holdExpiresAt: { gt: now } },
       ],
     },
-    data: { waiverId, status: "AWAITING_PAYMENT" },
+    data: { waiverId, status: nextStatus },
   });
 
   if (current.count !== 1) {
@@ -344,10 +350,7 @@ async function attachWaiverToBookings(
       throw new HoldExpiredError();
     }
     // A concurrent identical request already completed the desired update.
-    if (
-      latest?.status === "AWAITING_PAYMENT" &&
-      latest.waiverId === waiverId
-    ) {
+    if (latest?.status === nextStatus && latest.waiverId === waiverId) {
       return;
     }
     throw new BookingNoLongerSignableError();
@@ -362,23 +365,30 @@ async function attachWaiverToBookings(
     addDaysToDateKey(range.end, 1),
     0,
   );
-  await tx.booking.updateMany({
-    where: {
-      id: { not: input.booking.id },
-      participantId: input.participantId,
-      coachId: input.booking.coachId,
-      lessonStartAt: { gte: seasonStartsAt, lt: afterSeasonEndsAt },
-      status: { in: ["HOLD", "AWAITING_WAIVER", "AWAITING_PAYMENT"] },
-      AND: [
-        {
-          OR: [
-            { waiverId: null },
-            ...(replacesWaiverId ? [{ waiverId: replacesWaiverId }] : []),
-          ],
-        },
-        { OR: [{ holdExpiresAt: null }, { holdExpiresAt: { gt: now } }] },
-      ],
+  const others = {
+    id: { not: input.booking.id },
+    participantId: input.participantId,
+    coachId: input.booking.coachId,
+    lessonStartAt: { gte: seasonStartsAt, lt: afterSeasonEndsAt },
+    status: {
+      in: ["HOLD", "AWAITING_WAIVER", "AWAITING_PAYMENT"] as BookingStatus[],
     },
+    AND: [
+      {
+        OR: [
+          { waiverId: null },
+          ...(replacesWaiverId ? [{ waiverId: replacesWaiverId }] : []),
+        ],
+      },
+      { OR: [{ holdExpiresAt: null }, { holdExpiresAt: { gt: now } }] },
+    ],
+  } satisfies Prisma.BookingWhereInput;
+  await tx.booking.updateMany({
+    where: { ...others, paymentPlan: "PACKAGE" },
+    data: { waiverId, status: "CONFIRMED" },
+  });
+  await tx.booking.updateMany({
+    where: { ...others, paymentPlan: { not: "PACKAGE" } },
     data: { waiverId, status: "AWAITING_PAYMENT" },
   });
 }

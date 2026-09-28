@@ -152,6 +152,53 @@ export async function sendPaymentReviewed(input: {
   });
 }
 
+export async function sendPackageReviewed(input: {
+  code: string;
+  to: string;
+  approved: boolean;
+  note: string | null;
+  locale: Locale;
+}): Promise<void> {
+  const zh = input.locale === "zh";
+  const url = `${baseUrl()}/${input.locale}/packages/${input.code}`;
+
+  const body = input.approved
+    ? [
+        zh
+          ? `课时包 ${input.code} 的付款已确认,现在可以用它预约课程了。`
+          : `Payment for lesson package ${input.code} is confirmed. You can now book lessons with it.`,
+        "",
+        url,
+      ].join("\n")
+    : [
+        zh
+          ? `课时包 ${input.code} 的付款未通过。`
+          : `The payment for lesson package ${input.code} was not accepted.`,
+        input.note
+          ? zh
+            ? `原因:${input.note}`
+            : `Reason: ${input.note}`
+          : "",
+        "",
+        zh ? "请重新上传付款截图:" : "Please upload the screenshot again:",
+        url,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+  await sendMail({
+    to: input.to,
+    subject: input.approved
+      ? zh
+        ? `课时包已生效 · ${input.code}`
+        : `Lesson package ready · ${input.code}`
+      : zh
+        ? `付款需重新提交 · ${input.code}`
+        : `Payment needs re-submitting · ${input.code}`,
+    text: body,
+  });
+}
+
 export async function sendBookingCancelled(input: {
   code: string;
   to: string;

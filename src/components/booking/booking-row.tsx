@@ -2,6 +2,7 @@ import { Link } from "@/i18n/navigation";
 import { StatusPill } from "@/components/ui/status-pill";
 import { formatMoneyShort } from "@/lib/pricing";
 import { formatTorontoDate, formatTorontoTime } from "@/lib/time";
+import { lessonTypeLabel } from "@/lib/lesson-types";
 import type { BookingStatus } from "@prisma/client";
 import type { Locale } from "@/i18n/routing";
 import { ChevronRight } from "lucide-react";
@@ -13,6 +14,9 @@ export type BookingRowData = {
   lessonStartAt: Date;
   lessonEndAt: Date;
   totalCents: number;
+  lessonType: string;
+  /** Paid from a lesson package, so the total is not money owed. */
+  paidByPackage: boolean;
   resortName: string;
   otherPartyName: string;
   hasWaiver: boolean;
@@ -59,7 +63,12 @@ export function BookingRow({
           · {booking.otherPartyName}
         </p>
         <p className="font-mono text-xs text-ink-3">
-          {booking.code} · {formatMoneyShort(booking.totalCents)}
+          {booking.code} · {lessonTypeLabel(booking.lessonType, locale)} ·{" "}
+          {booking.paidByPackage
+            ? zh
+              ? "课时包"
+              : "package"
+            : formatMoneyShort(booking.totalCents)}
         </p>
       </div>
       <ChevronRight className="size-4 shrink-0 text-ink-3" aria-hidden />

@@ -91,6 +91,7 @@ export default async function BookingPage({
           <HoldCountdown
             expiresAt={booking.holdExpiresAt.toISOString()}
             locale={loc}
+            signOnly={booking.paymentPlan === "PACKAGE"}
           />
         )}
 
@@ -127,7 +128,30 @@ export default async function BookingPage({
 
       <Card className="space-y-3">
         <CardTitle>{zh ? "价格明细" : "Price breakdown"}</CardTitle>
-        <PriceBreakdown locale={loc} quote={quoteFromBooking(booking)} />
+        <PriceBreakdown
+          locale={loc}
+          quote={quoteFromBooking(booking)}
+          lessonType={booking.lessonType}
+          earlyBird={booking.earlyBird}
+          packageUse={
+            booking.package
+              ? { code: booking.package.code, hours: booking.hours }
+              : undefined
+          }
+        />
+        {/* Only the buyer and the coach who was paid can open a package; the
+            coach teaching a lesson from someone else's package cannot. */}
+        {booking.package &&
+          (access.isCustomer ||
+            booking.package.payeeCoachId === user.id ||
+            user.role === "ADMIN") && (
+          <Link
+            href={`/packages/${booking.package.code}`}
+            className="inline-block text-sm font-bold text-accent underline underline-offset-2"
+          >
+            {zh ? "查看课时包" : "View lesson package"}
+          </Link>
+        )}
         {/* A deposit booking is confirmed with money still owing, so the
             status pill alone would be misleading. */}
         {booking.paymentPlan === "DEPOSIT" && (
@@ -293,11 +317,12 @@ export default async function BookingPage({
         </Card>
       )}
 
-      {access.isCoach && (
+      {/* A package booking has no payment of its own to review. */}
+      {access.isCoach && booking.paymentPlan !== "PACKAGE" && (
         <CoachReviewPanel
           locale={loc}
-          bookingCode={booking.code}
-          status={booking.status}
+          target={{ kind: "booking", code: booking.code }}
+          confirmed={booking.status === "CONFIRMED"}
           hasProof={Boolean(booking.paymentProofKey)}
           proofUploadedBy={booking.proofUploadedBy}
           paymentMethod={booking.paymentMethod}

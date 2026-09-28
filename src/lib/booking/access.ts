@@ -16,6 +16,15 @@ export const bookingInclude = {
   account: { select: { id: true, email: true, name: true } },
   waiver: true,
   waiverInvite: true,
+  package: {
+    select: {
+      id: true,
+      code: true,
+      hours: true,
+      priceCents: true,
+      payeeCoachId: true,
+    },
+  },
 } as const;
 
 export type BookingAccess = {

@@ -3,7 +3,7 @@ import { Link } from "@/i18n/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { getUser } from "@/lib/auth/require-user";
-import { ArrowRight, CalendarDays, Snowflake } from "lucide-react";
+import { ArrowRight, CalendarDays, Package, Snowflake } from "lucide-react";
 
 export default async function HomePage({ params }: PageProps<"/[locale]">) {
   const { locale } = await params;
@@ -68,6 +68,28 @@ export default async function HomePage({ params }: PageProps<"/[locale]">) {
               {t("viewBookings")}
             </Link>
           </Button>
+        </Card>
+
+        <Card interactive className="flex flex-col gap-3 sm:col-span-2">
+          <CardTitle>
+            {nav("prices")} · {nav("packages")}
+          </CardTitle>
+          <CardDescription>
+            {locale === "zh"
+              ? "各教练的滑行课、一级考前培训和公园课价格;12 月 1 日前下单享早鸟价,蓝山课时包 4 小时 $180。"
+              : "Every coach's prices for ski lessons, CSIA Level 1 prep and park. Book by 1 December for early-bird prices, or get 4 hours at Blue Mountain for $180."}
+          </CardDescription>
+          <div className="mt-auto flex flex-wrap gap-2">
+            <Button asChild variant="secondary">
+              <Link href="/prices">{nav("prices")}</Link>
+            </Button>
+            <Button asChild variant="secondary">
+              <Link href="/packages">
+                <Package aria-hidden />
+                {nav("packages")}
+              </Link>
+            </Button>
+          </div>
         </Card>
       </div>
 

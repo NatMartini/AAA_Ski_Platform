@@ -9,6 +9,9 @@ import {
   expireElapsedHold,
   isSelfServeHoldExpired,
 } from "@/lib/booking/hold";
+import { packageAccessFor } from "@/lib/package-store";
+import { isOfferOnSale } from "@/lib/packages";
+import { toDateKey } from "@/lib/time";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +24,7 @@ export const dynamic = "force-dynamic";
  *
  * Three purposes, each with its own authorisation:
  *   payment-proof — the booking's own customer, or that booking's coach
+ *   package-proof — a lesson package's buyer, or the coach they are paying
  *   payment-qr    — a coach, for their own profile
  *   coach-avatar  — a coach, for their own profile
  */
@@ -91,6 +95,38 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "expired" }, { status: 409 });
     }
     prefix = KEY_PREFIX.proof(booking.id);
+  } else if (purpose === "package-proof") {
+    const packageCode = form.get("packageCode");
+    if (typeof packageCode !== "string" || !packageCode) {
+      return NextResponse.json({ error: "missing-package" }, { status: 400 });
+    }
+    const pkg = await prisma.lessonPackage.findUnique({
+      where: { code: packageCode },
+      select: {
+        id: true,
+        accountId: true,
+        payeeCoachId: true,
+        status: true,
+        offerKey: true,
+        season: true,
+      },
+    });
+    if (!pkg) {
+      return NextResponse.json({ error: "not-found" }, { status: 404 });
+    }
+    const access = packageAccessFor(
+      pkg,
+      r.user,
+      isOfferOnSale(pkg.offerKey, pkg.season, toDateKey(new Date())),
+      false,
+    );
+    if (!access.canView) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+    if (!access.canPay) {
+      return NextResponse.json({ error: "invalid-state" }, { status: 409 });
+    }
+    prefix = KEY_PREFIX.packageProof(pkg.id);
   } else {
     return NextResponse.json({ error: "unknown-purpose" }, { status: 400 });
   }
@@ -111,11 +147,11 @@ export async function POST(req: Request) {
   const key = buildKey(prefix, processed.extension);
   const written = await writeObject(key, processed.buffer);
 
-  if (purpose === "payment-proof") {
+  if (purpose === "payment-proof" || purpose === "package-proof") {
     // Re-selecting a screenshot before submitting used to leave every earlier
     // upload behind forever. The client identifies the one it replaced; the
-    // server validates ownership through the booking-derived prefix and still
-    // refuses to delete it if any booking currently references it.
+    // server validates ownership through the owner-derived prefix and still
+    // refuses to delete it if anything currently references it.
     const replacedKey = form.get("replacedKey");
     if (
       typeof replacedKey === "string" &&

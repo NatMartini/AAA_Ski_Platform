@@ -5,6 +5,7 @@ import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { IcsFeedBox } from "@/components/coach/ics-feed-box";
 import { googleCalendarUrl } from "@/lib/ics";
 import { formatMoneyShort } from "@/lib/pricing";
+import { lessonTypeLabel } from "@/lib/lesson-types";
 import {
   formatTorontoDate,
   formatTorontoTime,
@@ -125,7 +126,11 @@ export default async function CoachSchedulePage({
                             {zh ? b.resort.nameZh : b.resort.nameEn}
                           </td>
                           <td className="py-2 pr-3 tabular-nums">
-                            {formatMoneyShort(b.totalCents)}
+                            {b.paymentPlan === "PACKAGE"
+                              ? zh
+                                ? "课时包"
+                                : "Package"
+                              : formatMoneyShort(b.totalCents)}
                           </td>
                           <td className="py-2 pr-3">
                             <StatusPill status={b.status} locale={loc} />
@@ -136,7 +141,7 @@ export default async function CoachSchedulePage({
                                 title: `${student} · ${b.resort.nameEn}`,
                                 start: b.lessonStartAt,
                                 end: b.lessonEndAt,
-                                details: `${b.code} · ${formatMoneyShort(b.totalCents)}`,
+                                details: `${b.code} · ${lessonTypeLabel(b.lessonType, "en")} · ${b.paymentPlan === "PACKAGE" ? "package" : formatMoneyShort(b.totalCents)}`,
                                 location: b.resort.address ?? b.resort.nameEn,
                               })}
                               target="_blank"

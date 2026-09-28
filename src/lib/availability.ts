@@ -1,14 +1,20 @@
 import { prisma } from "./prisma";
 import { computeDaySlots, type DaySlots } from "./slots";
-import { dbDateToDateKey, dateKeyToDbDate, type DateKey } from "./time";
+import {
+  dbDateToDateKey,
+  dateKeyToDbDate,
+  toDateKey,
+  type DateKey,
+} from "./time";
 import { OCCUPYING_STATUSES } from "./booking/state";
 import { rulesFor } from "./coach";
-import { quote } from "./pricing";
+import { isEarlyBird } from "./rates";
 
 export type AvailableDay = DaySlots & {
   coachDayId: string;
   resort: { id: string; slug: string; nameEn: string; nameZh: string };
-  hourlyRateCents: number;
+  /** A booking made now for this day would be charged the early-bird rate. */
+  earlyBird: boolean;
   handoverDiscountCents: number;
   extraPersonCents: number;
   maxGroupSize: number;
@@ -46,7 +52,6 @@ export async function getAvailability(opts: {
       endHour: true,
       breakStartHour: true,
       breakEndHour: true,
-      hourlyRateCentsOverride: true,
       resort: { select: { id: true, slug: true, nameEn: true, nameZh: true } },
     },
     orderBy: { date: "asc" },
@@ -69,6 +74,7 @@ export async function getAvailability(opts: {
   }
 
   const rules = rulesFor(profile);
+  const today = toDateKey(now);
 
   return days.map((day) => {
     const dateKey = dbDateToDateKey(day.date);
@@ -89,21 +95,10 @@ export async function getAvailability(opts: {
       ...slots,
       coachDayId: day.id,
       resort: day.resort,
-      hourlyRateCents: day.hourlyRateCentsOverride ?? profile.hourlyRateCents,
+      earlyBird: isEarlyBird(today, dateKey),
       handoverDiscountCents: profile.handoverDiscountCents,
       extraPersonCents: profile.extraPersonCents,
       maxGroupSize: profile.maxGroupSize,
     };
-  });
-}
-
-/** Price for one candidate booking, using that day's rate override if set. */
-export function quoteForDay(day: AvailableDay, hours: number, headcount = 1) {
-  return quote({
-    hours,
-    hourlyRateCents: day.hourlyRateCents,
-    handoverDiscountCents: day.handoverDiscountCents,
-    headcount,
-    extraPersonCents: day.extraPersonCents,
   });
 }

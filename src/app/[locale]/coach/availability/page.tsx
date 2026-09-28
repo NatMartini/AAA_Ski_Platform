@@ -14,7 +14,7 @@ export default async function CoachAvailabilityPage({
 
   const user = await requireCoachPage({ locale });
 
-  const [resorts, days, profile] = await Promise.all([
+  const [resorts, days] = await Promise.all([
     prisma.resort.findMany({
       where: { isActive: true },
       orderBy: { order: "asc" },
@@ -31,17 +31,12 @@ export default async function CoachAvailabilityPage({
         },
       },
     }),
-    prisma.coachProfile.findUnique({
-      where: { userId: user.id },
-      select: { hourlyRateCents: true },
-    }),
   ]);
 
   return (
     <AvailabilityManager
       locale={toLocale(locale)}
       resorts={resorts}
-      defaultRateCents={profile?.hourlyRateCents ?? 8000}
       initialDays={days.map((d) => ({
         id: d.id,
         date: dbDateToDateKey(d.date),
@@ -51,7 +46,6 @@ export default async function CoachAvailabilityPage({
         endHour: d.endHour,
         breakStartHour: d.breakStartHour,
         breakEndHour: d.breakEndHour,
-        hourlyRateCentsOverride: d.hourlyRateCentsOverride,
         note: d.note,
         bookingCount: d.bookings.length,
       }))}

@@ -1,32 +1,34 @@
 import { addMinutes } from "./time";
 
 /**
- * A booking is made on the hour, but the lesson runs five minutes short at each
- * end so the coach can hand over to the next student. A 1:00-3:00 booking is
- * taught 1:05-2:55.
+ * A booking is made on the hour, but the first ten minutes are the coach's
+ * handover from the previous student, so the lesson starts ten past and runs
+ * to the end of the hour. A 1:00-3:00 booking is taught 1:10-3:00.
  *
  * Those ten minutes are credited back as a single flat discount per booking —
  * not per hour — because the handover only happens once no matter how long the
- * lesson is. $80/h for 2h is $160, less $15, so $145.
+ * lesson is. $60/h for 2h is $120, less $10, so $110.
  *
  * Group lessons: the per-hour rate rises by a fixed amount for each additional
- * student. With a $80 base and a $30 per-extra-person rate, one-on-one is
- * $80/h, one-on-two $110/h, one-on-three $140/h. The handover credit is still
+ * student. With a $60 base and a $20 per-extra-person rate, one-on-one is
+ * $60/h, one-on-two $80/h, one-on-three $100/h. The handover credit is still
  * deducted once per booking, not per person.
  *
- * No tax is calculated or displayed anywhere. Showing a tax line while not
- * registered would be worse than showing none.
+ * Which base rate applies — lesson type, early bird or regular — is decided in
+ * rates.ts. No tax is calculated or displayed anywhere: the published prices
+ * are final. Showing a tax line while not registered would be worse than
+ * showing none.
  */
 
-export const HANDOVER_HEAD_MINUTES = 5;
-export const HANDOVER_TAIL_MINUTES = 5;
+export const HANDOVER_HEAD_MINUTES = 10;
+export const HANDOVER_TAIL_MINUTES = 0;
 export const HANDOVER_TOTAL_MINUTES =
   HANDOVER_HEAD_MINUTES + HANDOVER_TAIL_MINUTES;
 
 export const CURRENCY = "CAD";
 
-/** Default extra charge per additional student per hour ($30). */
-export const DEFAULT_EXTRA_PERSON_CENTS = 3000;
+/** Default extra charge per additional student per hour ($20). */
+export const DEFAULT_EXTRA_PERSON_CENTS = 2000;
 
 export type Quote = {
   hours: number;
@@ -42,7 +44,7 @@ export type Quote = {
   handoverDiscountCents: number;
   totalCents: number;
   currency: string;
-  /** Minutes actually taught, for the "1:05 PM – 2:55 PM (110 min)" line. */
+  /** Minutes actually taught, for the "1:10 PM – 3:00 PM (110 min)" line. */
   lessonMinutes: number;
 };
 

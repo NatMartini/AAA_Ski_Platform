@@ -43,6 +43,11 @@ export async function SiteHeader({
         {user && (
           <nav className="ml-1 flex items-center gap-0.5 text-sm">
             <HeaderLink href="/book">{t("book")}</HeaderLink>
+            {/* No room on a phone; there the home page links to prices, and
+                the coach cards show them anyway. */}
+            <HeaderLink href="/prices" className="hidden sm:inline-block">
+              {t("prices")}
+            </HeaderLink>
             <HeaderLink href="/my/bookings">{t("myBookings")}</HeaderLink>
             {isCoach && (
               <HeaderLink href="/coach" accent>
@@ -68,17 +73,19 @@ function HeaderLink({
   href,
   children,
   accent,
+  className = "",
 }: {
   href: string;
   children: React.ReactNode;
   accent?: boolean;
+  className?: string;
 }) {
   return (
     <Link
       href={href}
       className={`press rounded-lg px-3 py-2 font-semibold transition-colors hover:bg-surface-2 ${
         accent ? "text-accent" : "text-ink-2 hover:text-ink"
-      }`}
+      } ${className}`}
     >
       {children}
     </Link>

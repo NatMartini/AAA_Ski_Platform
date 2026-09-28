@@ -68,9 +68,11 @@ export async function POST(req: Request) {
     dateKey: d.date,
     startHour: d.startHour,
     hours: d.hours,
+    lessonType: d.lessonType,
     headcount: d.headcount,
     requestedSkills: d.requestedSkills,
     paymentPlan: d.paymentPlan,
+    packageId: d.packageId ?? null,
     locale,
     account: {
       id: r.user.id,

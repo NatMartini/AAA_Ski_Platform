@@ -59,6 +59,29 @@ export async function POST(req: Request) {
     if (await deletePaymentProofIfUnreferenced(key)) deleted++;
   }
 
+  // Lesson-package screenshots follow the same two-year rule.
+  const stalePackages = await prisma.lessonPackage.findMany({
+    where: {
+      paymentProofKey: { not: null },
+      paymentSubmittedAt: { lt: cutoff },
+    },
+    select: { id: true, paymentProofKey: true },
+  });
+  for (const pkg of stalePackages) {
+    if (!pkg.paymentProofKey) continue;
+    const key = pkg.paymentProofKey;
+    const detached = await prisma.lessonPackage.updateMany({
+      where: {
+        id: pkg.id,
+        paymentProofKey: key,
+        paymentSubmittedAt: { lt: cutoff },
+      },
+      data: { paymentProofKey: null },
+    });
+    if (detached.count === 0) continue;
+    if (await deletePaymentProofIfUnreferenced(key)) deleted++;
+  }
+
   // Uploading and attaching a proof are separate requests. If the browser is
   // closed between them there is no database row to age out, so scan the
   // private proof prefix as well. The grace period protects active uploads;
@@ -67,9 +90,10 @@ export async function POST(req: Request) {
   const orphanCutoff = new Date(
     Date.now() - ORPHAN_GRACE_HOURS * 60 * 60 * 1000,
   );
-  const orphanCandidates = (await listObjects("proofs")).filter(
-    (object) => object.modifiedAt < orphanCutoff,
-  );
+  const orphanCandidates = [
+    ...(await listObjects("proofs")),
+    ...(await listObjects("package-proofs")),
+  ].filter((object) => object.modifiedAt < orphanCutoff);
 
   let orphanProofsDeleted = 0;
   for (const object of orphanCandidates) {

@@ -44,6 +44,7 @@ export async function POST(req: Request) {
     dateKey: d.date,
     startHour: d.startHour,
     hours: d.hours,
+    lessonType: d.lessonType,
     headcount: d.headcount,
     requestedSkills: d.requestedSkills,
     locale,

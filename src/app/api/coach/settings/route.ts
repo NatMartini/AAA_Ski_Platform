@@ -36,7 +36,9 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "no-profile" }, { status: 404 });
   }
 
-  await prisma.coachProfile.update({
+  // The rate card is replaced wholesale: a type left out is a type no longer
+  // offered. Existing bookings are unaffected — each froze its own price.
+  const updateProfile = prisma.coachProfile.update({
     where: { id: profile.id },
     data: {
       displayName: d.displayName,
@@ -46,7 +48,6 @@ export async function PATCH(req: Request) {
       csiaParkLevel: d.csiaParkLevel,
       teachableSkills: sanitizeSkillKeys(d.teachableSkills),
       teachableLevels: sanitizeLevelKeys(d.teachableLevels),
-      hourlyRateCents: d.hourlyRateCents,
       handoverDiscountCents: d.handoverDiscountCents,
       extraPersonCents: d.extraPersonCents,
       maxGroupSize: d.maxGroupSize,
@@ -66,6 +67,36 @@ export async function PATCH(req: Request) {
       isPublished: d.isPublished,
     },
   });
+
+  await prisma.$transaction([
+    updateProfile,
+    prisma.coachRate.deleteMany({
+      where: {
+        profileId: profile.id,
+        lessonType: { notIn: d.rates.map((r) => r.lessonType) },
+      },
+    }),
+    ...d.rates.map((r) =>
+      prisma.coachRate.upsert({
+        where: {
+          profileId_lessonType: {
+            profileId: profile.id,
+            lessonType: r.lessonType,
+          },
+        },
+        update: {
+          regularCents: r.regularCents,
+          earlyBirdCents: r.earlyBirdCents,
+        },
+        create: {
+          profileId: profile.id,
+          lessonType: r.lessonType,
+          regularCents: r.regularCents,
+          earlyBirdCents: r.earlyBirdCents,
+        },
+      }),
+    ),
+  ]);
 
   return NextResponse.json({ ok: true });
 }

@@ -66,6 +66,10 @@ model User {
   cancelled    Booking[]     @relation("BookingCanceller")
   waivers      Waiver[]      @relation("WaiverSigner")
   coachWaivers Waiver[]      @relation("WaiverCoach")
+
+  packages         LessonPackage[] @relation("PackageAccount")
+  packagesPaidTo   LessonPackage[] @relation("PackagePayee")
+  packagesReviewed LessonPackage[] @relation("PackageReviewer")
 }
 
 model Account {
@@ -122,6 +126,7 @@ model Resort {
 
   coachDays CoachDay[]
   bookings  Booking[]
+  packages  LessonPackage[]
 }
 
 model CoachProfile {
@@ -133,20 +138,20 @@ model CoachProfile {
   bioZh       String? @db.Text
   /// Storage key for a photo the coach uploaded. `avatarUrl` holds the
   /// route that serves it, so every consumer just renders a URL.
-  avatarKey String?
+  avatarKey   String?
   avatarUrl   String?
 
-  // Pricing. handoverDiscountCents is deducted ONCE per booking, regardless of
-  // length: the 5 minutes at each end only happen once per lesson.
-  hourlyRateCents       Int @default(8000)
-  handoverDiscountCents Int @default(1500)
+  // Pricing. Hourly rates live in CoachRate, one per lesson type.
+  // handoverDiscountCents is deducted ONCE per booking, regardless of length:
+  // the 10-minute handover at the start only happens once per lesson.
+  handoverDiscountCents Int @default(1000)
   minHours              Int @default(2)
   maxHours              Int @default(8)
   leadTimeHours         Int @default(24)
 
   // Group lessons: each additional student adds this much per hour on top of
-  // the base rate. $30 default → 1-on-2 is base+30/h, 1-on-3 base+60/h.
-  extraPersonCents Int @default(3000)
+  // the base rate. $20 default → 1-on-2 is base+20/h, 1-on-3 base+40/h.
+  extraPersonCents Int @default(2000)
   // Largest group a single booking may be for. 1 disables group bookings.
   maxGroupSize     Int @default(3)
 
@@ -188,7 +193,30 @@ model CoachProfile {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rates CoachRate[]
+}
+
+/// What a coach charges per hour, one-on-one, for one kind of lesson.
+///
+/// No row means the coach does not offer that lesson type. Early bird applies
+/// to bookings made on or before 1 December (see lib/rates.ts); a null
+/// earlyBirdCents means that type has no early-bird price.
+model CoachRate {
+  id        String @id @default(cuid())
+  profileId String
+
+  /// Key from lib/lesson-types.ts, e.g. "riding", "csia1_prep", "park".
+  lessonType     String
+  regularCents   Int
+  earlyBirdCents Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile CoachProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, lessonType])
 }
 
 /// One coach, one resort, one day, one availability window.
@@ -206,8 +234,7 @@ model CoachDay {
   breakStartHour Int? @default(13)
   breakEndHour   Int? @default(14)
 
-  hourlyRateCentsOverride Int?
-  note                    String?
+  note String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -311,6 +338,8 @@ enum PaymentPlan {
   FULL
   /// One hour now to hold the slot, the balance settled after the lesson.
   DEPOSIT
+  /// Paid for from a prepaid lesson package; nothing is due on the booking.
+  PACKAGE
 }
 
 enum UploadedBy {
@@ -340,13 +369,20 @@ model Booking {
   // How many students this lesson is for. Drives the per-hour rate.
   headcount Int @default(1)
 
-  // Actual teaching window: startAt + 5min, endAt - 5min. The 10 minutes are
-  // the handover to the next student, and are why totalCents is discounted.
+  /// Key from lib/lesson-types.ts. Chooses which of the coach's rates applied.
+  lessonType String  @default("riding")
+  /// Booked on or before 1 December, so the early-bird rate was charged.
+  earlyBird  Boolean @default(false)
+
+  // Actual teaching window: startAt + 10min, endAt. The 10 minutes are the
+  // handover from the previous student, and are why totalCents is discounted.
   lessonStartAt DateTime
   lessonEndAt   DateTime
 
   // Price snapshot taken at booking time so later rate changes never rewrite
-  // an existing booking. hourlyRateCents is the BASE (one-student) rate;
+  // an existing booking. hourlyRateCents is the BASE (one-student) rate for
+  // the lesson type — or, on a PACKAGE booking, what one package hour is worth,
+  // with every total zero because the package was paid for up front;
   // extraPersonCents is the per-extra-student surcharge as it stood then, so
   // the effective per-hour rate is re-derivable: base + (headcount-1) × extra.
   hourlyRateCents       Int
@@ -358,8 +394,10 @@ model Booking {
 
   // ── Payment plan ──
   /// FULL pays everything up front; DEPOSIT pays one hour now and the balance
-  /// after the lesson.
+  /// after the lesson; PACKAGE spends prepaid hours from `package`.
   paymentPlan      PaymentPlan @default(FULL)
+  /// The lesson package paying for this booking, when paymentPlan is PACKAGE.
+  packageId        String?
   /// What the deposit is for this booking (one hour at the booked rate).
   /// Equals totalCents when the plan is FULL.
   depositCents     Int         @default(0)
@@ -424,22 +462,24 @@ model Booking {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  account      User?         @relation("BookingAccount", fields: [accountId], references: [id], onDelete: SetNull)
-  participant  Participant?  @relation(fields: [participantId], references: [id], onDelete: SetNull)
-  coach        User          @relation("BookingCoach", fields: [coachId], references: [id], onDelete: Restrict)
-  resort       Resort        @relation(fields: [resortId], references: [id], onDelete: Restrict)
-  coachDay     CoachDay      @relation(fields: [coachDayId], references: [id], onDelete: Restrict)
-  reviewedBy   User?         @relation("BookingReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
-  cancelledBy  User?         @relation("BookingCanceller", fields: [cancelledById], references: [id], onDelete: SetNull)
-  waiver       Waiver?       @relation(fields: [waiverId], references: [id], onDelete: SetNull)
+  account      User?          @relation("BookingAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  participant  Participant?   @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  coach        User           @relation("BookingCoach", fields: [coachId], references: [id], onDelete: Restrict)
+  resort       Resort         @relation(fields: [resortId], references: [id], onDelete: Restrict)
+  coachDay     CoachDay       @relation(fields: [coachDayId], references: [id], onDelete: Restrict)
+  reviewedBy   User?          @relation("BookingReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  cancelledBy  User?          @relation("BookingCanceller", fields: [cancelledById], references: [id], onDelete: SetNull)
+  waiver       Waiver?        @relation(fields: [waiverId], references: [id], onDelete: SetNull)
   waiverInvite WaiverInvite?
   videos       LessonVideo[]
+  package      LessonPackage? @relation(fields: [packageId], references: [id], onDelete: Restrict)
 
   @@index([coachId, startAt])
   @@index([status, holdExpiresAt])
   @@index([accountId])
   @@index([coachDayId])
   @@index([waiverId])
+  @@index([packageId])
 }
 
 /// One-time signing link for a coach-created booking. The plaintext token only
@@ -487,6 +527,75 @@ model LessonVideo {
   booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
   @@index([bookingId])
+}
+
+// ───────────────────────── Lesson packages ─────────────────────────
+
+enum PackageStatus {
+  /// Ordered; waiting for the buyer to pay and upload proof.
+  AWAITING_PAYMENT
+  /// Proof uploaded, waiting on the coach who was paid.
+  PENDING_PAYMENT_REVIEW
+  /// The coach did not accept the proof; the buyer may re-upload.
+  PAYMENT_REJECTED
+  /// Paid. Hours can be spent on bookings.
+  ACTIVE
+  CANCELLED
+}
+
+/// Prepaid lesson hours ("课时包"), e.g. four hours at Blue Mountain for $180
+/// that can be spent with any coach. See lib/packages.ts.
+///
+/// Belongs to the account, so a parent can spend it on any of their
+/// participants. Hours left are derived from the bookings pointing at it,
+/// never stored, so an expired or cancelled booking hands its hours back.
+///
+/// A paid package is a payment record, so neither the buyer's account nor the
+/// coach who was paid can be deleted out from under it.
+model LessonPackage {
+  id        String @id @default(cuid())
+  code      String @unique // e.g. PKG-8F3K2M, quoted in the transfer memo
+  accountId String
+
+  // Snapshot of the offer at purchase time (lib/packages.ts PACKAGE_OFFERS).
+  offerKey   String
+  resortId   String
+  lessonType String
+  /// The season the hours can be used in, e.g. "2026-27".
+  season     String
+  hours      Int
+  priceCents Int
+  currency   String @default("CAD")
+
+  /// The coach the buyer chose to pay. They confirm the payment; the hours can
+  /// still be spent with any coach, and settlement between coaches is shown in
+  /// the coach area.
+  payeeCoachId String
+
+  status             PackageStatus  @default(AWAITING_PAYMENT)
+  paymentMethod      PaymentMethod?
+  paymentProofKey    String?
+  paymentReference   String?
+  paymentSubmittedAt DateTime?
+
+  reviewedById String?
+  reviewedAt   DateTime?
+  reviewNote   String?
+
+  cancelledAt  DateTime?
+  cancelReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  account    User      @relation("PackageAccount", fields: [accountId], references: [id], onDelete: Restrict)
+  payeeCoach User      @relation("PackagePayee", fields: [payeeCoachId], references: [id], onDelete: Restrict)
+  reviewedBy User?     @relation("PackageReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  resort     Resort    @relation(fields: [resortId], references: [id], onDelete: Restrict)
+  bookings   Booking[]
+
+  @@index([accountId])
+  @@index([payeeCoachId, status])
 }
 
 // ──────────────────────────── Waivers ────────────────────────────

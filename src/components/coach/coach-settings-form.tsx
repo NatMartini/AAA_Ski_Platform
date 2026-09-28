@@ -16,6 +16,8 @@ import { QrUploadField } from "./qr-upload-field";
 import { ImageUploadField } from "./image-upload-field";
 import { SkillPicker } from "@/components/booking/skill-picker";
 import { LEVELS } from "@/lib/skills";
+import { LESSON_TYPES } from "@/lib/lesson-types";
+import type { RateRow } from "@/lib/rates";
 import { cn } from "@/lib/utils";
 import { formatMoneyShort } from "@/lib/pricing";
 import type { Locale } from "@/i18n/routing";
@@ -30,7 +32,8 @@ export type CoachSettings = {
   csiaParkLevel: number | null;
   teachableSkills: string[];
   teachableLevels: string[];
-  hourlyRateCents: number;
+  /** Offered lesson types only; a type with no row is not offered. */
+  rates: RateRow[];
   handoverDiscountCents: number;
   extraPersonCents: number;
   maxGroupSize: number;
@@ -80,10 +83,16 @@ const COPY = {
     park: "公园",
     tier: "L{n}",
     pricing: "价格",
-    hourlyRate: "每小时价格(加元)",
+    ratesHelp:
+      "一对一每小时价格,均为最终价(不另加税)。12 月 1 日(含)之前下的订单按早鸟价收费;早鸟价留空则全季按原价。不开的课程取消勾选即可。",
+    offer: "开设",
+    earlyBird: "早鸟价(加元/小时)",
+    regular: "原价(加元/小时)",
+    rateRequired: "请填写原价",
+    earlyAboveRegular: "早鸟价不能高于原价",
     handover: "每单交接扣减(加元)",
     handoverHelp:
-      "每张订单固定扣一次,不随时长增加。首尾各留 5 分钟交接,共 10 分钟。",
+      "每张订单固定扣一次,不随时长增加。开头 10 分钟交接,整点后 10 分开始上课、到整点结束。",
     extraPerson: "每增加一人每小时加价(加元)",
     extraPersonHelp: "多人课时,每多一名学员每小时加收此金额。",
     maxGroupSize: "最多人数",
@@ -151,10 +160,16 @@ const COPY = {
     park: "Park",
     tier: "L{n}",
     pricing: "Pricing",
-    hourlyRate: "Hourly rate (CAD)",
+    ratesHelp:
+      "One-on-one, per hour, final (no tax added). Bookings made on or before 1 December pay the early-bird price; leave it blank to charge the regular price all season. Untick any lesson you do not teach.",
+    offer: "Offer",
+    earlyBird: "Early bird (CAD/h)",
+    regular: "Regular (CAD/h)",
+    rateRequired: "Enter a regular price",
+    earlyAboveRegular: "The early-bird price cannot be above the regular price",
     handover: "Handover credit per booking (CAD)",
     handoverHelp:
-      "Deducted once per booking, not per hour. Five minutes at each end, ten in total.",
+      "Deducted once per booking, not per hour. The first ten minutes are the handover; the lesson runs from ten past to the hour.",
     extraPerson: "Extra per additional student per hour (CAD)",
     extraPersonHelp: "For group lessons, each extra student adds this per hour.",
     maxGroupSize: "Maximum group size",
@@ -207,6 +222,9 @@ export function CoachSettingsForm({
   const router = useRouter();
   const c = COPY[locale];
   const [form, setForm] = useState(initial);
+  // Prices are edited as text so a half-typed "6" is not rewritten to "6.00"
+  // under the cursor; they become cents only when saved.
+  const [rateDrafts, setRateDrafts] = useState(() => draftsFrom(initial.rates));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [translating, setTranslating] = useState<"ZH" | "EN" | null>(null);
@@ -251,7 +269,30 @@ export function CoachSettingsForm({
     );
   }
 
+  function setDraft(lessonType: string, patch: Partial<RateDraft>) {
+    setRateDrafts((drafts) =>
+      drafts.map((d) => (d.lessonType === lessonType ? { ...d, ...patch } : d)),
+    );
+    setStatus("idle");
+  }
+
   async function save() {
+    const offered = rateDrafts.filter((d) => d.enabled);
+    const draftErrors: Record<string, string> = {};
+    const rates = offered.map((d) => {
+      const regularCents = toCents(d.regular);
+      const earlyBirdCents = d.earlyBird.trim() ? toCents(d.earlyBird) : null;
+      if (!regularCents) draftErrors[`rate.${d.lessonType}`] = c.rateRequired;
+      else if (earlyBirdCents != null && earlyBirdCents > regularCents) {
+        draftErrors[`rate.${d.lessonType}`] = c.earlyAboveRegular;
+      }
+      return { lessonType: d.lessonType, regularCents, earlyBirdCents };
+    });
+    if (Object.keys(draftErrors).length > 0) {
+      setErrors(draftErrors);
+      return;
+    }
+
     setStatus("saving");
     setErrors({});
     const res = await fetch("/api/coach/settings", {
@@ -265,7 +306,7 @@ export function CoachSettingsForm({
         csiaParkLevel: form.csiaParkLevel,
         teachableSkills: form.teachableSkills,
         teachableLevels: form.teachableLevels,
-        hourlyRateCents: form.hourlyRateCents,
+        rates,
         handoverDiscountCents: form.handoverDiscountCents,
         extraPersonCents: form.extraPersonCents,
         maxGroupSize: form.maxGroupSize,
@@ -298,8 +339,11 @@ export function CoachSettingsForm({
     router.refresh();
   }
 
+  // The worked example uses the first priced lesson type's regular rate.
+  const exampleRate =
+    toCents(rateDrafts.find((d) => d.enabled && toCents(d.regular))?.regular ?? "") ?? 0;
   const exampleTotal =
-    form.hourlyRateCents * 2 - Math.min(form.handoverDiscountCents, form.hourlyRateCents * 2);
+    exampleRate * 2 - Math.min(form.handoverDiscountCents, exampleRate * 2);
 
   return (
     <div className="space-y-5">
@@ -431,14 +475,44 @@ export function CoachSettingsForm({
 
       <Card className="space-y-4">
         <CardTitle>{c.pricing}</CardTitle>
+        <CardDescription>{c.ratesHelp}</CardDescription>
+        <div className="divide-y divide-border rounded-xl border border-border">
+          {rateDrafts.map((d) => {
+            const type = LESSON_TYPES.find((t) => t.key === d.lessonType)!;
+            return (
+              <fieldset key={d.lessonType} className="space-y-3 p-3.5">
+                <legend className="sr-only">
+                  {locale === "zh" ? type.zh : type.en}
+                </legend>
+                <Toggle
+                  id={`offer-${d.lessonType}`}
+                  label={`${c.offer} · ${locale === "zh" ? type.zh : type.en}`}
+                  checked={d.enabled}
+                  onChange={(v) => setDraft(d.lessonType, { enabled: v })}
+                />
+                {d.enabled && (
+                  <div className="grid gap-3 pl-7 sm:grid-cols-2">
+                    <PriceText
+                      id={`early-${d.lessonType}`}
+                      label={c.earlyBird}
+                      value={d.earlyBird}
+                      onChange={(v) => setDraft(d.lessonType, { earlyBird: v })}
+                    />
+                    <PriceText
+                      id={`regular-${d.lessonType}`}
+                      label={c.regular}
+                      value={d.regular}
+                      onChange={(v) => setDraft(d.lessonType, { regular: v })}
+                    />
+                  </div>
+                )}
+                <FieldError>{errors[`rate.${d.lessonType}`]}</FieldError>
+              </fieldset>
+            );
+          })}
+        </div>
+        <FieldError>{errors.rates}</FieldError>
         <div className="grid gap-4 sm:grid-cols-2">
-          <MoneyField
-            id="hourlyRateCents"
-            label={c.hourlyRate}
-            cents={form.hourlyRateCents}
-            onChange={(v) => set("hourlyRateCents", v)}
-            error={errors.hourlyRateCents}
-          />
           <MoneyField
             id="handoverDiscountCents"
             label={c.handover}
@@ -451,7 +525,7 @@ export function CoachSettingsForm({
         <p className="rounded-lg bg-surface-muted p-3 text-sm">
           {c.example}
           <strong>
-            {formatMoneyShort(form.hourlyRateCents)} × 2 −{" "}
+            {formatMoneyShort(exampleRate)} × 2 −{" "}
             {formatMoneyShort(form.handoverDiscountCents)} ={" "}
             {formatMoneyShort(exampleTotal)}
           </strong>
@@ -742,6 +816,65 @@ function CertField({
           </option>
         ))}
       </Select>
+    </div>
+  );
+}
+
+type RateDraft = {
+  lessonType: string;
+  enabled: boolean;
+  /** Dollars, as typed. */
+  regular: string;
+  /** Dollars, as typed; blank means no early-bird price. */
+  earlyBird: string;
+};
+
+/** One draft per catalogue type, in price-sheet order, offered or not. */
+function draftsFrom(rates: RateRow[]): RateDraft[] {
+  return LESSON_TYPES.map((type) => {
+    const rate = rates.find((r) => r.lessonType === type.key);
+    return {
+      lessonType: type.key,
+      enabled: Boolean(rate),
+      regular: rate ? dollars(rate.regularCents) : "",
+      earlyBird: rate?.earlyBirdCents != null ? dollars(rate.earlyBirdCents) : "",
+    };
+  });
+}
+
+function dollars(cents: number): string {
+  return cents % 100 === 0 ? String(cents / 100) : (cents / 100).toFixed(2);
+}
+
+/** Typed dollars to cents; null for anything that is not a positive amount. */
+function toCents(value: string): number | null {
+  const n = Number(value.trim());
+  if (!value.trim() || !Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n * 100);
+}
+
+function PriceText({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        type="text"
+        inputMode="decimal"
+        autoComplete="off"
+        value={value}
+        onChange={(e) => onChange(e.target.value.replace(/[^\d.]/g, ""))}
+      />
     </div>
   );
 }
