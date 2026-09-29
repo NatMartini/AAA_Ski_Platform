@@ -87,7 +87,7 @@ const COPY = {
     review: "确认并预定",
     otherTimes: "想约其他时间?微信联系教练",
     handoverNote:
-      "开头 10 分钟用于与上一位学员交接,整点后 10 分开始上课、到整点结束,因此实际授课比预定时段少 10 分钟,因此每单减去这 10 分钟的课时费。",
+      "开头 10 分钟是和上一位学员的交接时间:整点后 10 分开始上课、到整点结束。这 10 分钟不收费,每单直接减(时薪 $60 及以下减 $10,$70–$90 减 $15)。",
     lessonRuns: "实际授课",
     minutes: "分钟",
     needParticipant: "请选择上课学员",
@@ -130,7 +130,7 @@ const COPY = {
     review: "Review and book",
     otherTimes: "Want a different time? Message the coach on WeChat",
     handoverNote:
-      "The first 10 minutes are the handover from the previous student, so the lesson starts at ten past and runs to the hour — 10 minutes shorter than the booked block, so those ten minutes' fee is taken off each booking.",
+      "The first 10 minutes are the coach's handover from the previous student: the lesson starts at ten past and runs to the hour. Those ten minutes are free, taken straight off each booking ($10 off at $60 an hour or less, $15 off at $70–$90).",
     lessonRuns: "Lesson runs",
     minutes: "min",
     needParticipant: "Please choose who is taking the lesson",

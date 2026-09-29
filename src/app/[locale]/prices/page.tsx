@@ -14,7 +14,7 @@ import { formatTorontoDate, toDateKey } from "@/lib/time";
 import { formatSeason } from "@/lib/season";
 import { toLocale } from "@/i18n/routing";
 import { cn } from "@/lib/utils";
-import { ArrowRight, Package } from "lucide-react";
+import { ArrowRight, Clock, Package } from "lucide-react";
 
 /**
  * The price sheet, rendered from the live rate cards rather than typed in,
@@ -183,6 +183,31 @@ export default async function PricesPage({
         ))}
       </div>
 
+      {/* The ten minutes are about when the lesson runs, so they are
+          explained here rather than next to the prices. */}
+      <Card className="space-y-2">
+        <CardTitle className="flex items-center gap-2">
+          <Clock className="size-4 text-accent" aria-hidden />
+          {zh ? "上课时间" : "Lesson times"}
+        </CardTitle>
+        <ul className="list-inside list-disc space-y-1.5 text-sm leading-relaxed text-ink-2">
+          {(zh
+            ? [
+                "按整小时预约,至少 2 小时。",
+                "开课时间是整点后 10 分钟:约 10:00–12:00,实际上课 10:10–12:00。前 10 分钟是教练和上一位学员的交接时间。",
+                "这 10 分钟不收费,每单直接减:时薪 $60 及以下减 $10,$70–$90 减 $15。",
+              ]
+            : [
+                "Book in whole hours, two hours minimum.",
+                "Lessons start ten minutes past the hour: book 10:00–12:00 and the lesson runs 10:10–12:00. The first ten minutes are the coach's handover from the previous student.",
+                "Those ten minutes are free, taken straight off every booking: $10 off at $60 an hour or less, $15 off at $70–$90.",
+              ]
+          ).map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      </Card>
+
       <Card className="space-y-2">
         <CardTitle>{zh ? "说明" : "Good to know"}</CardTitle>
         <ul className="list-inside list-disc space-y-1.5 text-sm leading-relaxed text-ink-2">
@@ -192,14 +217,12 @@ export default async function PricesPage({
                 `早鸟价于 ${lastDay} 截止,以下单日期为准。`,
                 "付款方式:Interac e-Transfer、微信。",
                 "以上均为最终价,不另加税。",
-                "预约按整点计,开课时间是整点后 10 分钟、到整点结束;开头这 10 分钟不收费,每单直接减去一个整数:$50、$60/小时减 $10,$70–$90/小时减 $15(10 分钟课时费向上取整到 $5,最少 $10)。",
               ]
             : [
                 "All prices are one-on-one. Each extra student in a group lesson adds a per-hour amount, shown for each coach; message your coach on WeChat to arrange a group.",
                 `Early-bird prices end on ${lastDay}, going by the day you book.`,
                 "Pay by Interac e-Transfer or WeChat.",
                 "All prices are final: no tax is added.",
-                "Bookings are on the hour; the lesson starts ten minutes past and runs to the hour, and those ten minutes are not charged: every booking takes off a round amount — $10 at $50 or $60/h, $15 at $70–$90/h (ten minutes' fee rounded up to the next $5, at least $10).",
               ]
           ).map((tip) => (
             <li key={tip}>{tip}</li>
