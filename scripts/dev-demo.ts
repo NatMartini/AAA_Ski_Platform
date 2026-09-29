@@ -53,6 +53,27 @@ const PRICE_SHEET = {
   ],
 };
 
+/** The coaches' own words from the 2026-27 announcement. */
+const KEVIN_BIO = {
+  zh: "CSIA Level 1 & Snow Park 1。双板入门 / 进阶 / 自由式入门。",
+  en: "CSIA Level 1 & Snow Park 1. Beginner and intermediate skiing, intro to freestyle.",
+};
+const ALISA_BIO = {
+  zh: "CSIA Level 1。双板入门 / 进阶。",
+  en: "CSIA Level 1. Beginner and intermediate skiing.",
+};
+const CANCELLATION_POLICY = {
+  zh:
+    "如需取消或改期,请至少提前 24 小时操作。" +
+    "距离上课不足 24 小时取消:定金不退 / 按课时计费。" +
+    "因天气、雪场关闭等不可控因素:可协商改期。",
+  en:
+    "Please cancel or reschedule at least 24 hours before the lesson. " +
+    "Cancelling less than 24 hours before: the deposit is not refunded / " +
+    "the lesson is charged by the hour. Weather, resort closures or " +
+    "anything else out of our control: we will agree a new time together.",
+};
+
 /** Replaces a coach's rate card with the given rows. */
 async function setRates(
   profileId: string,
@@ -133,19 +154,23 @@ async function main() {
     // Refreshed rather than left alone: re-running the demo after adding a
     // profile field should show that field, not the row from three weeks ago.
     update: {
-      csiaLevel: 2,
+      csiaLevel: 1,
       csiaParkLevel: 1,
       teachableLevels: ["first_time", "beginner", "intermediate", "advanced"],
       teachableSkills: DEMO_SKILLS,
       extraPersonCents: 2000,
+      bioEn: KEVIN_BIO.en,
+      bioZh: KEVIN_BIO.zh,
+      cancellationPolicyEn: CANCELLATION_POLICY.en,
+      cancellationPolicyZh: CANCELLATION_POLICY.zh,
     },
     create: {
       userId: coach.id,
       displayName: "Kevin",
-      bioEn: "CSIA-certified. Teaches all levels, patient with first-timers.",
-      bioZh: "CSIA 认证教练,各水平均可教学,对初学者尤其耐心。",
+      bioEn: KEVIN_BIO.en,
+      bioZh: KEVIN_BIO.zh,
       extraPersonCents: 2000,
-      csiaLevel: 2,
+      csiaLevel: 1,
       csiaParkLevel: 1,
       teachableLevels: ["first_time", "beginner", "intermediate", "advanced"],
       teachableSkills: DEMO_SKILLS,
@@ -158,16 +183,8 @@ async function main() {
       wechatId: "kevin-ski-demo",
       contactEmail: COACH_EMAIL,
       contactPhone: "+1 416 555 0142",
-      cancellationPolicyEn:
-        "Cancel more than 48 hours before the lesson for a full refund. " +
-        "Between 24 and 48 hours, 50% is refunded. Within 24 hours the lesson " +
-        "is not refundable. If the resort closes the hill for weather or " +
-        "conditions, you get a full refund or a free reschedule. If I cancel " +
-        "for any reason, you get a full refund.",
-      cancellationPolicyZh:
-        "课前 48 小时以上取消可全额退款;24–48 小时之间退款 50%;" +
-        "24 小时以内取消不退款。若雪场因天气或设施原因关闭导致无法上课," +
-        "可全额退款或免费改期。若教练取消,一律全额退款。",
+      cancellationPolicyEn: CANCELLATION_POLICY.en,
+      cancellationPolicyZh: CANCELLATION_POLICY.zh,
       icsToken: randomUUID().replace(/-/g, ""),
       isPublished: true,
     },
@@ -190,12 +207,16 @@ async function main() {
     update: {
       teachableLevels: ["first_time", "beginner", "intermediate"],
       extraPersonCents: 2000,
+      bioEn: ALISA_BIO.en,
+      bioZh: ALISA_BIO.zh,
+      cancellationPolicyEn: CANCELLATION_POLICY.en,
+      cancellationPolicyZh: CANCELLATION_POLICY.zh,
     },
     create: {
       userId: alisa.id,
       displayName: "Alisa",
-      bioEn: "Patient and methodical; great with first-timers and kids.",
-      bioZh: "耐心细致,特别擅长带第一次滑雪的学员和小朋友。",
+      bioEn: ALISA_BIO.en,
+      bioZh: ALISA_BIO.zh,
       extraPersonCents: 2000,
       csiaLevel: 1,
       teachableLevels: ["first_time", "beginner", "intermediate"],
@@ -207,13 +228,8 @@ async function main() {
       emtName: "Alisa W.",
       wechatId: "alisa-ski-demo",
       contactEmail: SECOND_COACH_EMAIL,
-      cancellationPolicyEn:
-        "Cancel more than 48 hours before the lesson for a full refund. " +
-        "Within 48 hours the lesson is not refundable. If the resort closes " +
-        "the hill, you get a full refund or a free reschedule.",
-      cancellationPolicyZh:
-        "课前 48 小时以上取消可全额退款;48 小时以内取消不退款。" +
-        "若雪场关闭导致无法上课,可全额退款或免费改期。",
+      cancellationPolicyEn: CANCELLATION_POLICY.en,
+      cancellationPolicyZh: CANCELLATION_POLICY.zh,
       icsToken: randomUUID().replace(/-/g, ""),
       isPublished: true,
     },

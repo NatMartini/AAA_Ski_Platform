@@ -10,12 +10,9 @@ import {
 } from "./packages";
 
 const BLUE = "resort_blue";
-const KEVIN = "kevin";
-const ALISA = "alisa";
 
 const pkg = (over: Partial<PackageForUse> = {}): PackageForUse => ({
   status: "ACTIVE",
-  payeeCoachId: KEVIN,
   resortId: BLUE,
   lessonType: "riding",
   season: "2026-27",
@@ -25,7 +22,6 @@ const pkg = (over: Partial<PackageForUse> = {}): PackageForUse => ({
 });
 
 const lesson = {
-  coachId: KEVIN,
   resortId: BLUE,
   lessonType: "riding",
   season: "2026-27",
@@ -101,13 +97,6 @@ describe("checkPackageUse", () => {
     expect(
       checkPackageUse(pkg({ status: "PENDING_PAYMENT_REVIEW" }), lesson),
     ).toMatchObject({ reason: "package-not-active" });
-  });
-
-  it("can only be booked with the coach who sold it", () => {
-    expect(checkPackageUse(pkg(), { ...lesson, coachId: ALISA })).toEqual({
-      ok: false,
-      reason: "package-wrong-coach",
-    });
   });
 
   it("only pays for what it was sold for", () => {

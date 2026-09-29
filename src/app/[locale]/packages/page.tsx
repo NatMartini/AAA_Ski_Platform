@@ -80,12 +80,12 @@ export default async function PackagesPage({
               <ul className="list-inside list-disc space-y-1 text-sm text-ink-2">
                 {(zh
                   ? [
-                      "买哪位教练的课时包,就只能约这位教练上课。",
+                      "付款给任意一位教练都可以,买好后两位教练的课都能约。",
                       "可以拆开用,例如 2 小时 + 2 小时;每次预约最少 2 小时。",
                       `仅限 ${sale.season} 雪季内使用;付款截图需在 ${lastDay} 前提交。`,
                     ]
                   : [
-                      "A package books lessons only with the coach you bought it from.",
+                      "Pay either coach; once it is paid, the hours book lessons with either coach.",
                       "Split it up, say 2 hours + 2 hours; each booking is at least 2 hours.",
                       `For lessons in the ${sale.season} season; send the payment screenshot by ${lastDay}.`,
                     ]

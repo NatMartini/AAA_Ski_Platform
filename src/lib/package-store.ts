@@ -71,17 +71,16 @@ export async function loadPackage(code: string) {
 export type LoadedPackage = NonNullable<Awaited<ReturnType<typeof loadPackage>>>;
 
 /**
- * Paid packages this account could spend with this coach at this resort,
- * with hours left. A package is only ever spent with the coach who sold it.
+ * Paid packages this account could spend at this resort, with hours left.
+ * Any coach can teach from a package, whoever was paid for it.
  */
 export async function usablePackages(
   accountId: string,
-  coachId: string,
   resortId: string,
   now = new Date(),
 ) {
   const packages = await prisma.lessonPackage.findMany({
-    where: { accountId, payeeCoachId: coachId, resortId, status: "ACTIVE" },
+    where: { accountId, resortId, status: "ACTIVE" },
     include: usageInclude,
     orderBy: { createdAt: "asc" },
   });

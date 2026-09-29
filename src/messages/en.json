@@ -45,7 +45,7 @@
     "stepPayment": "Payment",
     "hours": "{count} hours",
     "lessonWindow": "Lesson runs {start} – {end} ({minutes} min)",
-    "handoverNote": "The first 10 minutes are the coach's handover from the previous student: the lesson starts at ten past and runs to the hour. Those ten minutes are free, taken straight off each booking ($10 off at $60 an hour or less, $15 off at $70–$90).",
+    "handoverNote": "The first 10 minutes are the coach's handover from the previous student: the lesson starts at ten past and runs to the hour. Those ten minutes are free: their fee is taken straight off each booking.",
     "minimum": "Minimum booking is {count} hours",
     "noSlots": "No times available on this day.",
     "offSeason": "The season runs 1 December to 1 May. This date is outside it.",

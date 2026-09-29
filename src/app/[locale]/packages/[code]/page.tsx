@@ -102,7 +102,7 @@ export default async function PackagePage({
           <Row term={zh ? "有效期" : "Valid for"} value={formatSeason(pkg.season, loc)} />
           <Row term={zh ? "价格" : "Price"} value={formatMoneyShort(pkg.priceCents)} />
           <Row
-            term={zh ? "教练(只能约这位教练)" : "Coach (the only one it books)"}
+            term={zh ? "收款教练" : "Paid to"}
             value={payeeName}
           />
           {!access.isBuyer && (
@@ -114,7 +114,7 @@ export default async function PackagePage({
         </dl>
         {pkg.status === "ACTIVE" && access.isBuyer && left > 0 && (
           <Button asChild className="self-start">
-            <Link href={`/book/${pkg.resort.slug}/${pkg.payeeCoachId}`}>
+            <Link href={`/book/${pkg.resort.slug}`}>
               <CalendarPlus aria-hidden />
               {zh ? "用课时包约课" : "Book with this package"}
             </Link>

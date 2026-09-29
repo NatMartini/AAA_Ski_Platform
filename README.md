@@ -98,11 +98,10 @@ A booking is on the hour with a two-hour minimum. The first ten minutes are the
 coach's handover from the previous student, so the lesson starts at ten past and
 runs to the hour: a 1:00–3:00 booking is taught 1:10–3:00.
 
-Those ten minutes are not charged: **ten minutes' fee comes off once per
-booking**, because the handover happens once however long the lesson is. It is
-rounded up to the next $5 and never less than $10, so the bill stays a plain
-number (`handoverCreditCents` in `src/lib/pricing.ts`). The payment page says so
-in a callout above the amount — start time, end time, and what was taken off.
+Those ten minutes are not charged: **the booking's hourly rate × 10/60 comes off,
+once per booking**, because the handover happens once however long the lesson
+is (`handoverCreditCents` in `src/lib/pricing.ts`). The payment page says so in
+a callout above the amount — start time, end time, and what was taken off.
 
 ```
 Ski lesson · early bird
@@ -111,7 +110,7 @@ Less the first 10 minutes' fee   −$10.00
 Total (CAD)                      $110.00
 ```
 
-At $50 or $60 an hour that is $10; at $70, $80 or $90, $15.
+At $70 an hour the ten minutes are $11.67; at $80, $13.33.
 
 A group adds the coach's per-extra-student surcharge ($20/h by default) to the
 base rate, though multi-person booking stays closed until every attendee can
@@ -126,18 +125,18 @@ displayed anywhere.
 ### Lesson packages
 
 The price sheet's Blue Mountain package — **four hours of ski lessons for
-$180, early bird only** — is an offer in `src/lib/packages.ts`.
+$180, early bird only, any coach** — is an offer in `src/lib/packages.ts`.
 
-- The student orders it on `/packages` and **chooses which coach it is from**.
-  That coach is paid and confirms the payment, exactly like a booking payment;
-  money goes straight to them and the platform never holds it.
+- The student orders it on `/packages` and **chooses which coach to pay**.
+  That coach confirms the payment, exactly like a booking payment; money goes
+  straight to them and the platform never holds it.
 - Once confirmed, the hours can be spent on ski lessons at that resort in that
-  season **with that coach only**, in bookings of at least two hours. A package
+  season **with either coach**, in bookings of at least two hours. A package
   pays for a whole booking or none of it, and nothing is owed on that booking;
   after the waiver it is confirmed directly.
-- The coach can **add or take away hours** on the package page, with a reason
-  (`PackageAdjustment`). The student sees every adjustment, and hours can never
-  be taken below what is already booked.
+- The coach who was paid can **add or take away hours** on the package page,
+  with a reason (`PackageAdjustment`). The student sees every adjustment, and
+  hours can never be taken below what is already booked.
 - Hours left are never stored: hours bought plus adjustments, minus the
   bookings that point at the package, so an expired or cancelled booking hands
   its hours back. Booking and adjusting both take a row lock on the package, so
@@ -180,8 +179,8 @@ waivers included), every student and their hours left, and one set of season
 stats. `/coach/bookings` defaults to your own and has an "all coaches" view.
 
 Acting stays with the people involved: only a booking's coach reviews its
-payment, settles the balance or cancels it, and only the coach a package was
-bought from confirms its payment, cancels it or adjusts its hours.
+payment, settles the balance or cancels it, and only the coach who was paid
+for a package confirms its payment, cancels it or adjusts its hours.
 
 **Stats** (`/coach/stats`) totals a season across all coaches, with a
 per-coach split: money received and outstanding, hours taught and booked,

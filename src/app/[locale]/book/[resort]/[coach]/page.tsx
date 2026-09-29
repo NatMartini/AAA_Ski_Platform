@@ -57,8 +57,8 @@ export default async function PickSlotPage({
       where: { accountId: user.id, archivedAt: null },
       orderBy: [{ isSelf: "desc" }, { fullName: "asc" }],
     }),
-    // Only packages bought from this coach can pay for a lesson with them.
-    usablePackages(user.id, coachId, resort.id),
+    // A package pays for a lesson with any coach, whoever was paid for it.
+    usablePackages(user.id, resort.id),
   ]);
 
   // The calendar links here with ?date= so the day arrives picked.

@@ -9,10 +9,10 @@ import type { DateKey } from "./time";
  * Prepaid lesson-hour packages ("课时包").
  *
  * From the price sheet: at Blue Mountain, four hours of ski lessons for $180,
- * early bird only. The buyer picks which coach's package to buy and pays that
- * coach, and the hours can only be booked with them. That coach can also add
- * or take away hours by hand (PackageAdjustment), for a make-up lesson or a
- * correction.
+ * early bird only, with any coach. The buyer picks which coach to pay, and the
+ * hours can then be booked with either coach. The coach who was paid can also
+ * add or take away hours by hand (PackageAdjustment), for a make-up lesson or
+ * a correction.
  *
  * Offers are a code constant, like the lesson-type catalogue. The price, hours
  * and season are copied onto each purchase, so changing an offer never
@@ -129,7 +129,6 @@ export function hoursUsed(
 
 export type PackageForUse = {
   status: PackageStatus;
-  payeeCoachId: string;
   resortId: string;
   lessonType: string;
   season: string;
@@ -140,7 +139,6 @@ export type PackageForUse = {
 
 export type PackageUseRefusal =
   | "package-not-active"
-  | "package-wrong-coach"
   | "package-wrong-resort"
   | "package-wrong-lesson-type"
   | "package-wrong-season"
@@ -148,15 +146,14 @@ export type PackageUseRefusal =
   | "package-insufficient-hours";
 
 /**
- * Whether a package can pay for a lesson: only with the coach who sold it,
- * and only for the lesson it was sold for. A package covers a whole booking
- * or none of it — mixing prepaid hours and cash on one booking would make
- * the payment review ambiguous.
+ * Whether a package can pay for a lesson: with any coach, but only for the
+ * lesson it was sold for. A package covers a whole booking or none of it —
+ * mixing prepaid hours and cash on one booking would make the payment review
+ * ambiguous.
  */
 export function checkPackageUse(
   pkg: PackageForUse,
   lesson: {
-    coachId: string;
     resortId: string;
     lessonType: string;
     season: string | null;
@@ -165,9 +162,6 @@ export function checkPackageUse(
   },
 ): { ok: true } | { ok: false; reason: PackageUseRefusal } {
   if (pkg.status !== "ACTIVE") return { ok: false, reason: "package-not-active" };
-  if (pkg.payeeCoachId !== lesson.coachId) {
-    return { ok: false, reason: "package-wrong-coach" };
-  }
   if (pkg.resortId !== lesson.resortId) {
     return { ok: false, reason: "package-wrong-resort" };
   }

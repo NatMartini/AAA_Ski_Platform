@@ -9,16 +9,16 @@ import { Loader2 } from "lucide-react";
 
 const COPY = {
   zh: {
-    payee: "买哪位教练的课时包",
-    payeeHint: "课费直接付给这位教练,由这位教练确认收款。课时包只能约这位教练上课。",
+    payee: "付款给哪位教练",
+    payeeHint: "课费直接付给这位教练,由这位教练确认收款。买好后两位教练的课都能用课时包约。",
     buy: "下单并去付款",
     notOnSale: "早鸟已截止,该课时包已停售。",
     failed: "下单失败,请重试。",
   },
   en: {
-    payee: "Whose package are you buying?",
+    payee: "Which coach are you paying?",
     payeeHint:
-      "You pay this coach directly and they confirm it. The hours can only be booked with them.",
+      "You pay this coach directly and they confirm it. Once it is paid, the hours book lessons with either coach.",
     buy: "Order and pay",
     notOnSale: "The early bird is over and this package is no longer on sale.",
     failed: "Could not place the order. Please try again.",

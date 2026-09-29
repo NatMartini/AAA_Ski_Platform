@@ -25,22 +25,22 @@ export const LESSON_TYPES: LessonType[] = [
     key: "riding",
     zh: "滑行课",
     en: "Ski lesson",
-    zhHint: "按你的水平练滑行技术,从第一次上雪到刻滑都可以。",
-    enHint: "Technique on the hill at your level, from first slides to carving.",
+    zhHint: "初学者、平行入门、平行进阶、卡宾入门、小弯入门。",
+    enHint: "First-timers, intro to parallel, advanced parallel, intro to carving, intro to short turns.",
   },
   {
     key: "csia1_prep",
     zh: "一级考前培训",
     en: "CSIA Level 1 prep",
-    zhHint: "针对 CSIA 一级考试的示范动作与考核要点。",
-    enHint: "Demonstration runs and assessment points for the CSIA Level 1 course.",
+    zhHint: "CSIA Level 1 备考冲刺。",
+    enHint: "Final preparation for the CSIA Level 1 course.",
   },
   {
     key: "park",
     zh: "公园课",
     en: "Park lesson",
-    zhHint: "跳台、平箱、铁杆与转体。",
-    enHint: "Jumps, boxes, rails and spins.",
+    zhHint: "道内平花、跳台、道具。",
+    enHint: "Flatland tricks, jumps and features.",
   },
 ];
 

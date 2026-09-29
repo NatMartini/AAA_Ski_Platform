@@ -19,21 +19,11 @@ describe("quote", () => {
     });
   });
 
-  it("rounds the ten minutes' fee up to a whole $5, never under $10", () => {
-    expect(handoverCreditCents(5000)).toBe(1000); // $8.33 → $10
-    expect(handoverCreditCents(6000)).toBe(1000); // exactly $10
-    expect(handoverCreditCents(7000)).toBe(1500); // $11.67 → $15
-    expect(handoverCreditCents(8000)).toBe(1500); // $13.33 → $15
-    expect(handoverCreditCents(9000)).toBe(1500); // exactly $15
-    expect(handoverCreditCents(10000)).toBe(2000); // $16.67 → $20
-    expect(handoverCreditCents(3000)).toBe(1000); // $5 → the $10 floor
-    expect(handoverCreditCents(0)).toBe(0);
-    expect(quote({ hours: 2, hourlyRateCents: 7000 }).totalCents).toBe(12500);
-    expect(quote({ hours: 2, hourlyRateCents: 5000 }).totalCents).toBe(9000);
-  });
-
-  it("never takes off more than the lesson costs", () => {
-    expect(quote({ hours: 2, hourlyRateCents: 0 }).totalCents).toBe(0);
+  it("takes off ten minutes at the booked rate, to the cent", () => {
+    expect(handoverCreditCents(7000)).toBe(1167); // $70/h → $11.67
+    expect(handoverCreditCents(8000)).toBe(1333); // $80/h → $13.33
+    expect(handoverCreditCents(5000)).toBe(833); // $50/h → $8.33
+    expect(quote({ hours: 2, hourlyRateCents: 7000 }).totalCents).toBe(14000 - 1167);
   });
 
   it("deducts the handover only once, however long the lesson", () => {
@@ -61,7 +51,7 @@ describe("quote", () => {
     });
     expect(two.perHourCents).toBe(8000);
     expect(two.subtotalCents).toBe(16000); // 80 × 2
-    expect(two.totalCents).toBe(16000 - 1500); // $13.33 → $15
+    expect(two.totalCents).toBe(16000 - 1333);
 
     const three = quote({
       hours: 2,
@@ -71,7 +61,7 @@ describe("quote", () => {
     });
     expect(three.perHourCents).toBe(10000);
     expect(three.subtotalCents).toBe(20000); // 100 × 2
-    expect(three.totalCents).toBe(20000 - 2000); // $16.67 → $20
+    expect(three.totalCents).toBe(20000 - 1667);
   });
 
   it("treats a single student as no surcharge", () => {
@@ -93,7 +83,7 @@ describe("quote", () => {
   it("stays in integer cents for awkward rates", () => {
     const q = quote({ hours: 3, hourlyRateCents: 8333 });
     expect(Number.isInteger(q.totalCents)).toBe(true);
-    expect(q.totalCents).toBe(8333 * 3 - 1500); // $13.89 → $15
+    expect(q.totalCents).toBe(8333 * 3 - 1389);
   });
 });
 

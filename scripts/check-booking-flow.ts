@@ -200,9 +200,9 @@ async function main() {
     ? await prisma.booking.findUnique({ where: { code: first.code } })
     : null;
   check(
-    "a ski lesson booked in January is $70x2 less ten minutes' fee rounded up ($15) = $125",
-    priced?.totalCents === 12500 &&
-      priced?.handoverDiscountCents === 1500 &&
+    "a ski lesson booked in January is $70x2 less ten minutes' fee ($11.67) = $128.33",
+    priced?.totalCents === 12833 &&
+      priced?.handoverDiscountCents === 1167 &&
       priced?.subtotalCents === 14000 &&
       priced?.lessonType === "riding" &&
       priced?.earlyBird === false,
@@ -566,13 +566,13 @@ async function main() {
     });
     check(
       "once the deposit clears the booking is confirmed with a balance owing",
-      afterDeposit.status === "CONFIRMED" && balanceCents(afterDeposit) === 5500,
+      afterDeposit.status === "CONFIRMED" && balanceCents(afterDeposit) === 5833,
       `owing=${balanceCents(afterDeposit)}`,
     );
     check(
       "the next payment asked for is the balance, not the deposit again",
       stageOf(afterDeposit) === "BALANCE" &&
-        amountDueCents(afterDeposit) === 5500,
+        amountDueCents(afterDeposit) === 5833,
     );
 
     // What the balance route does when the coach records the rest.
@@ -649,11 +649,11 @@ async function main() {
     ? await prisma.booking.findUnique({ where: { code: early.code } })
     : null;
   check(
-    "a park lesson booked before 1 December is $80x2 less ten minutes' fee rounded up ($15) = $145",
+    "a park lesson booked before 1 December is $80x2 less ten minutes' fee ($13.33) = $146.67",
     earlyRow?.lessonType === "park" &&
       earlyRow.earlyBird &&
       earlyRow.hourlyRateCents === 8000 &&
-      earlyRow.totalCents === 14500,
+      earlyRow.totalCents === 14667,
     `rate=${earlyRow?.hourlyRateCents} total=${earlyRow?.totalCents}`,
   );
   if (early.ok) await prisma.booking.delete({ where: { code: early.code } });
@@ -738,17 +738,24 @@ async function main() {
 
   const withKevin = await packageBooking(COACH, DAY, 14);
   check(
-    "a package bought from Alisa cannot be spent with Kevin",
-    !withKevin.ok && withKevin.reason === "package-wrong-coach",
-    withKevin.ok ? "booked!" : withKevin.reason,
+    "a package bought from Alisa can be spent with Kevin too",
+    withKevin.ok,
+    withKevin.ok ? "" : withKevin.reason,
   );
+  if (withKevin.ok) {
+    await prisma.booking.update({
+      where: { code: withKevin.code },
+      data: { status: "CANCELLED", cancelledAt: new Date(), cancelReason: "改期" },
+    });
+  }
+  check("cancelling that lesson gives the hours back", (await packageUsage()) === 0);
 
   const first2 = await packageBooking(COACH2, DAY, 9);
   const firstRow = first2.ok
     ? await prisma.booking.findUnique({ where: { code: first2.code }, include: bookingInclude })
     : null;
   check(
-    "it is spent with Alisa, who sold it",
+    "and with Alisa, who sold it",
     first2.ok && firstRow?.packageId === pkg.id && firstRow.paymentPlan === "PACKAGE",
     first2.ok ? "" : first2.reason,
   );

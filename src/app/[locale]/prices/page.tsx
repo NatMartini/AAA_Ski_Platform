@@ -12,9 +12,9 @@ import { PACKAGE_OFFERS, offersOnSale } from "@/lib/packages";
 import { formatMoneyShort } from "@/lib/pricing";
 import { formatTorontoDate, toDateKey } from "@/lib/time";
 import { formatSeason } from "@/lib/season";
-import { toLocale } from "@/i18n/routing";
+import { toLocale, type Locale } from "@/i18n/routing";
 import { cn } from "@/lib/utils";
-import { ArrowRight, Clock, Package } from "lucide-react";
+import { ArrowRight, Clock, Mountain, Package } from "lucide-react";
 
 /**
  * The price sheet, rendered from the live rate cards rather than typed in,
@@ -45,6 +45,20 @@ export default async function PricesPage({
     const r = resorts.find((x) => x.slug === slug);
     return r ? (zh ? r.nameZh : r.nameEn) : slug;
   };
+  // Resorts with a package first (Blue Mountain), as on the price sheet.
+  const hasPackage = (slug: string) =>
+    PACKAGE_OFFERS.some((o) => o.resortSlug === slug);
+  const orderedResorts = [...resorts].sort(
+    (a, b) =>
+      Number(hasPackage(b.slug)) - Number(hasPackage(a.slug)) ||
+      a.nameEn.localeCompare(b.nameEn),
+  );
+  // The coaches set the group surcharge themselves; it is $20 on the sheet.
+  const extras = [...new Set(coaches.map((c) => c.extraPersonCents))];
+  const extra =
+    extras.length === 1
+      ? formatMoneyShort(extras[0])
+      : extras.map((c) => formatMoneyShort(c)).join(" / ");
 
   return (
     <div className="stagger space-y-5">
@@ -72,116 +86,68 @@ export default async function PricesPage({
             : `The early bird ended on ${lastDay}; regular prices apply.`}
       </p>
 
-      {/* Packages first while they are on sale: they are the best price. */}
-      {PACKAGE_OFFERS.map((offer) => {
-        const onSale = sale.offers.some((o) => o.key === offer.key);
-        return (
-          <Card key={offer.key} className="space-y-3">
-            <div className="flex items-start gap-3">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-soft)]">
-                <Package className="size-5 text-accent" aria-hidden />
-              </span>
-              <div className="min-w-0 flex-1">
-                <CardTitle>
-                  {zh ? "课时包" : "Lesson package"} · {resortName(offer.resortSlug)}
-                </CardTitle>
-                <p className="mt-1 text-sm text-ink-2" data-numeric>
-                  <strong className="font-display text-2xl text-ink">
-                    {formatMoneyShort(offer.priceCents)}
-                  </strong>{" "}
-                  / {offer.hours} {zh ? "小时" : "hours"} ·{" "}
-                  {lessonTypeLabel(offer.lessonType, loc)} ·{" "}
-                  {zh ? "每位教练各自出售" : "from either coach"}
-                </p>
-              </div>
-              {onSale && <EarlyBirdTag label={zh ? "早鸟专享" : "Early bird only"} />}
-            </div>
-            <CardDescription>
-              {zh
-                ? `先买 ${offer.hours} 小时,之后在${resortName(offer.resortSlug)}约${lessonTypeLabel(offer.lessonType, "zh")}时直接抵扣,可拆开用(例如 2 小时 + 2 小时)。买哪位教练的,就只能约这位教练。`
-                : `Buy ${offer.hours} hours up front and spend them on ${lessonTypeLabel(offer.lessonType, "en").toLowerCase()}s at ${resortName(offer.resortSlug)} — split them up, say 2 + 2 hours. A package is bought from one coach and books only with them.`}
-            </CardDescription>
-            {onSale ? (
-              <Button asChild className="self-start">
-                <Link href="/packages">
-                  {zh ? "购买课时包" : "Buy a package"}
-                  <ArrowRight aria-hidden />
-                </Link>
-              </Button>
-            ) : (
-              <p className="text-sm font-semibold text-ink-3">
-                {zh ? "本季已停售。" : "No longer on sale this season."}
-              </p>
+      {/* One section per resort, as on the printed price sheet. Rates are the
+          coach's own and the same everywhere; a resort's package, if it has
+          one, heads its section. */}
+      {orderedResorts.map((resort) => (
+        <section key={resort.id} className="space-y-3">
+          <h2 className="flex items-center gap-2 text-xl">
+            <Mountain className="size-5 text-accent" aria-hidden />
+            {zh ? resort.nameZh : resort.nameEn}
+            {zh && (
+              <span className="text-sm font-semibold text-ink-3">{resort.nameEn}</span>
             )}
-          </Card>
-        );
-      })}
+          </h2>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        {coaches.map((coach) => (
-          <Card key={coach.id} className="space-y-3">
-            <CardTitle>{coach.displayName}</CardTitle>
-            <table className="w-full text-sm" data-numeric>
-              <thead>
-                <tr className="text-left text-xs text-ink-3">
-                  <th className="pb-1.5 font-semibold">
-                    <span className="sr-only">{zh ? "课程" : "Lesson"}</span>
-                  </th>
-                  <th
-                    className={cn(
-                      "pb-1.5 text-right font-semibold",
-                      early.active && "text-[var(--amber)]",
-                    )}
-                  >
-                    {zh ? "早鸟价" : "Early bird"}
-                  </th>
-                  <th
-                    className={cn(
-                      "pb-1.5 text-right font-semibold",
-                      !early.active && "text-accent",
-                    )}
-                  >
-                    {zh ? "正常价" : "Regular"}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {offeredRates(coach.rates).map((r) => (
-                  <tr key={r.lessonType}>
-                    <th scope="row" className="py-2 pr-2 text-left font-semibold text-ink">
-                      {lessonTypeLabel(r.lessonType, loc)}
-                    </th>
-                    <td
-                      className={cn(
-                        "py-2 text-right tabular-nums",
-                        early.active ? "font-bold text-ink" : "text-ink-3",
-                      )}
-                    >
-                      {r.earlyBirdCents != null
-                        ? `${formatMoneyShort(r.earlyBirdCents)}${zh ? "/小时" : "/h"}`
-                        : "—"}
-                    </td>
-                    <td
-                      className={cn(
-                        "py-2 text-right tabular-nums",
-                        early.active ? "text-ink-3" : "font-bold text-ink",
-                      )}
-                    >
-                      {formatMoneyShort(r.regularCents)}
-                      {zh ? "/小时" : "/h"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="text-xs leading-relaxed text-ink-3" data-numeric>
-              {zh
-                ? `${coach.minHours} 小时起约 · 多人课每加一人每小时 +${formatMoneyShort(coach.extraPersonCents)}`
-                : `${coach.minHours}h minimum · +${formatMoneyShort(coach.extraPersonCents)}/h per extra student`}
-            </p>
-          </Card>
-        ))}
-      </div>
+          {PACKAGE_OFFERS.filter((o) => o.resortSlug === resort.slug).map((offer) => {
+            const onSale = sale.offers.some((o) => o.key === offer.key);
+            return (
+              <Card key={offer.key} className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-soft)]">
+                    <Package className="size-5 text-accent" aria-hidden />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <CardTitle>{zh ? "课时包" : "Lesson package"}</CardTitle>
+                    <p className="mt-1 text-sm text-ink-2" data-numeric>
+                      <strong className="font-display text-2xl text-ink">
+                        {formatMoneyShort(offer.priceCents)}
+                      </strong>{" "}
+                      / {offer.hours} {zh ? "小时" : "hours"} ·{" "}
+                      {lessonTypeLabel(offer.lessonType, loc)} ·{" "}
+                      {zh ? "可选任意教练" : "any coach"}
+                    </p>
+                  </div>
+                  {onSale && <EarlyBirdTag label={zh ? "早鸟期限定" : "Early bird only"} />}
+                </div>
+                <CardDescription>
+                  {zh
+                    ? `先买 ${offer.hours} 小时,之后在${resortName(offer.resortSlug)}约${lessonTypeLabel(offer.lessonType, "zh")}时直接抵扣,可拆开用(例如 2 小时 + 2 小时),两位教练都能约。`
+                    : `Buy ${offer.hours} hours up front and spend them on ${lessonTypeLabel(offer.lessonType, "en").toLowerCase()}s at ${resortName(offer.resortSlug)} — split them up, say 2 + 2 hours, with either coach.`}
+                </CardDescription>
+                {onSale ? (
+                  <Button asChild className="self-start">
+                    <Link href="/packages">
+                      {zh ? "购买课时包" : "Buy a package"}
+                      <ArrowRight aria-hidden />
+                    </Link>
+                  </Button>
+                ) : (
+                  <p className="text-sm font-semibold text-ink-3">
+                    {zh ? "本季已停售。" : "No longer on sale this season."}
+                  </p>
+                )}
+              </Card>
+            );
+          })}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            {coaches.map((coach) => (
+              <RateCard key={coach.id} coach={coach} zh={zh} loc={loc} earlyActive={early.active} />
+            ))}
+          </div>
+        </section>
+      ))}
 
       {/* The ten minutes are about when the lesson runs, so they are
           explained here rather than next to the prices. */}
@@ -193,14 +159,14 @@ export default async function PricesPage({
         <ul className="list-inside list-disc space-y-1.5 text-sm leading-relaxed text-ink-2">
           {(zh
             ? [
-                "按整小时预约,至少 2 小时。",
-                "开课时间是整点后 10 分钟:约 10:00–12:00,实际上课 10:10–12:00。前 10 分钟是教练和上一位学员的交接时间。",
-                "这 10 分钟不收费,每单直接减:时薪 $60 及以下减 $10,$70–$90 减 $15。",
+                "至少 2 小时,按整小时约。2 小时是平衡体力和练习肌肉记忆的黄金时长。",
+                "开课时间是整点后 10 分钟:例如约了 10:00–12:00,实际上课 10:10–12:00。前 10 分钟是和上一位学员的交接时间。",
+                "这 10 分钟不收费,每单直接减!",
               ]
             : [
-                "Book in whole hours, two hours minimum.",
-                "Lessons start ten minutes past the hour: book 10:00–12:00 and the lesson runs 10:10–12:00. The first ten minutes are the coach's handover from the previous student.",
-                "Those ten minutes are free, taken straight off every booking: $10 off at $60 an hour or less, $15 off at $70–$90.",
+                "Two hours minimum, booked in whole hours. Two hours is the sweet spot for stamina and muscle memory.",
+                "Lessons start ten minutes past the hour: book 10:00–12:00 and the lesson runs 10:10–12:00. The first ten minutes are the handover from the previous student.",
+                "Those ten minutes are free: their fee comes straight off every booking.",
               ]
           ).map((line) => (
             <li key={line}>{line}</li>
@@ -213,13 +179,15 @@ export default async function PricesPage({
         <ul className="list-inside list-disc space-y-1.5 text-sm leading-relaxed text-ink-2">
           {(zh
             ? [
-                "以上均为一对一价格。多人课(1 对 2 及以上)每多一人每小时加价,见各教练说明;多人课请先微信联系教练。",
+                "以上均为每小时、一对一价格,2 小时起。",
+                `1 对 2 / 1 对 3:每多一位学员每小时 +${extra},请先微信联系教练。`,
                 `早鸟价于 ${lastDay} 截止,以下单日期为准。`,
                 "付款方式:Interac e-Transfer、微信。",
                 "以上均为最终价,不另加税。",
               ]
             : [
-                "All prices are one-on-one. Each extra student in a group lesson adds a per-hour amount, shown for each coach; message your coach on WeChat to arrange a group.",
+                "All prices are per hour, one-on-one, two hours minimum.",
+                `1-on-2 / 1-on-3: +${extra} per hour for each extra student; message your coach on WeChat first.`,
                 `Early-bird prices end on ${lastDay}, going by the day you book.`,
                 "Pay by Interac e-Transfer or WeChat.",
                 "All prices are final: no tax is added.",
@@ -236,5 +204,79 @@ export default async function PricesPage({
         </Button>
       </Card>
     </div>
+  );
+}
+
+type RateCoach = Awaited<ReturnType<typeof listBookableCoaches>>[number];
+
+/** One coach's rate card: early-bird and regular price per lesson type. */
+function RateCard({
+  coach,
+  zh,
+  loc,
+  earlyActive,
+}: {
+  coach: RateCoach;
+  zh: boolean;
+  loc: Locale;
+  earlyActive: boolean;
+}) {
+  return (
+    <Card className="space-y-3">
+      <CardTitle>{coach.displayName}</CardTitle>
+      <table className="w-full text-sm" data-numeric>
+        <thead>
+          <tr className="text-left text-xs text-ink-3">
+            <th className="pb-1.5 font-semibold">
+              <span className="sr-only">{zh ? "课程" : "Lesson"}</span>
+            </th>
+            <th
+              className={cn(
+                "pb-1.5 text-right font-semibold",
+                earlyActive && "text-[var(--amber)]",
+              )}
+            >
+              {zh ? "早鸟价" : "Early bird"}
+            </th>
+            <th
+              className={cn(
+                "pb-1.5 text-right font-semibold",
+                !earlyActive && "text-accent",
+              )}
+            >
+              {zh ? "正常价" : "Regular"}
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {offeredRates(coach.rates).map((r) => (
+            <tr key={r.lessonType}>
+              <th scope="row" className="py-2 pr-2 text-left font-semibold text-ink">
+                {lessonTypeLabel(r.lessonType, loc)}
+              </th>
+              <td
+                className={cn(
+                  "py-2 text-right tabular-nums",
+                  earlyActive ? "font-bold text-ink" : "text-ink-3",
+                )}
+              >
+                {r.earlyBirdCents != null
+                  ? `${formatMoneyShort(r.earlyBirdCents)}${zh ? "/小时" : "/h"}`
+                  : "—"}
+              </td>
+              <td
+                className={cn(
+                  "py-2 text-right tabular-nums",
+                  earlyActive ? "text-ink-3" : "font-bold text-ink",
+                )}
+              >
+                {formatMoneyShort(r.regularCents)}
+                {zh ? "/小时" : "/h"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Card>
   );
 }
