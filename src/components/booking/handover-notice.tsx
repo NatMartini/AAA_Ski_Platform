@@ -6,19 +6,17 @@ import { Clock } from "lucide-react";
 /**
  * Said plainly where the money is: the lesson starts ten minutes past the
  * hour, and the fee for those ten minutes has been taken off. Students who
- * miss this turn up at the hour and wonder why the bill is not a round number.
+ * miss this turn up at the hour and wonder why the lesson is short.
  */
 export function HandoverNotice({
   locale,
   lessonStartAt,
   lessonEndAt,
-  perHourCents,
   creditCents,
 }: {
   locale: Locale;
   lessonStartAt: Date;
   lessonEndAt: Date;
-  perHourCents: number;
   creditCents: number;
 }) {
   const zh = locale === "zh";
@@ -45,8 +43,8 @@ export function HandoverNotice({
         </p>
         <p className="leading-relaxed text-ink-2" data-numeric>
           {zh
-            ? `开头 10 分钟是教练与上一位学员的交接时间。这 10 分钟的课时费 ${formatMoneyShort(creditCents)}(每小时 ${formatMoneyShort(perHourCents)} × 10/60)已经从课费中减去。`
-            : `The first ten minutes are the coach's handover from the previous student. Those ten minutes' fee, ${formatMoneyShort(creditCents)} (${formatMoneyShort(perHourCents)} an hour × 10/60), has been taken off.`}
+            ? `开头 10 分钟是教练与上一位学员的交接时间,不收费:课费里已经直接减去 ${formatMoneyShort(creditCents)}。`
+            : `The first ten minutes are the coach's handover from the previous student, so they are not charged: ${formatMoneyShort(creditCents)} has been taken off.`}
         </p>
       </div>
     </div>

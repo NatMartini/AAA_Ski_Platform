@@ -69,7 +69,6 @@ export default async function PaymentPage({
             locale={toLocale(locale)}
             lessonStartAt={booking.lessonStartAt}
             lessonEndAt={booking.lessonEndAt}
-            perHourCents={quoteFromBooking(booking).perHourCents}
             creditCents={booking.handoverDiscountCents}
           />
         }

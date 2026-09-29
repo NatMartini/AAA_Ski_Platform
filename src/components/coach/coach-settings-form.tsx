@@ -90,7 +90,7 @@ const COPY = {
     rateRequired: "请填写原价",
     earlyAboveRegular: "早鸟价不能高于原价",
     handoverHelp:
-      "每单自动减去开头 10 分钟的课时费(按该课的小时价计算),不随时长增加。整点后 10 分开始上课、到整点结束。",
+      "每单自动减去开头 10 分钟的课时费(按该课的小时价计算,向上取整到 $5,最少 $10),不随时长增加。整点后 10 分开始上课、到整点结束。",
     extraPerson: "每增加一人每小时加价(加元)",
     extraPersonHelp: "多人课时,每多一名学员每小时加收此金额。",
     maxGroupSize: "最多人数",
@@ -166,7 +166,7 @@ const COPY = {
     rateRequired: "Enter a regular price",
     earlyAboveRegular: "The early-bird price cannot be above the regular price",
     handoverHelp:
-      "Each booking automatically has the first ten minutes' fee taken off, at that lesson's hourly rate — once per booking, not per hour. Lessons run from ten past to the hour.",
+      "Each booking automatically has the first ten minutes' fee taken off, at that lesson's hourly rate rounded up to the next $5 (at least $10) — once per booking, not per hour. Lessons run from ten past to the hour.",
     extraPerson: "Extra per additional student per hour (CAD)",
     extraPersonHelp: "For group lessons, each extra student adds this per hour.",
     maxGroupSize: "Maximum group size",

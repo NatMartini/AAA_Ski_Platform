@@ -98,10 +98,11 @@ A booking is on the hour with a two-hour minimum. The first ten minutes are the
 coach's handover from the previous student, so the lesson starts at ten past and
 runs to the hour: a 1:00–3:00 booking is taught 1:10–3:00.
 
-Those ten minutes are not charged: **the booking's hourly rate × 10/60 comes off,
-once per booking**, because the handover happens once however long the lesson
-is (`handoverCreditCents` in `src/lib/pricing.ts`). The payment page says so in
-a callout above the amount — start time, end time, and what was taken off.
+Those ten minutes are not charged: **ten minutes' fee comes off once per
+booking**, because the handover happens once however long the lesson is. It is
+rounded up to the next $5 and never less than $10, so the bill stays a plain
+number (`handoverCreditCents` in `src/lib/pricing.ts`). The payment page says so
+in a callout above the amount — start time, end time, and what was taken off.
 
 ```
 Ski lesson · early bird
@@ -110,7 +111,7 @@ Less the first 10 minutes' fee   −$10.00
 Total (CAD)                      $110.00
 ```
 
-At $70 an hour the ten minutes are $11.67; at $80, $13.33.
+At $50 or $60 an hour that is $10; at $70, $80 or $90, $15.
 
 A group adds the coach's per-extra-student surcharge ($20/h by default) to the
 base rate, though multi-person booking stays closed until every attendee can

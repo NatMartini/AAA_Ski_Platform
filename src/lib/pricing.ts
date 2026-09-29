@@ -7,13 +7,15 @@ import { addMinutes } from "./time";
  *
  * The fee for those ten minutes is taken off the price — once per booking,
  * not per hour, because the handover only happens once no matter how long the
- * lesson is. It is ten minutes at the booked hourly rate: $60/h for 2h is
- * $120 less $10, so $110; at $70/h the credit is $11.67.
+ * lesson is. It is ten minutes at the booked hourly rate, rounded up to a
+ * whole $5 and never less than $10, so the bill stays a plain number: $50/h
+ * and $60/h take off $10, $70–$90/h take off $15. $60/h for 2h is $120 less
+ * $10, so $110.
  *
  * Group lessons: the per-hour rate rises by a fixed amount for each additional
  * student. With a $60 base and a $20 per-extra-person rate, one-on-one is
  * $60/h, one-on-two $80/h, one-on-three $100/h. The handover credit is ten
- * minutes at that group rate, still once per booking.
+ * minutes at that group rate, rounded the same way, still once per booking.
  *
  * Which base rate applies — lesson type, early bird or regular — is decided in
  * rates.ts. No tax is calculated or displayed anywhere: the published prices
@@ -49,12 +51,24 @@ export type Quote = {
   lessonMinutes: number;
 };
 
+/** The handover credit is rounded up to this step... */
+export const HANDOVER_CREDIT_STEP_CENTS = 500;
+/** ...and is never less than this. */
+export const HANDOVER_CREDIT_MIN_CENTS = 1000;
+
 /**
  * The handover credit: the fee for the ten minutes not taught, at the
- * effective hourly rate, rounded to the cent.
+ * effective hourly rate, rounded up to a whole $5 with a $10 floor — $8.33
+ * becomes $10, $11.67 and $13.33 become $15. A free lesson has nothing to take
+ * off; quote() also caps the credit at the subtotal.
  */
 export function handoverCreditCents(perHourCents: number): number {
-  return Math.round((perHourCents * HANDOVER_TOTAL_MINUTES) / 60);
+  if (perHourCents <= 0) return 0;
+  // Integer maths: ceil(rate × 10/60 ÷ $5) in one division.
+  const steps = Math.ceil(
+    (perHourCents * HANDOVER_TOTAL_MINUTES) / (60 * HANDOVER_CREDIT_STEP_CENTS),
+  );
+  return Math.max(HANDOVER_CREDIT_MIN_CENTS, steps * HANDOVER_CREDIT_STEP_CENTS);
 }
 
 /** Effective per-hour rate for a group of `headcount` students. */

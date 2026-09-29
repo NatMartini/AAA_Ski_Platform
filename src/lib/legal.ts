@@ -44,7 +44,7 @@ export const LEGAL_DOCS: Record<
           heading: "Booking and lesson times",
           paragraphs: [
             "Lessons are booked on the hour, with a two-hour minimum. Every lesson starts ten minutes after the booked hour and runs to the end of the booking, so the instructor can hand over from the previous student. A 1:00–3:00 booking is taught 1:10–3:00.",
-            "The fee for those ten minutes, at the lesson's hourly rate, is taken off the price — once per booking, not per hour, because the handover happens once however long the lesson. The full breakdown is shown before you confirm and again when you pay.",
+            "The fee for those ten minutes, at the lesson's hourly rate rounded up to the next $5 and never less than $10, is taken off the price — once per booking, not per hour, because the handover happens once however long the lesson. The full breakdown is shown before you confirm and again when you pay.",
           ],
         },
         {
@@ -101,7 +101,7 @@ export const LEGAL_DOCS: Record<
           heading: "预定与上课时间",
           paragraphs: [
             "课程按整点预定,最少两小时。每节课在预定时段开始 10 分钟后开始、到预定时段结束为止,以便教练与上一位学员交接。预定 1:00–3:00,实际授课时间为 1:10–3:00。",
-            "这 10 分钟的课时费(按该课的小时价计算)会从课费中减去 —— 每张订单减一次,而非按小时扣减,因为交接每节课只发生一次。确认下单前和付款时都会完整展示价格明细。",
+            "这 10 分钟的课时费(按该课的小时价计算,向上取整到 $5,最少 $10)会从课费中减去 —— 每张订单减一次,而非按小时扣减,因为交接每节课只发生一次。确认下单前和付款时都会完整展示价格明细。",
           ],
         },
         {

@@ -192,14 +192,14 @@ export default async function PricesPage({
                 `早鸟价于 ${lastDay} 截止,以下单日期为准。`,
                 "付款方式:Interac e-Transfer、微信。",
                 "以上均为最终价,不另加税。",
-                "预约按整点计,开课时间是整点后 10 分钟、到整点结束;开头这 10 分钟的课时费会从每单中减去(按该课小时价计算,例如 $60/小时减 $10)。",
+                "预约按整点计,开课时间是整点后 10 分钟、到整点结束;开头这 10 分钟不收费,每单直接减去一个整数:$50、$60/小时减 $10,$70–$90/小时减 $15(10 分钟课时费向上取整到 $5,最少 $10)。",
               ]
             : [
                 "All prices are one-on-one. Each extra student in a group lesson adds a per-hour amount, shown for each coach; message your coach on WeChat to arrange a group.",
                 `Early-bird prices end on ${lastDay}, going by the day you book.`,
                 "Pay by Interac e-Transfer or WeChat.",
                 "All prices are final: no tax is added.",
-                "Bookings are on the hour; the lesson starts ten minutes past and runs to the hour, and those ten minutes' fee is taken off every booking at its hourly rate ($10 at $60/h).",
+                "Bookings are on the hour; the lesson starts ten minutes past and runs to the hour, and those ten minutes are not charged: every booking takes off a round amount — $10 at $50 or $60/h, $15 at $70–$90/h (ten minutes' fee rounded up to the next $5, at least $10).",
               ]
           ).map((tip) => (
             <li key={tip}>{tip}</li>
