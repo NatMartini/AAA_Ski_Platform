@@ -8,6 +8,8 @@ import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { toLocale } from "@/i18n/routing";
 import { formatTorontoDate, formatTorontoTime } from "@/lib/time";
 import { TriangleAlert } from "lucide-react";
+import { PriceBreakdown } from "@/components/booking/price-breakdown";
+import { quoteFromBooking } from "@/lib/pricing";
 
 /**
  * Landing page for a coach-issued signing link.
@@ -68,7 +70,9 @@ export default async function SigningLinkPage({
   }
 
   const booking = await loadBooking(check.bookingCode);
-  if (!booking?.inviteName) {
+  const personalInvite = check as typeof check & { fullName?: string; isMinor?: boolean; ordinal?: number };
+  const studentName = personalInvite.fullName ?? booking?.inviteName;
+  if (!booking || !studentName) {
     return (
       <Card className="mx-auto max-w-md">
         <CardDescription>
@@ -78,7 +82,8 @@ export default async function SigningLinkPage({
     );
   }
 
-  const isMinor = booking.inviteIsMinor;
+  const isMinor = personalInvite.isMinor ?? booking.inviteIsMinor;
+  const isExtraGuest = (personalInvite.ordinal ?? 1) > 1 && booking.accountId !== user.id;
   const variant = isMinor ? "guardian" : "adult";
 
   const clauses = clausesFor(variant).map((clause) => ({
@@ -101,7 +106,7 @@ export default async function SigningLinkPage({
           <span className="text-muted-foreground">
             {zh ? "学员:" : "Student: "}
           </span>
-          {booking.inviteName}
+          {studentName}
         </p>
         <p>
           <span className="text-muted-foreground">
@@ -112,12 +117,20 @@ export default async function SigningLinkPage({
           {formatTorontoTime(booking.lessonEndAt, loc)}
         </p>
         <p>
+          <span className="text-muted-foreground">{zh ? "雪场:" : "Resort: "}</span>
+          {zh ? booking.resort.nameZh : booking.resort.nameEn}
+        </p>
+        <p>
           <span className="text-muted-foreground">
             {zh ? "教练:" : "Coach: "}
           </span>
           {booking.coach.name ?? booking.coach.email}
         </p>
       </Card>
+
+      <PriceBreakdown quote={quoteFromBooking(booking)} locale={loc} lessonType={booking.lessonType} earlyBird={booking.earlyBird} />
+
+      {booking.headcount > 1 && <p className="rounded-xl border border-border bg-surface-2 p-4 text-sm text-ink-2">{zh ? "这是你本人或你监护的未成年学员的个人免责协议。每位学员独立签署，全部签署完成后由预约人统一付款。" : "This is the personal waiver for you or the minor in your care. Each student signs independently; the booking organizer pays after all signatures are complete."}</p>}
 
       <WaiverForm
         locale={loc}
@@ -126,8 +139,10 @@ export default async function SigningLinkPage({
         isGuardian={isMinor}
         minorNotice={isMinor ? t("minorNotice") : null}
         warning={zh ? WARNING.zh : WARNING.en}
+        prefill={{ typedName: user.name, guardianName: isMinor ? user.name : null }}
         postTo={`/api/waiver-invites/${token}`}
         redirectTo={`/booking/${booking.code}`}
+        stayOnSuccess={isExtraGuest}
       />
     </div>
   );

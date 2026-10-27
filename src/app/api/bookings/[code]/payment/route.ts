@@ -1,9 +1,12 @@
+import { readJsonBodyOrResponse } from "@/lib/request-body";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/require-user";
 import { rateLimitOrRespond } from "@/lib/rate-limit";
 import { fieldErrors, paymentProofSchema } from "@/lib/validators";
-import { accessFor, loadBooking } from "@/lib/booking/access";
+import { accessFor, bookingInclude, loadBooking } from "@/lib/booking/access";
+import { areBookingWaiversValid } from "@/lib/booking/group-readiness";
+import { lockBookingWaivers } from "@/lib/booking/attendees";
 import { assertTransition } from "@/lib/booking/state";
 import { KEY_PREFIX, objectExists } from "@/lib/storage";
 import {
@@ -45,11 +48,13 @@ export async function POST(
     return NextResponse.json({ error: "expired" }, { status: 409 });
   }
   // A waiver must be on file first — that was the whole point of the sequence.
-  if (!booking.waiverId) {
+  if (!areBookingWaiversValid(booking)) {
     return NextResponse.json({ error: "waiver-required" }, { status: 409 });
   }
 
-  const parsed = paymentProofSchema.safeParse(await req.json().catch(() => null));
+  const jsonBody = await readJsonBodyOrResponse(req);
+  if (!jsonBody.ok) return jsonBody.response;
+  const parsed = paymentProofSchema.safeParse(jsonBody.data);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "validation", fields: fieldErrors(parsed.error) },
@@ -74,16 +79,12 @@ export async function POST(
   assertTransition(booking.status, "PENDING_PAYMENT_REVIEW");
 
   const attached = await withPaymentProofLock(booking.id, async (tx) => {
+    await lockBookingWaivers(tx, booking.id);
     // Re-read while holding the row lock. The hold sweeper uses the same row,
     // so it cannot expire this booking between this check and the update.
     const current = await tx.booking.findUnique({
       where: { id: booking.id },
-      select: {
-        status: true,
-        holdExpiresAt: true,
-        waiverId: true,
-        paymentProofKey: true,
-      },
+      include: bookingInclude,
     });
     if (!current || current.status === "EXPIRED") {
       return { kind: "expired" } as const;
@@ -93,11 +94,11 @@ export async function POST(
       return { kind: "expired" } as const;
     }
     if (
-      !["AWAITING_PAYMENT", "PAYMENT_REJECTED"].includes(current.status) ||
-      !current.waiverId
+      !["AWAITING_PAYMENT", "PAYMENT_REJECTED"].includes(current.status)
     ) {
       return { kind: "invalid-state" } as const;
     }
+    if (!areBookingWaiversValid(current)) return { kind: "waiver-required" } as const;
 
     // An orphan cleanup may have removed a stale upload before this request
     // reached the database. Never create a row which points at a missing file.
@@ -128,6 +129,9 @@ export async function POST(
   }
   if (attached.kind === "invalid-state") {
     return NextResponse.json({ error: "invalid-state" }, { status: 409 });
+  }
+  if (attached.kind === "waiver-required") {
+    return NextResponse.json({ error: "waiver-required" }, { status: 409 });
   }
   if (attached.kind === "proof-not-found") {
     return NextResponse.json({ error: "proof-not-found" }, { status: 400 });

@@ -1,4 +1,5 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import { redirect } from "@/i18n/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUserPage } from "@/lib/auth/require-user";
 import { Card, CardDescription } from "@/components/ui/card";
@@ -16,6 +17,9 @@ export default async function MyBookingsPage({
     locale,
     callbackPath: `/${locale}/my/bookings`,
   });
+  if (user.role === "COACH" || user.role === "ADMIN") {
+    redirect({ href: "/coach/bookings", locale });
+  }
   const t = await getTranslations("nav");
   const loc = toLocale(locale);
   const zh = loc === "zh";

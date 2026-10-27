@@ -1,3 +1,4 @@
+import { readJsonBodyOrResponse } from "@/lib/request-body";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireCoach } from "@/lib/auth/require-user";
@@ -38,23 +39,30 @@ export async function POST(
     return NextResponse.json({ error: "invalid-state" }, { status: 409 });
   }
 
-  const parsed = reviewSchema.safeParse(await req.json().catch(() => null));
+  const jsonBody = await readJsonBodyOrResponse(req);
+  if (!jsonBody.ok) return jsonBody.response;
+  const parsed = reviewSchema.safeParse(jsonBody.data);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "validation", fields: fieldErrors(parsed.error) },
       { status: 400 },
     );
   }
-  const { action, note } = parsed.data;
+  const { action, note, expectedUpdatedAt } = parsed.data;
+  if (pkg.updatedAt.toISOString() !== expectedUpdatedAt) {
+    return NextResponse.json({ error: "state-changed" }, { status: 409 });
+  }
   const rejectedProofKey = action === "reject" ? pkg.paymentProofKey : null;
 
-  // Compare-and-set, so two reviews (or a review racing a cancellation) cannot
-  // overwrite whichever decision committed first.
+  // Match this submission as well as its state and proof. A new WeChat claim
+  // after rejection has the same null key but must receive its own review.
   const reviewed = await prisma.lessonPackage.updateMany({
     where: {
       id: pkg.id,
       status: pkg.status,
       paymentProofKey: pkg.paymentProofKey,
+      paymentSubmittedAt: pkg.paymentSubmittedAt,
+      updatedAt: pkg.updatedAt,
     },
     data: {
       status: action === "confirm" ? "ACTIVE" : "PAYMENT_REJECTED",

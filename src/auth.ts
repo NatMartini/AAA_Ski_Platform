@@ -3,6 +3,8 @@ import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 import type { UserRole } from "@prisma/client";
+import { decode as decodeJwt } from "next-auth/jwt";
+import { hasVerifiedSessionClaims, inspectSessionIssuedAt, normalizedAuthEmail, verifiedGoogleEmail } from "@/lib/auth/verified-google";
 
 /**
  * Google is the only sign-in method. That is deliberate and load-bearing:
@@ -49,6 +51,7 @@ declare module "next-auth" {
       image?: string | null;
       role: UserRole;
       tokenIssuedAt?: string;
+      verifiedGoogleEmail?: string;
     };
   }
 }
@@ -56,6 +59,24 @@ declare module "next-auth" {
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt", maxAge: 7 * 24 * 60 * 60 },
+  jwt: {
+    // Auth.js also decodes existing cookies directly during account linking.
+    // Reject legacy claims here so that path cannot reuse an unverified login.
+    async decode(params) {
+      const token = await decodeJwt(params);
+      if (!token || !hasVerifiedSessionClaims(token)) return null;
+      const currentUser = await prisma.user.findUnique({
+        where: { id: token.uid as string },
+        select: { email: true, disabledAt: true, tokenInvalidatedAt: true },
+      });
+      if (!currentUser || currentUser.disabledAt
+        || normalizedAuthEmail(currentUser.email) !== token.verifiedGoogleEmail) return null;
+      const issued = inspectSessionIssuedAt(token.tokenIssuedAt);
+      if (issued.kind !== "ok" || (currentUser.tokenInvalidatedAt
+        && issued.issuedAt <= currentUser.tokenInvalidatedAt.getTime())) return null;
+      return token;
+    },
+  },
   pages: { signIn: "/sign-in", error: "/sign-in" },
 
   providers: googleEnabled
@@ -64,10 +85,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           clientId: process.env.AUTH_GOOGLE_ID,
           clientSecret: process.env.AUTH_GOOGLE_SECRET,
           authorization: { params: { scope: "openid email profile" } },
-          // Safe here only because Google is the sole provider: there is no
-          // unverified-email signup path an attacker could use to pre-claim an
-          // address. Adding any credentials provider later would make this an
-          // account-takeover hole.
+          // The signIn callback requires Google's boolean email_verified claim
+          // and matching email before Auth.js creates or links an account.
           allowDangerousEmailAccountLinking: true,
         }),
       ]
@@ -78,11 +97,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     process.env.AUTH_TRUST_HOST === "true",
 
   callbacks: {
-    async jwt({ token, user, trigger }) {
+    async signIn({ user, account, profile }) {
+      if (!verifiedGoogleEmail(account, profile, user?.email) || typeof user?.email !== "string") return false;
+      // Match the exact address Auth.js uses for its adapter lookup. First-time
+      // verified users may register; existing disabled users cannot auto-link.
+      const existing = await prisma.user.findUnique({ where: { email: user.email }, select: { disabledAt: true } });
+      return !existing?.disabledAt;
+    },
+
+    async jwt({ token, user, account, profile, trigger }) {
       if (user?.id) {
+        if (trigger !== "signIn" && trigger !== "signUp") return null;
+        const verifiedEmail = verifiedGoogleEmail(account, profile, user.email);
+        if (!verifiedEmail) return null;
         token.uid = user.id;
         token.tokenIssuedAt = new Date().toISOString();
+        token.verifiedGoogleEmail = verifiedEmail;
       }
+      // Client session updates cannot add this claim to an older JWT.
+      if (!hasVerifiedSessionClaims(token)) return null;
       // Roles come from the allowlist at sign-in. Re-check on session refresh so
       // adding an email to COACH_EMAILS takes effect without a full re-login.
       if (user?.id || trigger === "update") {
@@ -96,6 +129,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (token.uid) session.user.id = token.uid as string;
       if (token.tokenIssuedAt) {
         session.user.tokenIssuedAt = token.tokenIssuedAt as string;
+      }
+      if (typeof token.verifiedGoogleEmail === "string") {
+        session.user.verifiedGoogleEmail = token.verifiedGoogleEmail;
       }
       // The authoritative role is read fresh from the DB per request by
       // requireUser(); this copy is only for cheap UI decisions.

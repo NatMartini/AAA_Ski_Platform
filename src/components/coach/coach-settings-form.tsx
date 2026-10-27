@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { clientFetch } from "@/lib/client-fetch";
 import { useRouter } from "@/i18n/navigation";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,13 +16,15 @@ import {
 import { QrUploadField } from "./qr-upload-field";
 import { ImageUploadField } from "./image-upload-field";
 import { SkillPicker } from "@/components/booking/skill-picker";
-import { LEVELS } from "@/lib/skills";
+import { expandTeachableSkillKeys, LEVELS } from "@/lib/skills";
 import { LESSON_TYPES } from "@/lib/lesson-types";
 import type { RateRow } from "@/lib/rates";
 import { cn } from "@/lib/utils";
-import { formatMoneyShort, handoverCreditCents } from "@/lib/pricing";
+import { formatMoneyShort, quote } from "@/lib/pricing";
 import type { Locale } from "@/i18n/routing";
 import { Check, Languages, Loader2, TriangleAlert } from "lucide-react";
+import { CustomSkillsEditor } from "./custom-skills-editor";
+import type { CustomSkill } from "@/lib/custom-skills";
 
 export type CoachSettings = {
   displayName: string;
@@ -31,6 +34,7 @@ export type CoachSettings = {
   csiaLevel: number | null;
   csiaParkLevel: number | null;
   teachableSkills: string[];
+  customSkills?: CustomSkill[];
   teachableLevels: string[];
   /** Offered lesson types only; a type with no row is not offered. */
   rates: RateRow[];
@@ -77,7 +81,7 @@ const COPY = {
     levelN: "{n} 级",
     teachLevels: "可教水平",
     teachSkills: "可教动作",
-    teachSkillsHelp: "按 CSIA 等级排列。留空表示全部动作都可以教。",
+    teachSkillsHelp: "请选择你实际可以教的动作，学员会按这些动作匹配教练。留空表示尚未设置这些动作；自定义动作在下方添加。",
     alpine: "双板技术",
     park: "公园",
     tier: "L{n}",
@@ -90,11 +94,11 @@ const COPY = {
     rateRequired: "请填写原价",
     earlyAboveRegular: "早鸟价不能高于原价",
     handoverHelp:
-      "每单自动减去开头 10 分钟的课时费(按该课的小时价计算),不随时长增加。整点后 10 分开始上课、到整点结束。",
+      "每单按该课小时价计算 10 分钟交接优惠,向上取整至 $5 的倍数,最低 $10,且不超过课费。每单减一次,不随时长增加。整点后 10 分开始上课、到整点结束。",
     extraPerson: "每增加一人每小时加价(加元)",
     extraPersonHelp: "多人课时,每多一名学员每小时加收此金额。",
     maxGroupSize: "最多人数",
-    maxGroupHelp: "逐人免责流程完成前暂只接受 1 人;此设置会保留供后续启用。",
+    maxGroupHelp: "支持 1 对 1、1 对 2、1 对 3；多人课需每位学员完成独立签署后再统一付款。",
     minHours: "最少小时数",
     maxHours: "最多小时数",
     leadTime: "最少提前预定小时数",
@@ -103,6 +107,7 @@ const COPY = {
     emtEmail: "收款邮箱",
     emtName: "收款人姓名",
     wechatPay: "启用微信支付",
+    wechatHelp: "可上传收款二维码，或在联系方式填写微信号，让学员联系你付款。学员点击已付款后，由你确认到账。",
     alipay: "启用支付宝",
     qrHelp: "上传收款二维码。仅已登录并有订单的学员可见。",
     contact: "联系方式",
@@ -125,6 +130,7 @@ const COPY = {
     publishHelp: "关闭后学员看不到你,也无法预定。",
     save: "保存设置",
     saved: "已保存",
+    saveFailed: "保存失败,请检查设置后重试。",
     example: "例:2 小时 = ",
     gaps: "以下项目完成后才能接单:",
   },
@@ -153,7 +159,7 @@ const COPY = {
     teachLevels: "Abilities you teach",
     teachSkills: "Moves you teach",
     teachSkillsHelp:
-      "Listed in CSIA syllabus order. Leaving this empty means you teach everything.",
+      "Select the moves you can teach. Students are matched using these choices. An empty list means no catalogue moves are configured; add custom moves below.",
     alpine: "Alpine",
     park: "Park",
     tier: "L{n}",
@@ -166,12 +172,12 @@ const COPY = {
     rateRequired: "Enter a regular price",
     earlyAboveRegular: "The early-bird price cannot be above the regular price",
     handoverHelp:
-      "Each booking automatically has the first ten minutes' fee taken off, at that lesson's hourly rate — once per booking, not per hour. Lessons run from ten past to the hour.",
+      "The ten-minute handover credit is rounded up to the next $5, with a $10 minimum and capped at the lesson price. It is deducted once per booking, regardless of duration. Lessons run from ten past to the hour.",
     extraPerson: "Extra per additional student per hour (CAD)",
     extraPersonHelp: "For group lessons, each extra student adds this per hour.",
     maxGroupSize: "Maximum group size",
     maxGroupHelp:
-      "Bookings are limited to one participant until per-person waivers are ready; this setting is kept for later use.",
+      "Supports 1-on-1, 1-on-2 and 1-on-3. Every student signs independently before the organizer pays.",
     minHours: "Minimum hours",
     maxHours: "Maximum hours",
     leadTime: "Minimum notice (hours)",
@@ -180,6 +186,7 @@ const COPY = {
     emtEmail: "e-Transfer address",
     emtName: "Recipient name",
     wechatPay: "Accept WeChat Pay",
+    wechatHelp: "Upload a payment QR code or add your WeChat ID in Contact. Students can mark their payment as sent; you confirm that it arrived.",
     alipay: "Accept Alipay",
     qrHelp: "Upload your payment QR code. Only signed-in students with a booking can see it.",
     contact: "Contact",
@@ -202,6 +209,7 @@ const COPY = {
     publishHelp: "While off, students cannot see or book you.",
     save: "Save settings",
     saved: "Saved",
+    saveFailed: "Could not save settings. Please check them and try again.",
     example: "e.g. 2 hours = ",
     gaps: "Complete these before you can take bookings:",
   },
@@ -218,7 +226,7 @@ export function CoachSettingsForm({
 }) {
   const router = useRouter();
   const c = COPY[locale];
-  const [form, setForm] = useState(initial);
+  const [form, setForm] = useState(() => ({ ...initial, teachableSkills: expandTeachableSkillKeys(initial.teachableSkills) }));
   // Prices are edited as text so a half-typed "6" is not rewritten to "6.00"
   // under the cursor; they become cents only when saved.
   const [rateDrafts, setRateDrafts] = useState(() => draftsFrom(initial.rates));
@@ -246,7 +254,7 @@ export function CoachSettingsForm({
     setTranslating(target);
     setTranslateError(null);
 
-    const res = await fetch("/api/coach/translate", {
+    const res = await clientFetch("/api/coach/translate", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ text: source, target }),
@@ -292,16 +300,18 @@ export function CoachSettingsForm({
 
     setStatus("saving");
     setErrors({});
-    const res = await fetch("/api/coach/settings", {
+    const res = await clientFetch("/api/coach/settings", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
+        expectedCoachId: coachId,
         displayName: form.displayName,
         bioZh: form.bioZh,
         bioEn: form.bioEn,
         csiaLevel: form.csiaLevel,
         csiaParkLevel: form.csiaParkLevel,
         teachableSkills: form.teachableSkills,
+        customSkills: form.customSkills ?? [],
         teachableLevels: form.teachableLevels,
         rates,
         extraPersonCents: form.extraPersonCents,
@@ -326,9 +336,11 @@ export function CoachSettingsForm({
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as {
         fields?: Record<string, string>;
+        error?: string;
       };
-      setErrors(body.fields ?? { _: "Save failed" });
+      setErrors(body.error === "session-changed" ? { _: locale === "zh" ? "登录账号已变化，请检查当前教练后重新填写设置。" : "Your signed-in account changed. Check the current coach before editing settings again." } : body.fields ?? { _: c.saveFailed });
       setStatus("idle");
+      if (body.error === "session-changed" || res.status === 401 || res.status === 403) router.refresh();
       return;
     }
     setStatus("saved");
@@ -338,8 +350,9 @@ export function CoachSettingsForm({
   // The worked example uses the first priced lesson type's regular rate.
   const exampleRate =
     toCents(rateDrafts.find((d) => d.enabled && toCents(d.regular))?.regular ?? "") ?? 0;
-  const exampleCredit = handoverCreditCents(exampleRate);
-  const exampleTotal = exampleRate * 2 - exampleCredit;
+  const exampleQuote = quote({ hours: 2, hourlyRateCents: exampleRate });
+  const exampleCredit = exampleQuote.handoverDiscountCents;
+  const exampleTotal = exampleQuote.totalCents;
 
   return (
     <div className="space-y-5">
@@ -357,6 +370,7 @@ export function CoachSettingsForm({
         <div className="space-y-1.5">
           <Label>{c.photo}</Label>
           <ImageUploadField
+            coachId={coachId}
             purpose="coach-avatar"
             previewSrc={`/api/files/avatar/${coachId}`}
             previewAlt={form.displayName}
@@ -368,6 +382,7 @@ export function CoachSettingsForm({
               replace: c.photoReplace,
               failed: c.photoFailed,
               tooLarge: c.photoTooLarge,
+              sessionChanged: locale === "zh" ? "登录账号已变化，请确认当前教练后重新上传。" : "Your signed-in account changed. Check the current coach before uploading again.",
             }}
             onUploaded={(key) => set("avatarKey", key)}
           />
@@ -467,6 +482,8 @@ export function CoachSettingsForm({
             labels={{ alpine: c.alpine, park: c.park, tier: c.tier }}
           />
         </div>
+        <CustomSkillsEditor locale={locale} value={form.customSkills ?? []} onChange={(next) => set("customSkills", next)} disabled={status === "saving"} />
+        <FieldError>{errors.customSkills ?? Object.entries(errors).find(([key]) => key.startsWith("customSkills."))?.[1]}</FieldError>
       </Card>
 
       <Card className="space-y-4">
@@ -600,7 +617,8 @@ export function CoachSettingsForm({
           onChange={(v) => set("wechatPayEnabled", v)}
         />
         {form.wechatPayEnabled && (
-          <div className="pl-6">
+            <div className="pl-6">
+              <Hint>{c.wechatHelp}</Hint>
             <QrUploadField
               kind="wechat"
               coachId={coachId}

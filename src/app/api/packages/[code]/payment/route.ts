@@ -1,3 +1,4 @@
+import { readJsonBodyOrResponse } from "@/lib/request-body";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/require-user";
 import { rateLimitOrRespond } from "@/lib/rate-limit";
@@ -35,9 +36,9 @@ export async function POST(
     return NextResponse.json({ error: "invalid-state" }, { status: 409 });
   }
 
-  const parsed = packagePaymentSchema.safeParse(
-    await req.json().catch(() => null),
-  );
+  const jsonBody = await readJsonBodyOrResponse(req);
+  if (!jsonBody.ok) return jsonBody.response;
+  const parsed = packagePaymentSchema.safeParse(jsonBody.data);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "validation", fields: fieldErrors(parsed.error) },
@@ -75,7 +76,7 @@ export async function POST(
     if (proofKey !== null && !(await objectExists(proofKey))) {
       return { kind: "proof-not-found" } as const;
     }
-    await tx.lessonPackage.update({
+    const submitted = await tx.lessonPackage.update({
       where: { id: pkg.id },
       data: {
         status: "PENDING_PAYMENT_REVIEW",
@@ -85,10 +86,12 @@ export async function POST(
         paymentSubmittedAt: submittedAt,
         reviewNote: null,
       },
+      select: { updatedAt: true },
     });
     return {
       kind: "attached",
       previousProofKey: current.paymentProofKey,
+      updatedAt: submitted.updatedAt,
     } as const;
   });
   if (attached.kind === "invalid-state") {
@@ -104,5 +107,7 @@ export async function POST(
     );
   }
 
-  return NextResponse.json({ ok: true });
+  // A coach recording an already-received WeChat payment can review this exact
+  // submission next. A separate GET could inadvertently return a newer claim.
+  return NextResponse.json({ ok: true, updatedAt: attached.updatedAt });
 }

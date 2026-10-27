@@ -9,6 +9,7 @@ import {
 import { OCCUPYING_STATUSES } from "./booking/state";
 import { rulesFor } from "./coach";
 import { isEarlyBird } from "./rates";
+import { isSelfServeHoldExpired } from "./booking/hold";
 
 export type AvailableDay = DaySlots & {
   coachDayId: string;
@@ -62,11 +63,12 @@ export async function getAvailability(opts: {
       coachDayId: { in: days.map((d) => d.id) },
       status: { in: OCCUPYING_STATUSES },
     },
-    select: { coachDayId: true, startAt: true, endAt: true },
+    select: { coachDayId: true, startAt: true, endAt: true, status: true, holdExpiresAt: true },
   });
 
   const byDay = new Map<string, { startAt: Date; endAt: Date }[]>();
   for (const b of bookings) {
+    if (isSelfServeHoldExpired(b, now)) continue;
     const list = byDay.get(b.coachDayId) ?? [];
     list.push({ startAt: b.startAt, endAt: b.endAt });
     byDay.set(b.coachDayId, list);

@@ -7,8 +7,8 @@ import type { BookingStatus } from "@prisma/client";
  *
  * Two entry points:
  *   HOLD             — student booked it themselves; expires if they stall.
- *   AWAITING_WAIVER  — coach booked it for a student; no expiry, the coach owns
- *                      the slot and chases the signature.
+ *   AWAITING_WAIVER  — coach booked it; groups expire the day before class,
+ *                      while legacy single arrangements have no deadline.
  */
 
 /**
@@ -50,7 +50,7 @@ const TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
   // HOLD → CONFIRMED is a lesson-package booking: once the waiver is signed
   // there is nothing left to pay.
   HOLD: ["AWAITING_PAYMENT", "CONFIRMED", "EXPIRED", "CANCELLED"],
-  AWAITING_WAIVER: ["AWAITING_PAYMENT", "CANCELLED"],
+  AWAITING_WAIVER: ["AWAITING_PAYMENT", "EXPIRED", "CANCELLED"],
   AWAITING_PAYMENT: ["PENDING_PAYMENT_REVIEW", "CONFIRMED", "EXPIRED", "CANCELLED"],
   PENDING_PAYMENT_REVIEW: ["CONFIRMED", "PAYMENT_REJECTED", "CANCELLED"],
   // Rejected proof keeps the slot so the student can re-upload.

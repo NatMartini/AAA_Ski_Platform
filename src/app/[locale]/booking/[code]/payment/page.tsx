@@ -86,7 +86,9 @@ export default async function PaymentPage({
             profile.emtEnabled && profile.emtEmail
               ? { email: profile.emtEmail, name: profile.emtName }
               : null,
-          wechat: profile.wechatPayEnabled && profile.wechatPayQrKey ? true : false,
+          wechat: profile.wechatPayEnabled,
+          wechatQr: Boolean(profile.wechatPayQrKey),
+          wechatContact: profile.wechatId,
           alipay: profile.alipayEnabled && profile.alipayQrKey ? true : false,
         }}
       />

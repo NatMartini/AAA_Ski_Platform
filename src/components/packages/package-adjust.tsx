@@ -1,5 +1,7 @@
 "use client";
 
+import { clientFetch } from "@/lib/client-fetch";
+
 import { useState } from "react";
 import { useRouter } from "@/i18n/navigation";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
@@ -50,7 +52,7 @@ export function PackageAdjust({
   async function save() {
     setBusy(true);
     setError(null);
-    const res = await fetch(`/api/packages/${packageCode}/adjust`, {
+    const res = await clientFetch(`/api/packages/${packageCode}/adjust`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ hours: delta, reason: reason.trim() }),

@@ -8,6 +8,7 @@ import { DevSignIn } from "@/components/dev-sign-in";
 import { devBypassChoices, devBypassEnabled } from "@/lib/auth/dev-bypass";
 import { toLocale } from "@/i18n/routing";
 import { Snowflake, TriangleAlert } from "lucide-react";
+import { safeCallbackPath } from "@/lib/safe-callback-path";
 
 export default async function SignInPage({
   params,
@@ -17,6 +18,7 @@ export default async function SignInPage({
   setRequestLocale(locale);
 
   const { reason, callbackUrl } = await searchParams;
+  const returnPath = safeCallbackPath(callbackUrl, `/${toLocale(locale)}`);
   const user = await getUser();
   if (user) redirect({ href: "/", locale });
 
@@ -55,7 +57,7 @@ export default async function SignInPage({
         {googleEnabled && (
           <GoogleSignInButton
             label={t("google")}
-            callbackUrl={typeof callbackUrl === "string" ? callbackUrl : `/${locale}`}
+            callbackUrl={returnPath}
           />
         )}
 
@@ -65,9 +67,7 @@ export default async function SignInPage({
           <DevSignIn
             locale={toLocale(locale)}
             accounts={await devBypassChoices()}
-            callbackUrl={
-              typeof callbackUrl === "string" ? callbackUrl : `/${locale}`
-            }
+            callbackUrl={returnPath}
           />
         ) : (
           !googleEnabled && (

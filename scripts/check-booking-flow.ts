@@ -119,7 +119,8 @@ async function setup() {
     await prisma.coachProfile.create({
       data: {
         userId,
-        displayName: name,
+          displayName: name,
+          teachableSkills: ["carving", "short_turn"],
         extraPersonCents: 2000,
         minHours: 2,
         maxHours: 8,
@@ -200,9 +201,9 @@ async function main() {
     ? await prisma.booking.findUnique({ where: { code: first.code } })
     : null;
   check(
-    "a ski lesson booked in January is $70x2 less ten minutes' fee ($11.67) = $128.33",
-    priced?.totalCents === 12833 &&
-      priced?.handoverDiscountCents === 1167 &&
+    "a ski lesson booked in January is $70x2 less the rounded handover credit ($15) = $125",
+    priced?.totalCents === 12500 &&
+      priced?.handoverDiscountCents === 1500 &&
       priced?.subtotalCents === 14000 &&
       priced?.lessonType === "riding" &&
       priced?.earlyBird === false,
@@ -275,7 +276,7 @@ async function main() {
   });
   check("an out-of-season date is refused", !offSeason.ok && offSeason.reason === "off-season");
 
-  console.log("\ngroup lesson safety gate");
+  console.log("\ngroup roster validation");
   const group = await createBooking({
     coachId: COACH,
     dateKey: DAY,
@@ -293,7 +294,7 @@ async function main() {
     now,
   });
   check(
-    "multi-person booking is refused until every attendee can carry a waiver",
+    "a multi-person booking without the required roster is refused",
     !group.ok && group.reason === "group-booking-unavailable",
   );
 
@@ -566,13 +567,13 @@ async function main() {
     });
     check(
       "once the deposit clears the booking is confirmed with a balance owing",
-      afterDeposit.status === "CONFIRMED" && balanceCents(afterDeposit) === 5833,
+      afterDeposit.status === "CONFIRMED" && balanceCents(afterDeposit) === 5500,
       `owing=${balanceCents(afterDeposit)}`,
     );
     check(
       "the next payment asked for is the balance, not the deposit again",
       stageOf(afterDeposit) === "BALANCE" &&
-        amountDueCents(afterDeposit) === 5833,
+        amountDueCents(afterDeposit) === 5500,
     );
 
     // What the balance route does when the coach records the rest.
@@ -649,11 +650,11 @@ async function main() {
     ? await prisma.booking.findUnique({ where: { code: early.code } })
     : null;
   check(
-    "a park lesson booked before 1 December is $80x2 less ten minutes' fee ($13.33) = $146.67",
+    "a park lesson booked before 1 December is $80x2 less the rounded handover credit ($15) = $145",
     earlyRow?.lessonType === "park" &&
       earlyRow.earlyBird &&
       earlyRow.hourlyRateCents === 8000 &&
-      earlyRow.totalCents === 14667,
+      earlyRow.totalCents === 14500,
     `rate=${earlyRow?.hourlyRateCents} total=${earlyRow?.totalCents}`,
   );
   if (early.ok) await prisma.booking.delete({ where: { code: early.code } });

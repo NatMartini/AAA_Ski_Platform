@@ -1,5 +1,7 @@
 "use client";
 
+import { clientFetch } from "@/lib/client-fetch";
+
 import { useRef, useState, type ReactNode } from "react";
 import { useRouter } from "@/i18n/navigation";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -14,6 +16,8 @@ import { Loader2, TriangleAlert, Upload } from "lucide-react";
 type Methods = {
   emt: { email: string; name: string | null } | null;
   wechat: boolean;
+  wechatQr?: boolean;
+  wechatContact?: string | null;
   alipay: boolean;
 };
 
@@ -29,19 +33,22 @@ const COPY = {
     scan: "请扫码支付",
     memo: "转账备注请填写编号",
     upload: "上传付款截图",
-    redact: "上传前请遮挡账号、余额等无关信息。该截图仅你和教练可见。",
+    redact: "上传前请遮挡账号、余额等无关信息。该截图仅你和平台教练可见。",
     reference: "转账参考号 Reference(必填)",
     referenceHint: "e-Transfer 的参考号,或支付宝的交易号。教练用它核对收款。",
     needReference: "请填写转账参考号。",
     wechatTitle: "微信付款后通知教练",
-    wechatBody: "用微信扫码付款后,点下面的按钮就行,不用上传截图。教练在微信里确认收到后,订单即完成。",
+    wechatBody: "微信付款后，点击下方按钮即可提交，无需截图或交易号。订单会显示「待教练确认收款」，教练核对到账后才确认预约。",
+    wechatContact: "请联系教练通过微信付款。微信号：",
+    contactCoach: "请联系教练获取微信收款方式，付款后再点击下方按钮。",
+    method: "选择付款方式",
     wechatPaid: "我已用微信付款",
     choose: "选择图片",
     replace: "重新选择",
     submit: "提交付款凭证",
     submitting: "提交中…",
     rejected: "教练未通过本次付款,原因:",
-    reupload: "请重新上传付款截图。",
+    reupload: "请核对实际付款后重新提交；微信付款无需截图。",
     needProof: "请先上传付款截图。",
     needMethod: "请选择付款方式。",
     uploadFailed: "上传失败,请换一张图片重试。",
@@ -61,21 +68,24 @@ const COPY = {
     memo: "Put this reference in the transfer memo",
     upload: "Upload payment screenshot",
     redact:
-      "Cover your account number, balance and anything else you would rather not share. Only you and your coach can see this.",
+      "Cover your account number, balance and anything else you would rather not share. Only you and the platform coaches can see this.",
     reference: "Transfer reference (required)",
     referenceHint:
       "The e-Transfer reference number, or the Alipay transaction number. Your coach matches it against what arrived.",
     needReference: "Please enter the transfer reference.",
     wechatTitle: "Tell your coach once you have paid",
     wechatBody:
-      "After paying by WeChat, just press the button below — no screenshot needed. Your coach confirms it once it arrives in WeChat.",
+      "After paying by WeChat, press the button below. No screenshot or transaction number is needed. Your booking will await the coach's receipt check before it is confirmed.",
+    wechatContact: "Contact your coach to pay by WeChat. WeChat ID: ",
+    contactCoach: "Contact your coach for WeChat payment details, then press the button below after paying.",
+    method: "Choose payment method",
     wechatPaid: "I have paid by WeChat",
     choose: "Choose image",
     replace: "Choose another",
     submit: "Submit payment proof",
     submitting: "Submitting…",
     rejected: "Your coach did not accept this payment. Reason:",
-    reupload: "Please upload the screenshot again.",
+    reupload: "Check your payment and submit again. WeChat does not require a screenshot.",
     needProof: "Please upload the screenshot first.",
     needMethod: "Please choose how you paid.",
     uploadFailed: "Upload failed. Please try a different image.",
@@ -146,7 +156,7 @@ export function PaymentPanel({
     body.set(paths.upload.field, target.code);
     if (proofKey) body.set("replacedKey", proofKey);
 
-    const res = await fetch("/api/upload", { method: "POST", body });
+    const res = await clientFetch("/api/upload", { method: "POST", body });
     setUploading(false);
 
     if (!res.ok) {
@@ -175,7 +185,7 @@ export function PaymentPanel({
     setBusy(true);
     setError(null);
 
-    const res = await fetch(paths.submit, {
+    const res = await clientFetch(paths.submit, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(
@@ -254,9 +264,10 @@ export function PaymentPanel({
       </Card>
 
       <Card className="space-y-4">
+        <CardTitle>{c.method}</CardTitle>
         <div
           role="group"
-          aria-label={c.upload}
+          aria-label={c.method}
           className="flex flex-wrap gap-2"
         >
           {available.map((m) => (
@@ -296,7 +307,7 @@ export function PaymentPanel({
           </dl>
         )}
 
-        {(method === "WECHAT" || method === "ALIPAY") && (
+        {(method === "ALIPAY" || (method === "WECHAT" && methods.wechatQr !== false)) && (
           <div className="animate-fade-in space-y-2">
             <p className="text-sm font-medium">{c.scan}</p>
             {/* eslint-disable-next-line @next/next/no-img-element -- served
@@ -307,6 +318,13 @@ export function PaymentPanel({
               className="size-52 rounded-2xl border border-border bg-white object-contain p-3 shadow-[var(--shadow-sm)]"
             />
           </div>
+        )}
+        {method === "WECHAT" && methods.wechatQr === false && (
+          <p className="rounded-xl border border-border bg-surface-2 p-4 text-sm leading-relaxed text-ink-2">
+            {methods.wechatContact
+              ? <>{c.wechatContact}<strong className="select-all text-ink">{methods.wechatContact}</strong></>
+              : c.contactCoach}
+          </p>
         )}
       </Card>
 

@@ -1,0 +1,857 @@
+{
+  "version": 2,
+  "deploymentId": "freeski-platform-8100",
+  "jobId": "0123456789abcdef0123456789abcdef",
+  "scorecard": {
+    "schema_version": "freeski_scorecard.v1",
+    "experimental": true,
+    "action": "demonstration_parallel",
+    "level": "level2",
+    "current_level": null,
+    "calibration": {
+      "scoring_version": "freeski-scorecard-7",
+      "calibration_id": "scal-ee8c624424e66258",
+      "reference_generation": "pose-v6-a4e5105e612d5217",
+      "reference_clip_count": 38,
+      "matched_reference_count": 1,
+      "reference_target": "level2"
+    },
+    "quality": "approximate",
+    "quality_reasons": [
+      "few_turns",
+      "excluded_turns"
+    ],
+    "overall": {
+      "score": 82.0,
+      "aggregation": "middle_turns_mean",
+      "turns_used": 3,
+      "turns_total": 7,
+      "turns_excluded": 4
+    },
+    "metrics": [
+      {
+        "key": "parallel_skis",
+        "label_zh": "双板平行",
+        "label_en": "Parallel skis",
+        "measurement": "direct",
+        "presentation": "bar",
+        "score": 81.7,
+        "band": "within",
+        "position": null,
+        "target": null,
+        "weight": 0.2133,
+        "value": 71.4518,
+        "unit": "percent",
+        "reference": {
+          "p25": 66.3523,
+          "median": 70.6318,
+          "p75": 77.7221
+        }
+      },
+      {
+        "key": "turn_completion_direction",
+        "label_zh": "收弯方向",
+        "label_en": "Turn completion",
+        "measurement": "direct",
+        "presentation": "bar",
+        "score": 72.6,
+        "band": "within",
+        "position": null,
+        "target": null,
+        "weight": 0.1867,
+        "value": 10.6553,
+        "unit": "percent",
+        "reference": {
+          "p25": 10.4371,
+          "median": 24.5065,
+          "p75": 51.5998
+        }
+      },
+      {
+        "key": "turn_closure",
+        "label_zh": "收弯完成度",
+        "label_en": "Turn closure",
+        "measurement": "direct",
+        "presentation": "bar",
+        "score": 63.5,
+        "band": "within",
+        "position": null,
+        "target": null,
+        "weight": 0.16,
+        "value": 13.7621,
+        "unit": "percent",
+        "reference": {
+          "p25": 13.5179,
+          "median": 24.7407,
+          "p75": 39.5578
+        }
+      },
+      {
+        "key": "rhythm_continuity",
+        "label_zh": "节奏连贯",
+        "label_en": "Rhythm continuity",
+        "measurement": "direct",
+        "presentation": "bar",
+        "score": 92.6,
+        "band": "above",
+        "position": null,
+        "target": null,
+        "weight": 0.1333,
+        "value": 61.4738,
+        "unit": "percent",
+        "reference": {
+          "p25": 19.6028,
+          "median": 28.2405,
+          "p75": 42.5129
+        }
+      },
+      {
+        "key": "upper_body_quiet_index",
+        "label_zh": "上身稳定",
+        "label_en": "Quiet upper body",
+        "measurement": "direct",
+        "presentation": "bar",
+        "score": 100.0,
+        "band": "above",
+        "position": null,
+        "target": null,
+        "weight": 0.1333,
+        "value": 54.1796,
+        "unit": "percent",
+        "reference": {
+          "p25": 6.9121,
+          "median": 19.8557,
+          "p75": 37.693
+        }
+      },
+      {
+        "key": "rotation_rate",
+        "label_zh": "旋转速率",
+        "label_en": "Rotation rate",
+        "measurement": "direct",
+        "presentation": "target",
+        "score": 80.3,
+        "band": "above",
+        "position": 72.4,
+        "target": {
+          "low": 43.2,
+          "high": 69.3
+        },
+        "weight": 0.1067,
+        "value": 46.8721,
+        "unit": "deg_per_s",
+        "reference": {
+          "p25": 23.3367,
+          "median": 28.596,
+          "p75": 44.0991
+        }
+      },
+      {
+        "key": "turn_tempo",
+        "label_zh": "换弯节奏",
+        "label_en": "Turn tempo",
+        "measurement": "direct",
+        "presentation": "target",
+        "score": 100.0,
+        "band": "within",
+        "position": 41.1,
+        "target": {
+          "low": 35.5,
+          "high": 64.8
+        },
+        "weight": 0.0667,
+        "value": 52.9412,
+        "unit": "turns_per_min",
+        "reference": {
+          "p25": 38.2979,
+          "median": 75.0,
+          "p75": 112.5
+        }
+      },
+      {
+        "key": "edge_angle",
+        "label_zh": "立刃角度（估算）",
+        "label_en": "Edge angle (estimate)",
+        "measurement": "estimated",
+        "presentation": "bar",
+        "score": 80.1,
+        "band": "within",
+        "position": null,
+        "target": null,
+        "weight": 0.0,
+        "value": null,
+        "unit": null,
+        "reference": null
+      },
+      {
+        "key": "edge_change_sync",
+        "label_zh": "换刃同步（估算）",
+        "label_en": "Edge change timing (estimate)",
+        "measurement": "estimated",
+        "presentation": "bar",
+        "score": 100.0,
+        "band": "within",
+        "position": null,
+        "target": null,
+        "weight": 0.0,
+        "value": null,
+        "unit": null,
+        "reference": null
+      }
+    ],
+    "turns": [
+      {
+        "turn_id": "turn_0",
+        "start_ms": 800,
+        "end_ms": 1900,
+        "direction": "right",
+        "role": "middle",
+        "score": null,
+        "used_in_overall": false,
+        "evidence": {
+          "status": "insufficient",
+          "reasons": [
+            "subject_small"
+          ],
+          "reacquired": false
+        },
+        "metrics": []
+      },
+      {
+        "turn_id": "turn_1",
+        "start_ms": 1900,
+        "end_ms": 3067,
+        "direction": "left",
+        "role": "middle",
+        "score": null,
+        "used_in_overall": false,
+        "evidence": {
+          "status": "insufficient",
+          "reasons": [
+            "subject_small"
+          ],
+          "reacquired": false
+        },
+        "metrics": []
+      },
+      {
+        "turn_id": "turn_2",
+        "start_ms": 3067,
+        "end_ms": 4367,
+        "direction": "right",
+        "role": "middle",
+        "score": 86.6,
+        "used_in_overall": true,
+        "evidence": {
+          "status": "ok",
+          "reasons": [],
+          "reacquired": false
+        },
+        "metrics": [
+          {
+            "key": "parallel_skis",
+            "score": 100.0,
+            "band": "within"
+          },
+          {
+            "key": "turn_completion_direction",
+            "score": 65.0,
+            "band": "within"
+          },
+          {
+            "key": "turn_closure",
+            "score": 57.0,
+            "band": "within"
+          },
+          {
+            "key": "rhythm_continuity",
+            "score": 100.0,
+            "band": "above"
+          },
+          {
+            "key": "upper_body_quiet_index",
+            "score": 100.0,
+            "band": "above"
+          },
+          {
+            "key": "rotation_rate",
+            "score": 100.0,
+            "band": "within"
+          },
+          {
+            "key": "turn_tempo",
+            "score": 100.0,
+            "band": "within"
+          },
+          {
+            "key": "edge_angle",
+            "score": 100.0,
+            "band": "within"
+          },
+          {
+            "key": "edge_change_sync",
+            "score": 100.0,
+            "band": "within"
+          }
+        ]
+      },
+      {
+        "turn_id": "turn_3",
+        "start_ms": 4367,
+        "end_ms": 5467,
+        "direction": "left",
+        "role": "middle",
+        "score": 67.3,
+        "used_in_overall": true,
+        "evidence": {
+          "status": "ok",
+          "reasons": [],
+          "reacquired": false
+        },
+        "metrics": [
+          {
+            "key": "parallel_skis",
+            "score": 45.1,
+            "band": "below"
+          },
+          {
+            "key": "turn_completion_direction",
+            "score": 52.9,
+            "band": "below"
+          },
+          {
+            "key": "turn_closure",
+            "score": 33.4,
+            "band": "below"
+          },
+          {
+            "key": "rhythm_continuity",
+            "score": 100.0,
+            "band": "above"
+          },
+          {
+            "key": "upper_body_quiet_index",
+            "score": 100.0,
+            "band": "above"
+          },
+          {
+            "key": "rotation_rate",
+            "score": 85.7,
+            "band": "above"
+          },
+          {
+            "key": "turn_tempo",
+            "score": 100.0,
+            "band": "within"
+          },
+          {
+            "key": "edge_angle",
+            "score": 100.0,
+            "band": "within"
+          },
+          {
+            "key": "edge_change_sync",
+            "score": 100.0,
+            "band": "within"
+          }
+        ]
+      },
+      {
+        "turn_id": "turn_4",
+        "start_ms": 5467,
+        "end_ms": 6133,
+        "direction": "right",
+        "role": "middle",
+        "score": 92.2,
+        "used_in_overall": true,
+        "evidence": {
+          "status": "ok",
+          "reasons": [],
+          "reacquired": false
+        },
+        "metrics": [
+          {
+            "key": "parallel_skis",
+            "score": 100.0,
+            "band": "above"
+          },
+          {
+            "key": "turn_completion_direction",
+            "score": 100.0,
+            "band": "above"
+          },
+          {
+            "key": "turn_closure",
+            "score": 100.0,
+            "band": "above"
+          },
+          {
+            "key": "rhythm_continuity",
+            "score": 77.7,
+            "band": "within"
+          },
+          {
+            "key": "upper_body_quiet_index",
+            "score": 100.0,
+            "band": "above"
+          },
+          {
+            "key": "rotation_rate",
+            "score": 55.1,
+            "band": "above"
+          },
+          {
+            "key": "turn_tempo",
+            "score": 100.0,
+            "band": "within"
+          },
+          {
+            "key": "edge_angle",
+            "score": 40.2,
+            "band": "within"
+          },
+          {
+            "key": "edge_change_sync",
+            "score": 100.0,
+            "band": "above"
+          }
+        ]
+      },
+      {
+        "turn_id": "turn_5",
+        "start_ms": 6133,
+        "end_ms": 7167,
+        "direction": "left",
+        "role": "middle",
+        "score": null,
+        "used_in_overall": false,
+        "evidence": {
+          "status": "insufficient",
+          "reasons": [
+            "out_of_frame"
+          ],
+          "reacquired": false
+        },
+        "metrics": []
+      },
+      {
+        "turn_id": "turn_6",
+        "start_ms": 7167,
+        "end_ms": 7900,
+        "direction": "right",
+        "role": "middle",
+        "score": null,
+        "used_in_overall": false,
+        "evidence": {
+          "status": "insufficient",
+          "reasons": [
+            "out_of_frame"
+          ],
+          "reacquired": false
+        },
+        "metrics": []
+      }
+    ],
+    "unavailable_metrics": []
+  },
+  "teachingStatus": "ready",
+  "teaching": {
+    "schema_version": "freeski_teaching.v1",
+    "experimental": true,
+    "mode": "reference_comparison",
+    "facts": [
+      {
+        "fact_id": "f_parallel_skis",
+        "metric_key": "parallel_skis",
+        "turn_id": null,
+        "label_zh": "双板平行",
+        "label_en": "Parallel skis",
+        "phase": null,
+        "time_sec": null,
+        "user_score": 81.7,
+        "reference_band": "within",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_turn_completion_direction",
+        "metric_key": "turn_completion_direction",
+        "turn_id": null,
+        "label_zh": "收弯方向",
+        "label_en": "Turn completion",
+        "phase": null,
+        "time_sec": null,
+        "user_score": 72.6,
+        "reference_band": "within",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_turn_closure",
+        "metric_key": "turn_closure",
+        "turn_id": null,
+        "label_zh": "收弯完成度",
+        "label_en": "Turn closure",
+        "phase": null,
+        "time_sec": null,
+        "user_score": 63.5,
+        "reference_band": "within",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_rhythm_continuity",
+        "metric_key": "rhythm_continuity",
+        "turn_id": null,
+        "label_zh": "节奏连贯",
+        "label_en": "Rhythm continuity",
+        "phase": null,
+        "time_sec": null,
+        "user_score": 92.6,
+        "reference_band": "above",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_upper_body_quiet_index",
+        "metric_key": "upper_body_quiet_index",
+        "turn_id": null,
+        "label_zh": "上身稳定",
+        "label_en": "Quiet upper body",
+        "phase": null,
+        "time_sec": null,
+        "user_score": 100.0,
+        "reference_band": "above",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_rotation_rate",
+        "metric_key": "rotation_rate",
+        "turn_id": null,
+        "label_zh": "旋转速率",
+        "label_en": "Rotation rate",
+        "phase": null,
+        "time_sec": null,
+        "user_score": 80.3,
+        "reference_band": "above",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_turn_tempo",
+        "metric_key": "turn_tempo",
+        "turn_id": null,
+        "label_zh": "换弯节奏",
+        "label_en": "Turn tempo",
+        "phase": null,
+        "time_sec": null,
+        "user_score": 100.0,
+        "reference_band": "within",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_edge_angle",
+        "metric_key": "edge_angle",
+        "turn_id": null,
+        "label_zh": "立刃角度（估算）",
+        "label_en": "Edge angle (estimate)",
+        "phase": null,
+        "time_sec": null,
+        "user_score": 80.1,
+        "reference_band": "within",
+        "measurement": "estimated"
+      },
+      {
+        "fact_id": "f_edge_change_sync",
+        "metric_key": "edge_change_sync",
+        "turn_id": null,
+        "label_zh": "换刃同步（估算）",
+        "label_en": "Edge change timing (estimate)",
+        "phase": null,
+        "time_sec": null,
+        "user_score": 100.0,
+        "reference_band": "within",
+        "measurement": "estimated"
+      },
+      {
+        "fact_id": "f_parallel_skis_turn_3",
+        "metric_key": "parallel_skis",
+        "turn_id": "turn_3",
+        "phase": null,
+        "label_zh": "双板平行",
+        "label_en": "Parallel skis",
+        "time_sec": 4.92,
+        "user_score": 45.1,
+        "reference_band": "below",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_parallel_skis_turn_4",
+        "metric_key": "parallel_skis",
+        "turn_id": "turn_4",
+        "phase": null,
+        "label_zh": "双板平行",
+        "label_en": "Parallel skis",
+        "time_sec": 5.8,
+        "user_score": 100.0,
+        "reference_band": "above",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_turn_completion_direction_turn_3",
+        "metric_key": "turn_completion_direction",
+        "turn_id": "turn_3",
+        "phase": null,
+        "label_zh": "收弯方向",
+        "label_en": "Turn completion",
+        "time_sec": 4.92,
+        "user_score": 52.9,
+        "reference_band": "below",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_turn_completion_direction_turn_4",
+        "metric_key": "turn_completion_direction",
+        "turn_id": "turn_4",
+        "phase": null,
+        "label_zh": "收弯方向",
+        "label_en": "Turn completion",
+        "time_sec": 5.8,
+        "user_score": 100.0,
+        "reference_band": "above",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_turn_closure_turn_3",
+        "metric_key": "turn_closure",
+        "turn_id": "turn_3",
+        "phase": null,
+        "label_zh": "收弯完成度",
+        "label_en": "Turn closure",
+        "time_sec": 4.92,
+        "user_score": 33.4,
+        "reference_band": "below",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_turn_closure_turn_4",
+        "metric_key": "turn_closure",
+        "turn_id": "turn_4",
+        "phase": null,
+        "label_zh": "收弯完成度",
+        "label_en": "Turn closure",
+        "time_sec": 5.8,
+        "user_score": 100.0,
+        "reference_band": "above",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_rhythm_continuity_turn_4",
+        "metric_key": "rhythm_continuity",
+        "turn_id": "turn_4",
+        "phase": null,
+        "label_zh": "节奏连贯",
+        "label_en": "Rhythm continuity",
+        "time_sec": 5.8,
+        "user_score": 77.7,
+        "reference_band": "within",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_rhythm_continuity_turn_3",
+        "metric_key": "rhythm_continuity",
+        "turn_id": "turn_3",
+        "phase": null,
+        "label_zh": "节奏连贯",
+        "label_en": "Rhythm continuity",
+        "time_sec": 4.92,
+        "user_score": 100.0,
+        "reference_band": "above",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_upper_body_quiet_index_turn_2",
+        "metric_key": "upper_body_quiet_index",
+        "turn_id": "turn_2",
+        "phase": null,
+        "label_zh": "上身稳定",
+        "label_en": "Quiet upper body",
+        "time_sec": 3.72,
+        "user_score": 100.0,
+        "reference_band": "above",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_upper_body_quiet_index_turn_4",
+        "metric_key": "upper_body_quiet_index",
+        "turn_id": "turn_4",
+        "phase": null,
+        "label_zh": "上身稳定",
+        "label_en": "Quiet upper body",
+        "time_sec": 5.8,
+        "user_score": 100.0,
+        "reference_band": "above",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_rotation_rate_turn_4",
+        "metric_key": "rotation_rate",
+        "turn_id": "turn_4",
+        "phase": null,
+        "label_zh": "旋转速率",
+        "label_en": "Rotation rate",
+        "time_sec": 5.8,
+        "user_score": 55.1,
+        "reference_band": "above",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_rotation_rate_turn_2",
+        "metric_key": "rotation_rate",
+        "turn_id": "turn_2",
+        "phase": null,
+        "label_zh": "旋转速率",
+        "label_en": "Rotation rate",
+        "time_sec": 3.72,
+        "user_score": 100.0,
+        "reference_band": "within",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_turn_tempo_turn_2",
+        "metric_key": "turn_tempo",
+        "turn_id": "turn_2",
+        "phase": null,
+        "label_zh": "换弯节奏",
+        "label_en": "Turn tempo",
+        "time_sec": 3.72,
+        "user_score": 100.0,
+        "reference_band": "within",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_turn_tempo_turn_4",
+        "metric_key": "turn_tempo",
+        "turn_id": "turn_4",
+        "phase": null,
+        "label_zh": "换弯节奏",
+        "label_en": "Turn tempo",
+        "time_sec": 5.8,
+        "user_score": 100.0,
+        "reference_band": "within",
+        "measurement": "direct"
+      }
+    ],
+    "summary_zh": "这一趟整体与 CSIA 2 级通过示范接近，上身稳定最好，收弯完成度在个别弯里落后。",
+    "summary_en": "Close to the CSIA Level 2 pass demonstration overall: quiet upper body is strongest, turn closure lags in some turns.",
+    "strengths": [
+      {
+        "text_zh": "上身稳定与 CSIA 2 级通过示范接近（100 分）。",
+        "text_en": "Quiet upper body is close to the CSIA Level 2 pass demonstration (100).",
+        "fact_ids": [
+          "f_upper_body_quiet_index"
+        ]
+      }
+    ],
+    "improvements": [
+      {
+        "text_zh": "第4弯的收弯完成度只有 33.4 分，低于 CSIA 2 级通过示范的常见范围，慢动作里可以对照绿色骨架。",
+        "text_en": "Turn 4 scored 33.4 for turn closure, below the usual range of the CSIA Level 2 pass demonstration; compare with the green skeleton in slow motion.",
+        "fact_ids": [
+          "f_turn_closure_turn_3"
+        ],
+        "turn_ids": [
+          "turn_3"
+        ],
+        "keyframe_ids": [
+          "kf_7457ca2cca3250c2c045e5bc5071a8de",
+          "kf_8c41510c49e0c57f061b0a5cce1f4c07",
+          "kf_faf340eb17eb4d8b9ddda3e13fee69a2"
+        ],
+        "priority": "primary"
+      }
+    ],
+    "drills": [
+      {
+        "drill_id": "pole_plant_rhythm",
+        "name_zh": "杆法节奏",
+        "name_en": "Pole Plant Rhythm",
+        "why_zh": "用点杖固定每个弯的节奏，改善收弯完成度。",
+        "why_en": "Pole plants set a steady rhythm for every turn, working on turn closure.",
+        "fact_ids": [
+          "f_turn_closure_turn_3"
+        ]
+      }
+    ],
+    "limitations_zh": [
+      "试验性结果：分数来自单机位二维视频与 FreeSki 标准动作参考的对比，不是考官评分。",
+      "标为“估算”的指标是视频估算，只显示、不计分。",
+      "只对比视频能测量的 CSIA 考核要求。",
+      "转弯阶段按时间划分，未经人工审核。"
+    ],
+    "limitations_en": [
+      "Experimental: scores compare a single-camera 2D video with FreeSki's standard demonstrations; this is not an examiner's mark.",
+      "Metrics marked as estimates are video estimates: shown, not scored.",
+      "Only the CSIA criteria a video can measure are compared.",
+      "Turn phases are split by time and have not been reviewed by a person."
+    ],
+    "model": {
+      "model": "sample-handwritten",
+      "project": "ski-platform-text",
+      "prompt_version": "teaching-v9"
+    }
+  },
+  "explainerStatus": "ready",
+  "measurementStatus": "ready",
+  "modelStatus": "unavailable",
+  "modelAssessment": null,
+  "modelError": "evidence-unavailable",
+  "referenceAvailability": {},
+  "turns": [
+    {
+      "turnId": "turn_0",
+      "startMs": 800,
+      "endMs": 1900,
+      "referenceAvailable": false,
+      "comparisonReference": "auto_matched_unreviewed"
+    },
+    {
+      "turnId": "turn_1",
+      "startMs": 1900,
+      "endMs": 3067,
+      "referenceAvailable": false,
+      "comparisonReference": "auto_matched_unreviewed"
+    },
+    {
+      "turnId": "turn_2",
+      "startMs": 3067,
+      "endMs": 4367,
+      "referenceAvailable": false,
+      "comparisonReference": "auto_matched_unreviewed"
+    },
+    {
+      "turnId": "turn_3",
+      "startMs": 4367,
+      "endMs": 5467,
+      "referenceAvailable": false,
+      "comparisonReference": "auto_matched_unreviewed"
+    },
+    {
+      "turnId": "turn_4",
+      "startMs": 5467,
+      "endMs": 6133,
+      "referenceAvailable": false,
+      "comparisonReference": "auto_matched_unreviewed"
+    },
+    {
+      "turnId": "turn_5",
+      "startMs": 6133,
+      "endMs": 7167,
+      "referenceAvailable": false,
+      "comparisonReference": "auto_matched_unreviewed"
+    },
+    {
+      "turnId": "turn_6",
+      "startMs": 7167,
+      "endMs": 7900,
+      "referenceAvailable": false,
+      "comparisonReference": "auto_matched_unreviewed"
+    }
+  ],
+  "evidenceId": "ev_6d174f493482e0b5d9f20313a7f5a5e5b9c7357f32471da40229a396c0490c88"
+}

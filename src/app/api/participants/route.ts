@@ -1,3 +1,4 @@
+import { readJsonBodyOrResponse } from "@/lib/request-body";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/require-user";
@@ -39,7 +40,9 @@ export async function POST(req: Request) {
   const r = await requireUser();
   if (!r.ok) return r.response;
 
-  const parsed = participantSchema.safeParse(await req.json().catch(() => null));
+  const jsonBody = await readJsonBodyOrResponse(req);
+  if (!jsonBody.ok) return jsonBody.response;
+  const parsed = participantSchema.safeParse(jsonBody.data);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "validation", fields: fieldErrors(parsed.error) },

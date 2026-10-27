@@ -1,231 +1,337 @@
-# AAA Ski Platform
+# AAA Ski Platform · AAA 双板滑雪约课平台
 
-A private booking site for ski and snowboard lessons. Students pick a resort, a
-coach, a lesson type and a time; sign a liability waiver; pay by e-Transfer or
-Alipay (screenshot plus reference) or by WeChat Pay (the coach confirms it) — or
-spend hours from a prepaid lesson package. A shared calendar shows when every
-coach is teaching. Coaches manage their availability and prices, confirm
-payments, and subscribe to their schedule from Google Calendar.
+面向学员和教练的双语滑雪教学平台，提供课程预约、多人签字、付款审核、课时包、教练排课，以及来自 **Kevin 个人项目——FreeSki 视频滑雪分析平台**的站内视频分析。
 
-**This site is deliberately not public.** It is handed out as a link in a group
-chat. Every page requires sign-in, nothing is indexable, and a signed-out
-visitor cannot learn which coach teaches where, when, or for how much.
+学员按 **雪场 → 日期、时间与时长 → 教练** 的顺序预约；教练使用独立工作台查看课表、代学员建课、核对收款和发放 FreeSki 次数。界面支持中文 / English、明暗主题及手机布局。
 
----
+站内视频分析由 FreeSki 主目录 `J:\Freeski\FreeSkiclaude` 自带的平台接口提供（`127.0.0.1:8100`），由 ModelCtrl 按需启动和停止，见[服务边界](docs/FREESKI_SERVICE_BOUNDARY.md)。报告按[报告接口约定](docs/FREESKI_REPORT_CONTRACT.md)显示：参考 Carv 结构的评分卡、本地模型写的动作解释、关键帧图片、慢动作骨架讲解视频和逐弯动态对比。分数与标准动作对比得出，尚未经教练标注验证，界面标为试验性；不能把二维视频指标当作已校准的 CSIA 数值标准。
 
-## Getting started
+2026-10-22 至 10-24 冻结部署期间的实现与验收记录保留在[实施记录](docs/IMPLEMENTATION_STATUS.md)和[完整计划状态](docs/FULL_PLAN_STATUS.md)，只作历史参考，不代表当前运行状态。
 
-### One click (for testing)
+首页可供未登录访客查看平台介绍；价目表、教练日历、预约、订单和视频分析需要登录并按账号权限访问。页面设置禁止搜索引擎索引，数据访问权限由服务端检查。
 
-Double-click **`start.bat`** (Windows), or run:
+## 主要功能
 
-```bash
+| 模块 | 当前支持 |
+| --- | --- |
+| 学员预约 | 先选雪场和时间，再按想学的动作匹配可约教练，支持本人及孩子 |
+| 教练推荐 | 要求教练能教全部已选动作，且满足地点、时段、课程类型和人数；优先推荐本雪季已排课时较少的教练 |
+| 多人课程 | 1v1、1v2、1v3；额外学员填写姓名和本人或监护人邮箱，分别签署 |
+| 教练工作台 | 今日课表、排课、可用日、订单、课时包、学员、统计、设置及代学员建课 |
+| 付款 | e-Transfer、支付宝、微信，支持全款 / 定金及教练手动核对到账 |
+| 课时包 | 蓝山四小时滑行课包，确认收款后可跨教练预约，支持有记录的课时调整 |
+| 消息提醒 | 页眉铃铛显示待签字、待付款、待审核和订单状态变化 |
+| FreeSki | 站内上传、动作选择、进度；评分卡（逐指标分条、目标区间、逐弯得分，立刃估算只显示不计分）、本地模型动作解释、关键帧、慢动作讲解视频、逐弯动态对比 |
+| 次数发放 | 教练向已注册学员账号发放独立分析次数，无需课程订单 |
+
+## 本地快速启动
+
+### 环境要求
+
+- **Node.js 22.12+**、npm，满足当前开发和测试依赖的运行要求。
+- **PostgreSQL 17**：可使用本机服务，或通过 Docker Compose 启动项目容器。
+- 视频分析另需已有的 FreeSki 仓库、Python 环境、模型、参考数据及运行中的 ModelCtrl 调度服务；详细配置见下文。未配置时仍可测试约课功能。
+
+首次拉取项目：
+
+```powershell
+git clone https://github.com/NatMartini/AAA_Ski_Platform.git AAA_Ski_platform
+cd AAA_Ski_platform
+npm ci
+```
+
+在 Windows 双击 `start.bat`，或在项目目录运行：
+
+```powershell
 npm run launch
 ```
 
-This finds a working Postgres (an already-running one, or it starts the
-container, or falls back to a native install), applies migrations, seeds two
-demo coaches on the published price sheet and a student, turns on the
-development sign-in bypass, starts the dev server and opens the browser. No
-Google OAuth or account setup needed — the sign-in page lets you pick **Kevin**
-or **Alisa** (coaches) or **Wei Zhang** (student).
-`stop.bat` shuts it all down.
+启动器会：
 
-### Manual
+1. 缺少 `.env.local` 时从 `.env.example` 创建配置。
+2. 检查数据库连接；优先使用可用的配置，必要时尝试项目容器或本机 PostgreSQL。
+3. 准备 Prisma 客户端、应用已有数据库迁移，并补充缺少的演示资料。
+4. 为本次开发启动启用测试账号选择器，检查可选 FreeSki 服务和轻量分析调度进程。
+5. 在本机回环地址启动网页，登录页可访问后打开浏览器。
 
-Requires Node 20.9+ and Docker (or a native PostgreSQL 17 — see `.env.example`).
+默认访问 [http://localhost:3000/zh](http://localhost:3000/zh)，英文入口为 [http://localhost:3000/en](http://localhost:3000/en)。端口占用时以启动日志给出的地址为准；也可指定：
 
-```bash
-cp .env.example .env.local     # then fill in AUTH_SECRET and Google OAuth
-npm install
-npm run db:up                  # Postgres 17 container on host port 5434
-npm run db:migrate
-npm run db:seed                # creates the two resorts
-npm run dev                    # http://localhost:3000
+```powershell
+$env:PORT = "3001"
+npm run launch
 ```
 
-The `booking_no_overlap` constraint needs the `btree_gist` extension. The
-container image ships it and the migration enables it; on a native install
-create it once with
-`psql -U postgres -d ski -c "CREATE EXTENSION IF NOT EXISTS btree_gist;"`.
+普通启动保留已有演示设置、价格、开放日期、订单、视频和已用次数，不会重置数据库。启动器临时设置的登录与链接地址仅作用于本次子进程。
 
-Coaches are not seeded. Put their addresses in `COACH_EMAILS` and they are
-promoted to `COACH` with a profile the first time they sign in with Google —
-that keeps every coach account bound to a real verified mailbox, which the
-waiver signing flow depends on.
+### 在同一局域网的设备上测试
 
-### Checks
+先停止已有测试站，再把地址设为这台电脑当前的局域网IPv4地址：
 
-```bash
-npm test              # unit tests for the domain logic
-npm run check:overlap # proves the DB refuses double-bookings
-npm run check:flow    # end-to-end booking + waiver run against the real DB
-npm run sample:waiver # renders a sample waiver PDF to tmp/
+```powershell
+$env:SKI_LAUNCH_HOST = "192.168.31.141"
+npm run launch
+```
+
+启动器只监听指定的本机私有地址，同时设置登录和邀请链接使用该地址。
+其他设备连接同一局域网后，打开启动器显示的地址。浏览器首先要求访问凭据：用户名为`ski`，
+本次随机口令显示在启动日志中，也保存在未纳入版本控制的`storage/lan-test-access.json`。
+通过后在登录页选择教练或学员测试账号。再次启动会生成新口令；可通过
+`DEV_LAN_TEST_PASSWORD`显式指定至少12个字符的口令。浏览器兼容方法支持普通HTTP下的分析请求编号和链接复制。
+
+此模式用于受信任局域网内的功能测试。防火墙需允许当前私有网络上的Node网页端口；
+FreeSki提供方、数据库和ModelCtrl继续使用原来的本机入口。停止方式仍为`stop.bat`。
+恢复仅本机访问时移除`SKI_LAUNCH_HOST`后重新启动。
+
+### 测试账号
+
+登录页或页顶测试模式栏可选择账号，无需 Google OAuth：
+
+| 名称 | 邮箱 | 身份 |
+| --- | --- | --- |
+| Kevin | `kevin.demo@example.com` | 教练 |
+| Alisa | `alisa.demo@example.com` | 教练 |
+| Wei Zhang | `student.demo@example.com` | 学员 |
+| Alex Chen | `alex.demo@example.com` | 学员 |
+| Sam Li | `sam.demo@example.com` | 学员 |
+
+测试登录绕过用于本机开发或带访问口令的受信任局域网测试。生产环境必须移除 `DEV_AUTH_BYPASS` 和 `DEV_LAN_TEST_PASSWORD`；配置了测试认证的生产进程会拒绝启动。
+
+停止由启动器托管的网页和分析调度进程：
+
+```powershell
+.\stop.bat
+```
+
+也可在启动终端按 Ctrl+C。停止网页会保留 PostgreSQL 和隔离 FreeSki API 服务；单独停止后者可执行 `node scripts/freeski-runtime.mjs stop`。实际 GPU 分析进程由 ModelCtrl 管理，停止网页、调度进程或 FreeSki API 均不保证 GPU 任务停止。用 `npm run dev` 独立启动的网页，在其终端按 Ctrl+C 停止。
+
+详细手动测试步骤见 [TESTING.md](TESTING.md)。
+
+## 手动配置开发环境
+
+已有 `.env.local` 时保留原配置；首次创建可运行：
+
+```powershell
+Copy-Item .env.example .env.local
+npm ci
+```
+
+编辑 `.env.local`，至少配置数据库和登录：
+
+| 配置 | 用途 |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL 连接串；容器默认主机端口 5434，本机安装通常为 5432 |
+| `AUTH_SECRET` | 随机登录签名密钥 |
+| `AUTH_URL`、`NEXT_PUBLIC_BASE_URL` | 网站实际访问地址，影响登录回调、签字链接与日历订阅 |
+| `AUTH_GOOGLE_ID`、`AUTH_GOOGLE_SECRET` | Google OAuth 凭据 |
+| `COACH_EMAILS`、`ADMIN_EMAILS` | 首次 Google 登录时分配教练 / 管理员角色的邮箱名单 |
+| `STORAGE_DIR` | 私有上传目录，默认 `./storage`，必须位于 `public/` 之外 |
+| `SMTP_*`、`MAIL_FROM` | 可选交易邮件配置；未配置 SMTP 时只写入本地日志 |
+| `CRON_SECRET` | 预约预留清理、付款凭证保留期清理接口的认证密钥 |
+| `DEEPL_API_KEY` | 可选取消政策翻译，未配置时可手动填写中英文 |
+| `TRUST_PROXY_HEADERS` | 默认关闭，仅在可信反向代理正确覆盖转发头时启用 |
+
+Google OAuth 回调地址示例：`http://localhost:3000/api/auth/callback/google`。账号使用经验证的 Google 邮箱；签字邀请的登录邮箱必须匹配被邀请人或监护人邮箱。配置示例见 [.env.example](.env.example)，不要提交真实密钥或 `.env.local`。
+
+使用项目数据库容器：
+
+```powershell
+npm run db:up
+npm run prisma:ensure
+npm run db:deploy
+npm run db:seed
+npm run dev
+```
+
+`db:deploy` 应用仓库中已有迁移；开发新数据库结构时使用 `db:migrate`。普通 `db:seed` 准备雪场资料，不会创建测试教练账号；需要演示账号时单独运行 `npm run dev:demo`。
+
+本机 PostgreSQL 需要先创建 `ski` 数据库，并允许迁移启用 `btree_gist` 扩展；它用于数据库层的教练时间重叠约束。已有数据执行迁移前应先备份。不要用 `db:reset` 处理普通启动或迁移问题，它会清空数据库。
+
+## 预约、签字和付款
+
+### 学员预约与教练推荐
+
+1. 选择雪场，再选择可约日期、开始时间、时长及想练的动作。
+2. 查看符合条件的教练，或点击「不知道选什么 / 帮我推荐」。
+3. 确认教练、课程类型、人数、学员与付款计划，创建订单。
+4. 完成所有学员的免责签署，再付款并等待教练核对。
+
+推荐按教练实际能教的动作匹配，不把「进阶」固定分配给某位教练。只在满足全部已选动作及地点、时间等条件的教练中比较已排课时，帮助均衡安排；学员仍可手动选择其他符合条件者。教练可在设置中维护自己的自定义练习动作，订单保留当时的动作名称。
+
+### 1v2、1v3 与教练代预约
+
+多人课第一位选择本人或孩子，其余学员分别填写姓名和签字邮箱：成年人填写本人邮箱，孩子填写监护人邮箱。下单人复制每人的独立签字链接并分享；所有人签齐后才开放付款及教练确认收款，订单由下单人统一支付。其他成年学员不会获得下单人的完整订单或付款资料。
+
+教练从「代学员建课」安排本人执教的课程，创建后得到签字链接及固定中英文邮件草稿，由教练复制并手动发送。平台不会自动发送这封邀请。签署人按邀请邮箱登录，完成剩余步骤；教练可重新生成未完成的邀请，旧链接失效。
+
+免责记录按学员、教练、雪季和模板版本管理，符合条件时复用已有签署。未满 18 岁由监护人完成相应签署，不能由下单人代其他成年人签字。
+
+### 付款与课时包
+
+- **e-Transfer / 支付宝**：学员提交付款截图和交易参考号，等待教练审核。
+- **微信**：学员实际转账后点击「我已用微信付款」，无需截图，进入待教练确认；按钮不会自动确认到账。
+- **教练直接确认**：所有学员签署完成后，本课教练可登记实际收款方式及可选参考号，确认收款；也可审核或驳回学员提交的付款。
+- **定金与尾款**：定金按一小时的实际课程费率计算，且不超过订单总价；已确认定金后的尾款由教练登记。
+- **课时包**：当前蓝山滑行课四小时包为 CAD 180，属于早鸟优惠。购买时选择收款教练，经确认后可向任一符合条件的教练预约对应雪场的单人滑行课。收款教练可填写原因调整课时，不能减到已占用课时以下；取消或失效的预约释放相应课时。
+
+这些付款由学员向教练线下转账，平台记录和审核收款，没有自动支付网关。教练之间可以查看共有课程与课时包资料，但付款审核和调整操作由相应课程教练或课时包收款教练负责，管理员按授权处理。
+
+## FreeSki 站内视频分析
+
+FreeSki 是 **Kevin 的个人项目——FreeSki 视频滑雪分析平台**。首页和页眉「视频分析」进入 `/zh/video-analysis` 或 `/en/video-analysis`，登录后可查看当前余额、切换次数来源，并在本站完成上传、提交分析和查看报告。
+
+### 三种次数来源
+
+| 来源 | 获得方式 | 使用范围 |
+| --- | --- | --- |
+| 教练发放 | 教练在 `/zh/coach/video-analysis` 填学员注册邮箱、1–100 次及选填备注，即时到账 | 属于学员账号，无需课程订单，可分析自己的滑雪视频 |
+| 课程赠送 | 教练确认课程完成后解锁；2 小时课 3 次，3 小时课 5 次 | 属于该节课程，1v1、1v2、1v3 共用相同总次数，不乘人数 |
+| 额外购买 | 在已完成课程中按本课教练设置的单价购买 1–50 次，通过微信付款，教练核对后到账 | 仅用于对应课程；教练未设置单价或未启用微信时不能创建购买订单 |
+
+其他合法课程时长的赠送规则仍待确认，当前实现暂按 **1–2 小时 3 次、3–12 小时 5 次**计算，不按小时累计。
+
+发放记录保留教练、学员、数量、备注与时间；账号次数和课程次数分别记账，不跨来源转移。重复提交同一请求不会重复发放或重复预留。排队 / 分析中暂时预留 1 次，成功评分消耗 1 次；确认分析失败或无法评分后退回。等待资源、被抢占、暂停或暂时连接中断会保留任务和预留次数，等待恢复，不因等待超过 30 分钟自动退款。删除视频不会返还已成功使用的次数，历史购买与用量保留。
+
+### 上传与报告
+
+支持分析 **MP4 / MOV，每个文件不超过 200MB**；WebM 可上传观看，但需要转换为 MP4 / MOV 才能分析。
+
+动作选项同步 FreeSki 的实时目录，按「技术提升」及「CSIA 1–4 级考证」分组；上游尚未开放的动作置灰，不能提交。当前本机目录开放技术提升的平行式转弯、小回转，以及 CSIA 2、3 级的示范平行弯，具体以页面实时目录为准。刻滑、蘑菇地形及其他未开放动作不消耗次数；目录读取失败时暂停新建分析，已有任务与报告保留。
+
+视频入口优先说明新手路线：**犁式滑行与停止（snowplow）→ 连续犁式转弯（linking snowplow turns）→ 半犁式并腿（wedge-to-parallel）→ 平行式转弯**。前三阶段尚无开放的专项自动评分；课程视频仍可供教练查看，个人视频仅本人可见，可先上传保留。平行式快捷选择使用「技术提升」的动作。提交技术提升分析前，学员要选自己目前的 CSIA 级别（还没考级也可选），分析会对比高一级的通过示范，4 级对比专家示范。真正开放前三阶段需要 FreeSki 补齐独立动作、专属评分指标及经过标注校准的参考视频。
+
+考证任务同时保存模式、级别和动作，重启后继续使用原来的选择。参考目录中的旧动作别名按 FreeSki 返回的状态展示，不自动将其转换成可分析项。目录通过专用账号认证的 `GET /api/aaa/catalog` 读取，浏览器只接收经过校验的动作选项。
+
+排队期间动作关闭时，平台先用稳定请求标识查询 FreeSki 的接收记录：已接收的继续追踪；确认未接收且没有提交在途时，保留原任务并返还预留次数。查询失败或仍有提交在途时保持排队，不凭网络错误退款。返还时再次原子检查任务尚未挂接上游，避免并发误退。
+
+先上传视频，再选择视频实际展示的动作，点击分析后才会发送给 FreeSki。新任务显示“动作对比”：每个指标与标准动作比较后显示 0–100 分条，钟形指标显示目标区间，另有逐弯得分；列出的指标随动作和级别对应的 CSIA 要求变化，标“视频估算”的指标（立刃角度、换刃同步、屈伸幅度）只显示、不计分，视频测不了的要求不显示；画面不足以测量的弯标为“证据不足”，不打分。**总分暂不显示**（2026-10-26 决定）：评分方法要先用考官打分验证，见[准确度评价](docs/FREESKI_ACCURACY_REVIEW.md)；新任务的旧 TECH 分同样不显示。没有评分卡的旧任务继续显示 `TECH` 技术评分。评分卡和 TECH 都不可用时显示无法评分并退回次数，不把缺失结果当作 0 分。
+
+个人账号视频及结果默认仅本人可见，发放次数的教练不会因此获得读取权限。课程原片按订单账号及当前本课教练的权限查看。学员可逐个视频授权指定教练人工点评，草稿仅教练可见，明确发布后才通知学员；取消申请会撤销该申请的后续访问。人工点评独立于自动分析、付款审核和次数结算，详见[人工视频点评](docs/COACH_VIDEO_REVIEW.md)。
+
+展开「FreeSki 自动评价与逐弯动态对比」可看到分析完成后几分钟内陆续生成的内容：慢动作讲解视频（得分最低的几个弯依次原速、0.25 倍慢放和弯顶定格，你的骨架与 CSIA 标准动作骨架叠放对比）、动作解释（本地模型依据代码算出的对比事实撰写，每条结论都对应一项测量，引用无效的条目不显示）、每个弯的关键帧图片和逐弯动态骨架播放。标准动作骨架如果是自动匹配、未经人工审核，页面会注明。阶段按弯内时间比例划分，尚未识别入弯／弯顶／出弯；标准动作参考未经本雪季校准，不能当作已核实的官方数值标准。旧任务只有原有的二维观察和 TECH 报告。
+
+### 本机 FreeSki 服务
+
+本仓库通过服务端适配器调用隔离 FreeSki API，由轻量 `AnalysisDispatcher` 提交持久化任务并同步结果。实际模型分析在 ModelCtrl 管理的独立进程中执行，网页与调度进程不常驻模型。站内界面不直接嵌入原 FreeSki 的登录页面，也不向浏览器暴露服务账号凭据。
+
+当前对接 **ModelCtrl v3**。ModelCtrl 是本机模型与 GPU 任务的唯一启动者；不再依赖旧版门卫 ACK、常驻合同文件或 broker 租约接口。AAA 数据库中的任务租约仅用于业务状态同步，不是 ModelCtrl 的旧版租约。
+
+排队任务会显示 ModelCtrl 返回的当前阻塞原因（`effective_block`，其次 `blocked`），例如待命、游戏占用或显存不足。原因经私有接口过滤后显示，任务列表刷新时同步更新；没有可靠原因时只显示「排队中」。读取状态失败不会消耗或退回预留次数，也不会绕过调度器直接启动模型。
+
+FreeSki 的平台接口直接从 `J:\Freeski\FreeSkiclaude` 源码运行（`server/scripts/run_integration.py`，部署 ID `freeski-platform-8100`，私有配置与运行目录在 `J:\Freeski\deployments\platform-8100\`），监听 `127.0.0.1:8100`。它不常驻：ModelCtrl 把它登记为按需服务 `freeski-8100`，有需要时启动，空闲约 20 分钟且没有任务时停止。GPU 和文字任务以 ModelCtrl 项目 `ski-platform` / `ski-platform-text` 排队。
+
+本站从不自己启动或停止 8100，只请 ModelCtrl 叫醒它：后台调度进程在有排队或进行中的任务时，每轮先叫醒并最多等 30 秒；网页请求只在连不上 8100 时叫醒、不等待，页面稍后重试。叫醒只用 ModelCtrl 为这个服务签发的专用令牌（只能查看和启动 `freeski-8100`），在服务端读取，不写日志，不进浏览器。
+
+在 `.env.local` 配置以下项。服务账号和密码从 FreeSki 的私有 `deployment.env` 取得，不复制其中的 JWT 密钥或注册 nonce：
+
+```dotenv
+FREESKI_BASE_URL="http://127.0.0.1:8100"
+FREESKI_DEPLOYMENT_ID="freeski-platform-8100"
+FREESKI_SERVICE_IDENTIFIER="<专用服务账号>"
+FREESKI_SERVICE_PASSWORD="<部署中的专用密码>"
+MODELCTRL_URL="http://127.0.0.1:8765"
+FREESKI_WAKE_SERVICE="freeski-8100"
+FREESKI_WAKE_TOKEN_FILE="J:/Model_ctrl/data/service-tokens/freeski-8100.txt"
+```
+
+不要同时设置 `FREESKI_ROOT` / `FREESKI_PYTHON` 或 `FREESKI_DEPLOYMENT_PROFILE`：它们会让启动器自己去启动旧的本地服务。配置了部署 ID 而没有这些项时，启动器按“外部提供方”处理：只检查 8100 是否在线，照常启动分析调度进程；8100 不在时分析保持排队，等 ModelCtrl 拉起后继续。以上路径是本机示例。提交时写入业务任务的部署身份与当前配置不一致时，调度进程停止同步该任务，避免把旧实例的任务交给新实例。详细边界见[服务边界](docs/FREESKI_SERVICE_BOUNDARY.md)。
+
+`MODELCTRL_URL` 只接受回环 HTTP 地址，拒绝外部地址、内嵌凭据、额外路径及查询参数。ModelCtrl 处于待命或让路时，任务可以排队，但实际分析须等调度器恢复；健康检查通过不表示 GPU 已开始工作。AAA 业务数据继续位于 PostgreSQL，私有文件位于 `STORAGE_DIR`。进程或健康检查不能代替真实 GPU、模型评价和视频验收。
+
+旧的 8000 wrapper（`scripts/freeski-runtime.py`、`node scripts/freeski-runtime.mjs`）保留给历史部署，当前不使用。
+
+启动器托管已配置的轻量调度进程；手动启动网页时，还需在单独终端运行它，不要与启动器重复运行：
+
+```powershell
+node node_modules/tsx/dist/cli.mjs scripts/video-analysis-worker.ts
+```
+
+停止这个独立调度进程：
+
+```powershell
+node node_modules/tsx/dist/cli.mjs scripts/video-analysis-worker.ts --stop
+```
+
+`--stop` 用于上述独立调度进程；启动器托管的进程请用 `stop.bat` 或启动终端 Ctrl+C 管理。停止调度时保留持久化任务与预留次数；恢复后重新同步结果，过期的本地运行租约会退回队列等待接续。ModelCtrl 中的分析任务有独立生命周期，不随这个命令取消。`--once` 仅执行一轮队列同步，并不等待一次完整视频分析结束。
+
+上游分析完成后记录业务确认，隔离 FreeSki 保留上传、缓存和分析历史，不自动按完成时间或保存时长删除。AAA 页面删除视频不会同步清除上游副本，上游留存需单独管理。
+
+服务日志位于 `storage/freeski/`，排查时不要公开密钥、登录令牌、签字链接或含个人资料的日志。远程部署需要私有 HTTPS 桥接与独立凭据，本机 helper 仅用于回环 HTTP 服务。
+
+### 快速测试 FreeSki
+
+1. 切换 Kevin，打开「发放 FreeSki 次数」，给 `student.demo@example.com` 发放 3 次。
+2. 切换 Wei Zhang，打开 `/zh/video-analysis?source=account`，查看发放记录并上传视频。
+3. 选择正确动作，提交分析，检查预留次数、报告及最终余额。
+4. 需要课程赠送次数演示时，显式运行：
+
+```powershell
+npm run dev:demo -- --analysis-demo
+```
+
+这会补充缺少的 `DEMO-ANALYSIS` 两小时已完成测试课程，提供 3 次课程分析额度，不代表真实授课或收款。重复运行保留已有用量，普通启动不会自动创建该课程。
+
+## 时间、价格与日历规则
+
+- 数据库存储 UTC 时间，预约、雪季、日期显示和业务判断统一使用 `America/Toronto`，正确处理夏令时。
+- 雪季为 **12 月 1 日至次年 5 月 1 日（含）**，非雪季日期不开放授课。
+- 各教练分别配置滑行课、一级考前培训、公园课的正常价和可选早鸟价；早鸟按下单日期判断，截止该雪季 12 月 1 日。
+- 默认最少两小时、整点预约，具体以教练设置及可约时段为准。开头 10 分钟为交接时间，例如预约 13:00–15:00，实际授课 13:10–15:00。
+- 交接减免按**含多人附加费的实际小时费率 × 10/60**计算，最低 CAD 10，向上凑到 CAD 5 的整数档；免费课无减免，减免不超过小计，每笔订单只扣一次。
+- 例如单人课程 CAD 80 / 小时 × 2 小时，小计 CAD 160，减免 CAD 15，实付 **CAD 145**。
+- 金额以整数分保存，历史订单保留下单时的价格、人数、课程类型和动作快照；之后修改设置不重算历史价格。当前系统不另计算税费。
+- 教练日历文字只列实际可约时段，图形保留已排课程与休息时间；学员看到他人的课程仅显示「已约」。
+
+## 检查与维护
+
+```powershell
+npm test
 npm run lint
 npm run type-check
+npm run build
+npm run check:overlap
+npm run check:flow
+npm run sample:waiver
 ```
 
----
+`type-check` 和 `build` 会先确保 Prisma 客户端与当前结构一致，类型检查还会生成 Next.js 路由类型。数据库检查需要可连接的测试数据库，会创建并清理独立测试记录；PDF 样例生成在 `tmp/`。生产构建前确保 `DEV_AUTH_BYPASS` 未设置。
 
-## How the domain works
+Windows 若修改数据库结构后遇到 Prisma DLL 占用，先停止网页与分析调度进程，再运行 `npm run prisma:ensure` 并重新启动，不要删除数据库。普通维护不需要重置历史数据。
 
-### Time
+生产环境先配置真实环境变量、数据库和私有存储，备份后应用迁移，再构建及启动：
 
-Everything is stored in UTC and every business decision is made in
-`America/Toronto` via `src/lib/time.ts`. The season crosses the March DST
-switch, so 9am is UTC-5 in January and UTC-4 in April. Never construct a date
-from a bare string; use the helpers.
-
-### Season
-
-A season runs **1 December to 1 May** and is named for the pair, e.g.
-`2025-26`. Outside that window there are no lessons at all — both availability
-and bookings are rejected, which is why `seasonOf` never has to guess.
-
-### Pricing
-
-Each coach has a **rate card**: an hourly one-on-one price per lesson type —
-滑行课 ski lesson (`riding`), 一级考前培训 CSIA Level 1 prep (`csia1_prep`) and
-公园 park (`park`), catalogued in `src/lib/lesson-types.ts` — each with a regular
-price and an optional early-bird one (`CoachRate`). A coach offers a type by
-pricing it; Alisa has no park rate, so she is never offered for park.
-
-**Early bird** is decided by the day the booking is *made*: anything booked on
-or before **1 December** (the season's opening day) pays the early-bird price for
-any lesson that season. The rule lives in `src/lib/rates.ts`.
-
-A booking is on the hour with a two-hour minimum. The first ten minutes are the
-coach's handover from the previous student, so the lesson starts at ten past and
-runs to the hour: a 1:00–3:00 booking is taught 1:10–3:00.
-
-Those ten minutes are not charged: **the booking's hourly rate × 10/60 comes off,
-once per booking**, because the handover happens once however long the lesson
-is (`handoverCreditCents` in `src/lib/pricing.ts`). The payment page says so in
-a callout above the amount — start time, end time, and what was taken off.
-
-```
-Ski lesson · early bird
-$60.00 / hour × 2 hours          $120.00
-Less the first 10 minutes' fee   −$10.00
-Total (CAD)                      $110.00
+```powershell
+npm run db:deploy
+npm run build
+npm run start
 ```
 
-At $70 an hour the ten minutes are $11.67; at $80, $13.33.
+`npm run launch` 用于本机开发；`npm run start` 仅启动生产网页，不会自动启动 PostgreSQL、FreeSki、ModelCtrl 或分析调度进程，这些服务需分别管理。生产环境不要启用测试登录或创建演示订单。
 
-A group adds the coach's per-extra-student surcharge ($20/h by default) to the
-base rate, though multi-person booking stays closed until every attendee can
-carry their own waiver (`src/lib/booking/group.ts`).
+上线前需完成真实 Google OAuth、域名与 HTTPS、SMTP、数据库及私有文件备份、外部定时调用清理接口等配置。免责与隐私模板中的待确认内容须审核、替换；教练应填好中英文取消政策、课程价格及实际收款资料。禁止公开 `storage/`、`tmp/` 或 `.env.local`，也不要把演示价格与测试收款信息当作真实运营配置。
 
-Every price is snapshotted onto the booking — type, early-bird flag, rate,
-totals — so a coach editing their rate card never rewrites an existing booking.
+安全修复、已执行的检查证据及保留问题见 [SECURITY_REVIEW.md](SECURITY_REVIEW.md)。历史测试结果不表示当前服务器始终运行，也不代表视频评分准确率已完成独立验证。
 
-All money is integer cents. Published prices are final: no tax is calculated or
-displayed anywhere.
+## 项目结构
 
-### Lesson packages
+```text
+prisma/                 数据结构、迁移及基础种子
+scripts/                启动、停止、数据库检查与 FreeSki 服务管理
+src/app/[locale]/       中英文页面：预约、订单、教练后台、视频分析
+src/app/api/            认证、预约、签字、付款、上传及分析接口
+src/components/         学员、教练和 FreeSki 界面组件
+src/lib/booking/        预约状态、权限、多人学员与教练推荐
+src/lib/waiver/         免责模板、签署、有效期及 PDF
+src/lib/video-analysis/ 课程与账户额度、发放、购买和任务调度
+src/lib/freeski/        FreeSki 私有适配器与任务调度
+src/lib/storage.ts     私有文件存储
+src/messages/          中英文文案
+public/                可公开的静态资源
+storage/               私有视频、付款凭证、签署 PDF 与运行时数据（不提交 Git）
+tmp/                   本地测试产物与备份（不提交 Git）
+```
 
-The price sheet's Blue Mountain package — **four hours of ski lessons for
-$180, early bird only, any coach** — is an offer in `src/lib/packages.ts`.
+技术栈：**Next.js 16.4 / React 19 / TypeScript / Tailwind CSS 4 / Prisma 6 / PostgreSQL 17 / Auth.js v5 / next-intl / Vitest**。Next.js 16 使用 `src/proxy.ts`；开发前先阅读 [AGENTS.md](AGENTS.md) 和安装版本对应的 `node_modules/next/dist/docs/`。
 
-- The student orders it on `/packages` and **chooses which coach to pay**.
-  That coach confirms the payment, exactly like a booking payment; money goes
-  straight to them and the platform never holds it.
-- Once confirmed, the hours can be spent on ski lessons at that resort in that
-  season **with either coach**, in bookings of at least two hours. A package
-  pays for a whole booking or none of it, and nothing is owed on that booking;
-  after the waiver it is confirmed directly.
-- The coach who was paid can **add or take away hours** on the package page,
-  with a reason (`PackageAdjustment`). The student sees every adjustment, and
-  hours can never be taken below what is already booked.
-- Hours left are never stored: hours bought plus adjustments, minus the
-  bookings that point at the package, so an expired or cancelled booking hands
-  its hours back. Booking and adjusting both take a row lock on the package, so
-  two requests cannot spend the same hours (`npm run check:flow` proves it).
+更多说明：[功能测试指南](TESTING.md) · [安全审查记录](SECURITY_REVIEW.md) · [环境变量示例](.env.example)。
 
-Packages come off sale after 1 December; an unpaid order can no longer be paid
-after that, though a rejected screenshot can always be replaced.
-
-### Payment proof
-
-- **e-Transfer and Alipay** need both a screenshot and the transfer reference
-  (the e-Transfer reference number or the Alipay transaction number). The
-  submit button stays disabled until both are there, and the API refuses one
-  without the other (`paymentProofSchema` in `src/lib/validators.ts`).
-- **WeChat Pay** needs nothing attached. The student presses "I have paid by
-  WeChat", and the coach confirms once the money shows up in WeChat. A coach
-  who was paid over WeChat outside the site can press "Received the student's
-  WeChat payment" to record and confirm it in one step.
-- A coach can still upload a screenshot on a student's behalf; the reference is
-  required there too.
-
-### Calendar
-
-`/calendar` is one week of every coach's days on a shared time axis: which
-resort, the day's hours, each lesson (drawn from ten past), lunch, and the time
-still bookable. Every signed-in user can see it. Coaches see the student,
-lesson type and status of every lesson; a student sees their own lessons and
-everyone else's only as "booked", without a name. "Book this day" opens the
-booking page with that day picked.
-
-The booking page itself only offers what can actually be booked: a day with no
-start time left (fully booked or past) is not in the date picker at all, and a
-day shows only the start times a full lesson fits into.
-
-### What coaches can see
-
-The site is run by two coaches who keep one set of books, so **everything is
-open between coaches**: every booking and package (payment screenshots and
-waivers included), every student and their hours left, and one set of season
-stats. `/coach/bookings` defaults to your own and has an "all coaches" view.
-
-Acting stays with the people involved: only a booking's coach reviews its
-payment, settles the balance or cancels it, and only the coach who was paid
-for a package confirms its payment, cancels it or adjusts its hours.
-
-**Stats** (`/coach/stats`) totals a season across all coaches, with a
-per-coach split: money received and outstanding, hours taught and booked,
-lessons and students, package hours sold and unused, by lesson type, resort,
-price and month. The definitions live in `src/lib/stats.ts`.
-
----
-
-## Before taking real bookings
-
-- [ ] Have the waiver wording in `src/lib/waiver/template-v1.ts` reviewed by a
-      lawyer licensed in Ontario. It is a draft.
-- [ ] Have the policies in `src/lib/legal.ts` reviewed, and replace the
-      ALL-CAPS placeholders.
-- [ ] Confirm instructor liability insurance, and specifically whether it
-      covers teaching independently at the resorts you use.
-- [ ] Write the cancellation/refund policy in coach settings — a coach cannot
-      take bookings until both language versions are filled in.
-- [ ] Have each coach enter their rate card in coach settings: early-bird and
-      regular price for every lesson type they teach. The migration carried an
-      existing coach's single hourly rate over as their regular ski-lesson price
-      only, with no early-bird price and no other types.
-- [ ] Confirm the site is not reachable by search: `/robots.txt` disallows
-      everything and every response carries `X-Robots-Tag: noindex`.
-
-Two things worth knowing, neither of which the software can fix:
-
-Most resorts prohibit non-employee instructors teaching on their property. I
-could not find published policies for the two resorts seeded here, so this is
-not an assertion about them — but a public, indexed site listing instructor
-names, resorts and prices is the easiest way for a resort to find out. Hence
-the private-by-default posture.
-
-In Ontario a parent generally **cannot** waive their child's own right to sue.
-The guardian waiver limits the guardian's claims, not the child's, and the
-signing page says so rather than implying otherwise. Insurance is the real
-mitigation, not the PDF.
-
----
-
-## Stack
-
-Next.js 16 (App Router, Turbopack) · React 19 · TypeScript · Tailwind 4 ·
-Prisma 6 + PostgreSQL · Auth.js v5 (Google only) · next-intl (zh/en) ·
-pdf-lib + fontkit · sharp · Zod · Vitest
-
-Note that Next 16 renames `middleware` to `proxy` — see `src/proxy.ts` — and it
-runs on Node rather than edge, so no edge-safe auth split is needed.
+本次 ModelCtrl v3 的变更、检查证据及真实分析验收前提见 [对接记录](MODELCTRL_INTEGRATION.md)。

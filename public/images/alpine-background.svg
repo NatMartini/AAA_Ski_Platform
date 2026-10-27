@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1100" viewBox="0 0 1800 1100" fill="none">
+  <defs>
+    <linearGradient id="snow" x1="900" y1="180" x2="900" y2="950" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#EDF5FB" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="ridge" x1="900" y1="340" x2="900" y2="1040" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B7D0E3" stop-opacity=".7"/>
+      <stop offset="1" stop-color="#DDEBF5" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="foreground" x1="900" y1="610" x2="900" y2="1100" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8FB7D3" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#DDEBF5" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <path d="M0 600 200 455 335 520 535 280 760 490 915 355 1120 530 1360 210 1550 415 1690 340 1800 450V1100H0Z" fill="url(#ridge)"/>
+  <path d="m335 520 200-240 225 210-135-73-90 30-53-50-49 95Zm785 10 240-320 190 205-109-74-73 29-54-68-88 142Z" fill="url(#snow)"/>
+  <path d="M0 775 245 620 425 730 685 490 920 740 1100 590 1305 750 1560 515 1800 740V1100H0Z" fill="url(#foreground)"/>
+  <path d="m425 730 260-240 235 250-155-90-70 20-60-78-95 100Zm880 20 255-235 240 225-157-91-75 23-52-59-97 92Z" fill="url(#snow)" opacity=".65"/>
+  <path d="m0 600 200-145 135 65 200-240 225 210 155-135 205 175 240-320 190 205 140-75 110 110" stroke="#87ABC7" stroke-opacity=".25" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="M0 920c260-120 435-15 700-50s425-100 670-35 300 30 430-10" stroke="#AAC7DC" stroke-opacity=".3" stroke-width="1.5"/>
+</svg>

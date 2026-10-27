@@ -16,6 +16,7 @@ export const bookingInclude = {
   account: { select: { id: true, email: true, name: true } },
   waiver: true,
   waiverInvite: true,
+  attendees: { orderBy: { ordinal: "asc" }, include: { participant: true, waiver: true } },
   package: { select: { id: true, code: true, hours: true, priceCents: true } },
 } as const;
 
@@ -45,7 +46,7 @@ export function accessFor(
   user: ActiveUser,
 ): BookingAccess {
   const isCustomer = booking.accountId != null && booking.accountId === user.id;
-  const isCoach = booking.coachId === user.id || user.role === "ADMIN";
+  const isCoach = (user.role === "COACH" && booking.coachId === user.id) || user.role === "ADMIN";
   const isAnyCoach = user.role === "COACH" || user.role === "ADMIN";
   // The coaches share one set of books, so any coach can read any booking —
   // its payment screenshot and waiver included. Acting on it (paying,

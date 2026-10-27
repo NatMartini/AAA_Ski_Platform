@@ -21,9 +21,12 @@ import {
   writeObject,
   sha256,
 } from "../storage";
-import type { LoadedBooking } from "../booking/access";
+import { bookingInclude, type LoadedBooking } from "../booking/access";
+import { areBookingWaiversValid, isAttendeeWaiverValid } from "../booking/group-readiness";
+import { lockBookingWaivers } from "../booking/attendees";
 import { isSelfServeHoldExpired } from "../booking/hold";
 import { addDaysToDateKey, torontoWallTimeToUtc } from "../time";
+import { hashInviteToken } from "./invite";
 
 /**
  * Records a signature and produces the signed PDF.
@@ -54,6 +57,10 @@ export type SignInput = {
   guardianRelationship: string | null;
   ipAddress: string;
   userAgent: string;
+  /** The coach's one-time token, checked and consumed under the booking lock. */
+  inviteToken?: string;
+  /** Individually invited extra guest, without claiming the purchaser's order. */
+  attendeeId?: string;
 };
 
 export type SignResult =
@@ -66,6 +73,7 @@ export type SignResult =
         | "missing-guardian-details"
         | "bad-signature"
         | "already-signed"
+        | "invalid-invite"
         | "expired";
     };
 
@@ -106,7 +114,7 @@ export async function signWaiver(input: SignInput): Promise<SignResult> {
   // exists. Attach it atomically and do not collect a redundant signature.
   try {
     const reused = await prisma.$transaction((tx) =>
-      reuseStoredWaiver(tx, input, season, signedAt),
+      reuseStoredWaiver(tx, input, season),
     );
     if (reused) return { ok: true, waiverId: reused };
   } catch (err) {
@@ -115,6 +123,9 @@ export async function signWaiver(input: SignInput): Promise<SignResult> {
     }
     if (err instanceof BookingNoLongerSignableError) {
       return { ok: false, reason: "already-signed" };
+    }
+    if (err instanceof InviteNoLongerSignableError) {
+      return { ok: false, reason: "invalid-invite" };
     }
     throw err;
   }
@@ -169,7 +180,6 @@ export async function signWaiver(input: SignInput): Promise<SignResult> {
           input,
           resolved.waiver.id,
           season,
-          signedAt,
         );
         return { id: resolved.waiver.id, created: false };
       }
@@ -226,7 +236,6 @@ export async function signWaiver(input: SignInput): Promise<SignResult> {
         input,
         created.id,
         season,
-        signedAt,
         resolved.reason === "aged-out" || resolved.reason === "now-minor"
           ? resolved.waiver.id
           : null,
@@ -244,6 +253,9 @@ export async function signWaiver(input: SignInput): Promise<SignResult> {
     if (err instanceof HoldExpiredError) {
       return { ok: false, reason: "expired" };
     }
+    if (err instanceof InviteNoLongerSignableError) {
+      return { ok: false, reason: "invalid-invite" };
+    }
     if (
       err instanceof BookingNoLongerSignableError ||
       err instanceof WaiverChangedError
@@ -255,7 +267,7 @@ export async function signWaiver(input: SignInput): Promise<SignResult> {
     if ((err as { code?: string }).code === "P2002") {
       try {
         const reused = await prisma.$transaction((tx) =>
-          reuseStoredWaiver(tx, input, season, signedAt),
+          reuseStoredWaiver(tx, input, season),
         );
         return reused
           ? { ok: true, waiverId: reused }
@@ -263,6 +275,9 @@ export async function signWaiver(input: SignInput): Promise<SignResult> {
       } catch (retryErr) {
         if (retryErr instanceof HoldExpiredError) {
           return { ok: false, reason: "expired" };
+        }
+        if (retryErr instanceof InviteNoLongerSignableError) {
+          return { ok: false, reason: "invalid-invite" };
         }
         return { ok: false, reason: "already-signed" };
       }
@@ -296,7 +311,6 @@ async function reuseStoredWaiver(
   tx: Prisma.TransactionClient,
   input: SignInput,
   season: Season,
-  now: Date,
 ): Promise<string | null> {
   const resolved = await resolveStoredWaiver(
     tx,
@@ -307,7 +321,7 @@ async function reuseStoredWaiver(
   );
   if (resolved.needsSigning) return null;
 
-  await attachWaiverToBookings(tx, input, resolved.waiver.id, season, now);
+  await attachWaiverToBookings(tx, input, resolved.waiver.id, season);
   return resolved.waiver.id;
 }
 
@@ -316,9 +330,28 @@ async function attachWaiverToBookings(
   input: SignInput,
   waiverId: string,
   season: Season,
-  now: Date,
   replacesWaiverId: string | null = null,
 ): Promise<void> {
+  if (input.booking.headcount > 1) {
+    await attachGroupWaiver(tx, input, waiverId);
+    return;
+  }
+  // PDF rendering can outlive the hold. Check the actual transition time;
+  // the signature's earlier evidence timestamp must not extend a reservation.
+  const now = new Date();
+  if (input.inviteToken) {
+    await tx.$queryRaw`
+      SELECT "id" FROM "Booking" WHERE "id" = ${input.booking.id} FOR UPDATE
+    `;
+    const invite = await tx.waiverInvite.findUnique({
+      where: { bookingId: input.booking.id },
+    });
+    if (!invite || invite.usedAt || invite.expiresAt.getTime() <= Date.now() ||
+        invite.tokenHash !== hashInviteToken(input.inviteToken) ||
+        invite.email !== input.signerEmail.trim().toLowerCase()) {
+      throw new InviteNoLongerSignableError();
+    }
+  }
   // A booking paid for from a lesson package owes nothing, so the signature is
   // the last step: it is confirmed rather than sent on to payment.
   const nextStatus =
@@ -335,7 +368,15 @@ async function attachWaiverToBookings(
         { status: "HOLD", holdExpiresAt: { gt: now } },
       ],
     },
-    data: { waiverId, status: nextStatus },
+    data: {
+      waiverId,
+      status: nextStatus,
+      ...(input.inviteToken ? {
+        accountId: input.signerUserId,
+        participantId: input.participantId,
+        participantNameSnapshot: input.participantName,
+      } : {}),
+    },
   });
 
   if (current.count !== 1) {
@@ -356,6 +397,18 @@ async function attachWaiverToBookings(
     throw new BookingNoLongerSignableError();
   }
 
+  if (input.inviteToken) {
+    const consumed = await tx.waiverInvite.updateMany({
+      where: {
+        bookingId: input.booking.id,
+        tokenHash: hashInviteToken(input.inviteToken),
+        usedAt: null,
+      },
+      data: { usedAt: new Date() },
+    });
+    if (consumed.count !== 1) throw new InviteNoLongerSignableError();
+  }
+
   // Cover any other pending lesson for this participant with the same coach
   // in this season. Date bounds prevent a January signature from being
   // attached to next December's booking.
@@ -369,6 +422,7 @@ async function attachWaiverToBookings(
     id: { not: input.booking.id },
     participantId: input.participantId,
     coachId: input.booking.coachId,
+    headcount: 1,
     lessonStartAt: { gte: seasonStartsAt, lt: afterSeasonEndsAt },
     status: {
       in: ["HOLD", "AWAITING_WAIVER", "AWAITING_PAYMENT"] as BookingStatus[],
@@ -393,9 +447,62 @@ async function attachWaiverToBookings(
   });
 }
 
+async function attachGroupWaiver(tx: Prisma.TransactionClient, input: SignInput, waiverId: string) {
+  await tx.$queryRaw`SELECT "id" FROM "Booking" WHERE "id" = ${input.booking.id} FOR UPDATE`;
+  const current = await tx.booking.findUnique({ where: { id: input.booking.id }, include: bookingInclude });
+  const now = new Date();
+  if (!current || current.status === "EXPIRED" || isSelfServeHoldExpired(current, now)) throw new HoldExpiredError();
+  if (!["HOLD", "AWAITING_WAIVER"].includes(current.status)) throw new BookingNoLongerSignableError();
+  const attendee = current.attendees.find((a) => input.attendeeId ? a.id === input.attendeeId : a.ordinal === 1);
+  if (!attendee || attendee.isMinor !== input.participantIsMinor || isAttendeeWaiverValid(attendee, current)) {
+    throw new BookingNoLongerSignableError();
+  }
+  if (current.attendees.some((a) => a.id !== attendee.id && a.participantId === input.participantId)) {
+    throw new InviteNoLongerSignableError();
+  }
+  const normalizedEmail = input.signerEmail.trim().toLowerCase();
+  if (input.inviteToken) {
+    if (attendee.email !== normalizedEmail) throw new InviteNoLongerSignableError();
+    if (attendee.ordinal === 1) {
+      const invite = await tx.waiverInvite.findUnique({ where: { bookingId: current.id } });
+      if (!invite || invite.usedAt || invite.expiresAt <= now ||
+          invite.tokenHash !== hashInviteToken(input.inviteToken) || invite.email !== normalizedEmail) {
+        throw new InviteNoLongerSignableError();
+      }
+      const consumed = await tx.waiverInvite.updateMany({ where: { bookingId: current.id,
+        tokenHash: invite.tokenHash, usedAt: null }, data: { usedAt: now } });
+      if (consumed.count !== 1) throw new InviteNoLongerSignableError();
+    } else {
+      if (attendee.inviteUsedAt || !attendee.inviteExpiresAt || attendee.inviteExpiresAt <= now ||
+          attendee.inviteTokenHash !== hashInviteToken(input.inviteToken)) throw new InviteNoLongerSignableError();
+    }
+  } else if (attendee.ordinal !== 1 || current.accountId !== input.signerUserId ||
+      attendee.participantId !== input.participantId) {
+    throw new InviteNoLongerSignableError();
+  }
+  await tx.bookingAttendee.update({ where: { id: attendee.id }, data: {
+    accountId: input.signerUserId, participantId: input.participantId, waiverId,
+    ...(input.inviteToken ? { inviteUsedAt: now } : {}),
+  } });
+  if (attendee.ordinal === 1) {
+    await tx.booking.update({ where: { id: current.id }, data: { waiverId,
+      ...(current.createdByCoach && input.inviteToken ? {
+        accountId: input.signerUserId, participantId: input.participantId,
+        participantNameSnapshot: input.participantName,
+      } : {}),
+    } });
+  }
+  await lockBookingWaivers(tx, current.id);
+  const signed = await tx.booking.findUnique({ where: { id: current.id }, include: bookingInclude });
+  if (signed && areBookingWaiversValid(signed)) {
+    await tx.booking.update({ where: { id: current.id }, data: { status: "AWAITING_PAYMENT" } });
+  }
+}
+
 class HoldExpiredError extends Error {}
 class BookingNoLongerSignableError extends Error {}
 class WaiverChangedError extends Error {}
+class InviteNoLongerSignableError extends Error {}
 
 export { TEMPLATE_VERSION, TEMPLATE_REVISION };
 

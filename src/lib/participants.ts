@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { canonicalParticipantName } from "./participant-identity";
 
 /**
  * Rules that stop one person's waiver being credited to another.
@@ -31,12 +32,7 @@ import { createHash } from "node:crypto";
  * second, unsigned identity.
  */
 export function identityKey(fullName: string): string {
-  const normalized = fullName
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    // Strip punctuation and spacing so "Xiao-Ming" and "xiao ming" collide.
-    .replace(/[.,'’\-_\s]/g, "");
+  const normalized = canonicalParticipantName(fullName);
   return createHash("sha256").update(normalized).digest("hex").slice(0, 32);
 }
 

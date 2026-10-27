@@ -55,17 +55,29 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  accounts     Account[]
-  sessions     Session[]
-  coachProfile CoachProfile?
-  participants Participant[]
-  bookings     Booking[]     @relation("BookingAccount")
-  coachDays    CoachDay[]
-  coachBooking Booking[]     @relation("BookingCoach")
-  reviewed     Booking[]     @relation("BookingReviewer")
-  cancelled    Booking[]     @relation("BookingCanceller")
-  waivers      Waiver[]      @relation("WaiverSigner")
-  coachWaivers Waiver[]      @relation("WaiverCoach")
+  accounts                  Account[]
+  sessions                  Session[]
+  coachProfile              CoachProfile?
+  participants              Participant[]
+  bookingAttendees          BookingAttendee[]       @relation("BookingAttendeeAccount")
+  analysisJobs              VideoAnalysisJob[]      @relation("AnalysisJobCreator")
+  analysisPurchases         VideoAnalysisPurchase[] @relation("AnalysisPurchaseAccount")
+  analysisPayeePurchases    VideoAnalysisPurchase[] @relation("AnalysisPurchasePayee")
+  analysisReviewedPurchases VideoAnalysisPurchase[] @relation("AnalysisPurchaseReviewer")
+  accountAnalysisGrants     AccountAnalysisGrant[] @relation("AccountGrantRecipient")
+  issuedAnalysisGrants      AccountAnalysisGrant[] @relation("AccountGrantCoach")
+  accountAnalysisVideos     AccountAnalysisVideo[]
+  accountAnalysisJobs       AccountAnalysisJob[] @relation("AccountAnalysisOwner")
+  createdAccountAnalyses    AccountAnalysisJob[] @relation("AccountAnalysisCreator")
+  videoReviewRequests       CoachVideoReviewRequest[] @relation("VideoReviewOwner")
+  assignedVideoReviews      CoachVideoReviewRequest[] @relation("VideoReviewCoach")
+  bookings                  Booking[]               @relation("BookingAccount")
+  coachDays                 CoachDay[]
+  coachBooking              Booking[]               @relation("BookingCoach")
+  reviewed                  Booking[]               @relation("BookingReviewer")
+  cancelled                 Booking[]               @relation("BookingCanceller")
+  waivers                   Waiver[]                @relation("WaiverSigner")
+  coachWaivers              Waiver[]                @relation("WaiverCoach")
 
   packages           LessonPackage[]     @relation("PackageAccount")
   packagesPaidTo     LessonPackage[]     @relation("PackagePayee")
@@ -134,13 +146,15 @@ model CoachProfile {
   id     String @id @default(cuid())
   userId String @unique
 
-  displayName String
-  bioEn       String? @db.Text
-  bioZh       String? @db.Text
+  displayName              String
+  /// Null until the coach explicitly sets a price for one supplementary analysis.
+  analysisCreditPriceCents Int?
+  bioEn                    String? @db.Text
+  bioZh                    String? @db.Text
   /// Storage key for a photo the coach uploaded. `avatarUrl` holds the
   /// route that serves it, so every consumer just renders a URL.
-  avatarKey   String?
-  avatarUrl   String?
+  avatarKey                String?
+  avatarUrl                String?
 
   // Pricing. Hourly rates live in CoachRate, one per lesson type. The
   // handover credit is not a setting: it is always the ten minutes' fee at
@@ -164,6 +178,9 @@ model CoachProfile {
   /// "parallel", "carving"). String keys rather than a DB enum so the
   /// catalogue can grow without a migration.
   teachableSkills String[] @default([])
+  /// Coach-defined practice focus, with stable keys and bilingual labels.
+  /// [{id: UUID, key: "custom:UUID", zh: string, en: string}]
+  customSkills    Json     @default("[]")
   /// Student levels this coach accepts, for auto-assignment.
   teachableLevels String[] @default([])
 
@@ -299,9 +316,10 @@ model Participant {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  account  User      @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  bookings Booking[]
-  waivers  Waiver[]
+  account          User              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  bookings         Booking[]
+  waivers          Waiver[]
+  bookingAttendees BookingAttendee[]
 
   @@unique([accountId, identityKey])
   @@index([accountId])
@@ -408,9 +426,11 @@ model Booking {
 
   // ── What the student wants to work on ──
   /// Skill keys from lib/skills.ts the student asked to practise.
-  requestedSkills String[] @default([])
+  requestedSkills         String[] @default([])
+  /// Labels frozen at creation; later coach edits never rewrite old lessons.
+  requestedSkillsSnapshot Json     @default("[]")
   /// Student's self-reported level at booking time.
-  studentLevel    String?
+  studentLevel            String?
 
   // ── After the lesson ──
   /// The coach's written summary, visible to the student.
@@ -462,17 +482,21 @@ model Booking {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  account      User?          @relation("BookingAccount", fields: [accountId], references: [id], onDelete: SetNull)
-  participant  Participant?   @relation(fields: [participantId], references: [id], onDelete: SetNull)
-  coach        User           @relation("BookingCoach", fields: [coachId], references: [id], onDelete: Restrict)
-  resort       Resort         @relation(fields: [resortId], references: [id], onDelete: Restrict)
-  coachDay     CoachDay       @relation(fields: [coachDayId], references: [id], onDelete: Restrict)
-  reviewedBy   User?          @relation("BookingReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
-  cancelledBy  User?          @relation("BookingCanceller", fields: [cancelledById], references: [id], onDelete: SetNull)
-  waiver       Waiver?        @relation(fields: [waiverId], references: [id], onDelete: SetNull)
-  waiverInvite WaiverInvite?
-  videos       LessonVideo[]
-  package      LessonPackage? @relation(fields: [packageId], references: [id], onDelete: Restrict)
+  account           User?                   @relation("BookingAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  participant       Participant?            @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  coach             User                    @relation("BookingCoach", fields: [coachId], references: [id], onDelete: Restrict)
+  resort            Resort                  @relation(fields: [resortId], references: [id], onDelete: Restrict)
+  coachDay          CoachDay                @relation(fields: [coachDayId], references: [id], onDelete: Restrict)
+  reviewedBy        User?                   @relation("BookingReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  cancelledBy       User?                   @relation("BookingCanceller", fields: [cancelledById], references: [id], onDelete: SetNull)
+  waiver            Waiver?                 @relation(fields: [waiverId], references: [id], onDelete: SetNull)
+  waiverInvite      WaiverInvite?
+  attendees         BookingAttendee[]
+  videos            LessonVideo[]
+  analysisJobs      VideoAnalysisJob[]
+  analysisPurchases VideoAnalysisPurchase[]
+  coachVideoReviews CoachVideoReviewRequest[]
+  package           LessonPackage?          @relation(fields: [packageId], references: [id], onDelete: Restrict)
 
   @@index([coachId, startAt])
   @@index([status, holdExpiresAt])
@@ -480,6 +504,38 @@ model Booking {
   @@index([coachDayId])
   @@index([waiverId])
   @@index([packageId])
+}
+
+/// Every learner in a group has their own identity and immutable waiver.
+/// The order's account remains the purchaser; a guest signature never claims it.
+model BookingAttendee {
+  id            String  @id @default(cuid())
+  bookingId     String
+  ordinal       Int
+  fullName      String
+  /// Adult student's address, or the guardian's address for a minor.
+  email         String
+  isMinor       Boolean @default(false)
+  accountId     String?
+  participantId String?
+  waiverId      String?
+
+  inviteTokenHash String?   @unique
+  inviteExpiresAt DateTime?
+  inviteUsedAt    DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  booking     Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  account     User?        @relation("BookingAttendeeAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  participant Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  waiver      Waiver?      @relation(fields: [waiverId], references: [id], onDelete: SetNull)
+
+  @@unique([bookingId, ordinal])
+  @@index([bookingId])
+  @@index([accountId])
+  @@index([participantId])
+  @@index([waiverId])
 }
 
 /// One-time signing link for a coach-created booking. The plaintext token only
@@ -524,12 +580,210 @@ model LessonVideo {
   uploadedById String
   uploadedAt   DateTime @default(now())
 
-  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  booking      Booking            @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  analysisJobs VideoAnalysisJob[]
+  coachVideoReviews CoachVideoReviewRequest[]
 
   @@index([bookingId])
 }
 
+/// Persistent analysis reservation ledger. Successful use survives video deletion.
+model VideoAnalysisJob {
+  id              String    @id @default(cuid())
+  bookingId       String
+  videoId         String?
+  createdById     String
+  requestKey      String
+  actionId        String
+  upstreamJobId   String?
+  upstreamDeploymentId String?
+  upstreamApiVersion Int?
+  status          String    @default("QUEUED")
+  consumedAt      DateTime  @default(now())
+  refundedAt      DateTime?
+  queuedExpiresAt DateTime
+  leaseToken      String?
+  leaseExpiresAt  DateTime?
+  attempts        Int       @default(0)
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  result          Json?
+  errorCode       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  booking   Booking      @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  video     LessonVideo? @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  createdBy User         @relation("AnalysisJobCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([bookingId, requestKey])
+  @@index([bookingId, status])
+  @@index([status, queuedExpiresAt])
+  @@index([status, leaseExpiresAt])
+  @@index([videoId])
+}
+
+/// Supplements this order's shared allowance; paid directly to its own coach.
+model VideoAnalysisPurchase {
+  id                 String         @id @default(cuid())
+  bookingId          String
+  accountId          String
+  payeeCoachId       String
+  requestKey         String
+  quantity           Int
+  unitPriceCents     Int
+  totalCents         Int
+  currency           String         @default("CAD")
+  status             String         @default("AWAITING_PAYMENT")
+  paymentMethod      PaymentMethod?
+  paymentReference   String?
+  paymentSubmittedAt DateTime?
+  reviewedById       String?
+  reviewedAt         DateTime?
+  reviewNote         String?
+  cancelledAt        DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  booking    Booking @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  account    User    @relation("AnalysisPurchaseAccount", fields: [accountId], references: [id], onDelete: Restrict)
+  payeeCoach User    @relation("AnalysisPurchasePayee", fields: [payeeCoachId], references: [id], onDelete: Restrict)
+  reviewedBy User?   @relation("AnalysisPurchaseReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@unique([bookingId, requestKey])
+  @@index([bookingId, status])
+  @@index([payeeCoachId, status])
+}
+
+/// Instructor-issued account credits. This ledger is independent of lesson entitlements.
+model AccountAnalysisGrant {
+  id         String   @id @default(cuid())
+  accountId  String
+  coachId    String
+  quantity   Int
+  note       String?
+  requestKey String
+  createdAt  DateTime @default(now())
+
+  account User @relation("AccountGrantRecipient", fields: [accountId], references: [id], onDelete: Restrict)
+  coach   User @relation("AccountGrantCoach", fields: [coachId], references: [id], onDelete: Restrict)
+
+  @@unique([coachId, requestKey])
+  @@index([accountId, createdAt])
+  @@index([coachId, createdAt])
+}
+
+/// Personal FreeSki uploads are private to their account and never imply booking access.
+model AccountAnalysisVideo {
+  id           String   @id @default(cuid())
+  accountId    String
+  storageKey   String
+  contentType  String
+  bytes        Int
+  caption      String?
+  uploadedById String
+  uploadedAt   DateTime @default(now())
+
+  account      User                 @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  analysisJobs AccountAnalysisJob[]
+  coachVideoReviews CoachVideoReviewRequest[]
+
+  @@index([accountId, uploadedAt])
+}
+
+/// Separate reservation ledger: deleting a personal clip cannot replenish credits.
+model AccountAnalysisJob {
+  id              String    @id @default(cuid())
+  accountId       String
+  videoId         String?
+  createdById     String
+  requestKey      String
+  actionId        String
+  upstreamJobId   String?
+  upstreamDeploymentId String?
+  upstreamApiVersion Int?
+  status          String    @default("QUEUED")
+  consumedAt      DateTime  @default(now())
+  refundedAt      DateTime?
+  queuedExpiresAt DateTime
+  leaseToken      String?
+  leaseExpiresAt  DateTime?
+  attempts        Int       @default(0)
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  result          Json?
+  errorCode       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  account   User                  @relation("AccountAnalysisOwner", fields: [accountId], references: [id], onDelete: Restrict)
+  createdBy User                  @relation("AccountAnalysisCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  video     AccountAnalysisVideo? @relation(fields: [videoId], references: [id], onDelete: SetNull)
+
+  @@unique([accountId, requestKey])
+  @@index([accountId, status])
+  @@index([status, queuedExpiresAt])
+  @@index([status, leaseExpiresAt])
+  @@index([videoId])
+}
+
 // ───────────────────────── Lesson packages ─────────────────────────
+
+enum CoachVideoReviewStatus {
+  /// Absence of a request is exposed as NOT_REQUESTED; requests start REQUESTED.
+  NOT_REQUESTED
+  REQUESTED
+  IN_REVIEW
+  PUBLISHED
+  CANCELLED
+}
+
+enum CoachVideoReviewScope {
+  LESSON
+  ACCOUNT
+}
+
+/// Optional human service. This ledger never reserves or consumes AI credits.
+/// An assignment is immutable: replacing a coach cancels the old request.
+model CoachVideoReviewRequest {
+  id                String @id @default(cuid())
+  accountId         String
+  coachId           String
+  scope             CoachVideoReviewScope
+  sourceVideoId     String
+  lessonVideoId     String?
+  accountVideoId    String?
+  bookingId         String?
+  requestKey        String
+  status            CoachVideoReviewStatus @default(REQUESTED)
+  revision          Int @default(1)
+  consentVersion    String
+  consentedAt       DateTime @default(now())
+  sourceVersion     String
+  captionSnapshot   String?
+  analysisSnapshot  Json?
+  draftText         String? @db.Text
+  publishedText     String? @db.Text
+  videoViewedAt     DateTime?
+  authoredAt        DateTime?
+  publishedAt       DateTime?
+  cancelledAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  account      User @relation("VideoReviewOwner", fields: [accountId], references: [id], onDelete: Restrict)
+  coach        User @relation("VideoReviewCoach", fields: [coachId], references: [id], onDelete: Restrict)
+  booking      Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  lessonVideo  LessonVideo? @relation(fields: [lessonVideoId], references: [id], onDelete: SetNull)
+  accountVideo AccountAnalysisVideo? @relation(fields: [accountVideoId], references: [id], onDelete: SetNull)
+
+  @@unique([accountId, requestKey])
+  @@index([accountId, scope, sourceVideoId, createdAt])
+  @@index([coachId, status, updatedAt])
+  @@index([lessonVideoId])
+  @@index([accountVideoId])
+  @@index([bookingId])
+}
 
 enum PackageStatus {
   /// Ordered; waiting for the buyer to pay and upload proof.
@@ -678,10 +932,11 @@ model Waiver {
 
   createdAt DateTime @default(now())
 
-  participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
-  coach       User        @relation("WaiverCoach", fields: [coachId], references: [id], onDelete: Restrict)
-  signer      User        @relation("WaiverSigner", fields: [signerUserId], references: [id], onDelete: Restrict)
-  bookings    Booking[]
+  participant      Participant       @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  coach            User              @relation("WaiverCoach", fields: [coachId], references: [id], onDelete: Restrict)
+  signer           User              @relation("WaiverSigner", fields: [signerUserId], references: [id], onDelete: Restrict)
+  bookings         Booking[]
+  bookingAttendees BookingAttendee[]
 
   @@index([coachId, season])
   @@index([participantId])

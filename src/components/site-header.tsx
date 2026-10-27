@@ -7,11 +7,11 @@ import { LocaleSwitch } from "./locale-switch";
 import { SignOutButton } from "./sign-out-button";
 import { ThemeToggle } from "./theme-toggle";
 import { devBypassEnabled } from "@/lib/auth/dev-bypass";
+import { NotificationBell } from "./notification-bell";
 
 /**
- * Signed-out visitors see the brand and a sign-in link and nothing else — no
- * coach names, no resorts, no prices. Someone who stumbles onto the URL should
- * not be able to learn who teaches where for how much.
+ * The FreeSki introduction is public. Booking and coach navigation appear
+ * after sign-in; the video-analysis destination also checks authentication.
  */
 export async function SiteHeader({
   user,
@@ -25,48 +25,62 @@ export async function SiteHeader({
   const isCoach = user?.role === "COACH" || user?.role === "ADMIN";
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-[var(--surface)]/85 backdrop-blur-md">
-      <div className="mx-auto flex w-full max-w-5xl items-center gap-3 px-4 py-3 sm:px-6">
+    <header className="sticky top-0 z-40 border-b border-border bg-[var(--surface)]/90 shadow-[var(--shadow-sm)] backdrop-blur-xl">
+      <div className="relative mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-2 gap-y-2 px-4 py-3 sm:gap-x-3 sm:px-6">
         <Link
-          href="/"
-          className="press font-display flex items-center gap-2 font-extrabold tracking-tight"
+          href={isCoach ? "/coach" : "/"}
+          aria-label={brand("name")}
+          className="press font-display flex shrink-0 items-center gap-2 font-extrabold tracking-tight"
         >
-          <span className="flex size-8 items-center justify-center rounded-xl bg-accent text-accent-foreground">
-            <Snowflake className="size-4" aria-hidden />
+          <span className="flex size-9 items-center justify-center rounded-xl bg-accent text-accent-foreground shadow-[var(--shadow-sm)]">
+            <Snowflake className="size-5" aria-hidden />
           </span>
-          {/* The full name is long; below lg it would crowd out the nav, so
-              the header falls back to the short form and then to the mark. */}
-          <span className="hidden lg:inline">{brand("name")}</span>
-          <span className="hidden sm:inline lg:hidden">{brand("short")}</span>
+          {/* Navigation has its own row on smaller screens. The compact
+              desktop wordmark leaves room for every coach action. */}
+          <span className="hidden sm:inline xl:hidden">{brand("name")}</span>
+          <span className="hidden xl:inline">{brand("short")}</span>
         </Link>
 
-        {user && (
-          // Short labels on a phone; wrapped, the Chinese ones stacked one
-          // character per line. Scrolls sideways if even those do not fit.
-          <nav className="ml-1 flex min-w-0 items-center gap-0.5 overflow-x-auto text-sm">
-            <HeaderLink href="/book" short={t("bookShort")}>
-              {t("book")}
+          <nav aria-label={locale === "zh" ? "主导航" : "Main navigation"} className="order-3 flex w-full min-w-0 flex-wrap items-center gap-1 border-t border-border/70 pt-2 text-sm xl:order-none xl:ml-1 xl:w-auto xl:flex-1 xl:border-0 xl:pt-0">
+            {user && (isCoach ? (
+              <>
+                <HeaderLink href="/coach" accent short={t("coachShort")}>
+                  {t("coach")}
+                </HeaderLink>
+                <HeaderLink href="/coach/schedule" short={locale === "zh" ? "课表" : "Schedule"}>
+                  {locale === "zh" ? "已排课程" : "Scheduled lessons"}
+                </HeaderLink>
+                <HeaderLink href="/coach/bookings/new" short={locale === "zh" ? "代约" : "New lesson"}>
+                  {locale === "zh" ? "代学员建课" : "Book for a student"}
+                </HeaderLink>
+                <HeaderLink href="/calendar" short={locale === "zh" ? "日历" : "Calendar"}>
+                  {t("calendar")}
+                </HeaderLink>
+              </>
+            ) : (
+              <>
+                <HeaderLink href="/book" short={t("bookShort")}>
+                  {t("book")}
+                </HeaderLink>
+                {/* The student home page keeps prices and calendar reachable on phones. */}
+                <HeaderLink href="/prices" className="hidden md:inline-block">
+                  {t("prices")}
+                </HeaderLink>
+                <HeaderLink href="/calendar" className="hidden lg:inline-block">
+                  {t("calendar")}
+                </HeaderLink>
+                <HeaderLink href="/my/bookings" short={t("myBookingsShort")}>
+                  {t("myBookings")}
+                </HeaderLink>
+              </>
+            ))}
+            <HeaderLink href="/video-analysis" short={t("videoAnalysisShort")}>
+              {t("videoAnalysis")}
             </HeaderLink>
-            {/* No room on a phone; there the home page links to prices and
-                the calendar, and the coach cards show prices anyway. */}
-            <HeaderLink href="/prices" className="hidden md:inline-block">
-              {t("prices")}
-            </HeaderLink>
-            <HeaderLink href="/calendar" className="hidden lg:inline-block">
-              {t("calendar")}
-            </HeaderLink>
-            <HeaderLink href="/my/bookings" short={t("myBookingsShort")}>
-              {t("myBookings")}
-            </HeaderLink>
-            {isCoach && (
-              <HeaderLink href="/coach" accent short={t("coachShort")}>
-                {t("coach")}
-              </HeaderLink>
-            )}
           </nav>
-        )}
 
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
+          {user && <NotificationBell key={user.id} userId={user.id} locale={locale} />}
           <LocaleSwitch current={locale} />
           <ThemeToggle label={locale === "zh" ? "切换深色模式" : "Toggle theme"} />
           {user && (
@@ -95,8 +109,8 @@ function HeaderLink({
   return (
     <Link
       href={href}
-      className={`press whitespace-nowrap rounded-lg px-1.5 py-2 font-semibold transition-colors hover:bg-surface-2 md:px-3 ${
-        accent ? "text-accent" : "text-ink-2 hover:text-ink"
+      className={`press whitespace-nowrap rounded-xl px-2.5 py-2 font-semibold transition-colors hover:bg-surface-2 md:px-3 ${
+        accent ? "bg-accent-soft text-accent" : "text-ink-2 hover:text-ink"
       } ${className}`}
     >
       {short ? (

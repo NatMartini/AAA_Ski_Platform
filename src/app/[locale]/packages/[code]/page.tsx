@@ -216,7 +216,9 @@ export default async function PackagePage({
               payee.emtEnabled && payee.emtEmail
                 ? { email: payee.emtEmail, name: payee.emtName }
                 : null,
-            wechat: Boolean(payee.wechatPayEnabled && payee.wechatPayQrKey),
+            wechat: payee.wechatPayEnabled,
+            wechatQr: Boolean(payee.wechatPayQrKey),
+            wechatContact: payee.wechatId,
             alipay: Boolean(payee.alipayEnabled && payee.alipayQrKey),
           }}
         />
@@ -225,7 +227,9 @@ export default async function PackagePage({
       {/* Other coaches see the payment read-only; only the payee acts on it. */}
       {access.isAnyCoach && (
         <CoachReviewPanel
+          key={`${pkg.code}:${pkg.updatedAt.toISOString()}`}
           locale={loc}
+          expectedUpdatedAt={pkg.updatedAt.toISOString()}
           target={{ kind: "package", code: pkg.code }}
           confirmed={pkg.status === "ACTIVE"}
           submitted={pkg.status === "PENDING_PAYMENT_REVIEW"}

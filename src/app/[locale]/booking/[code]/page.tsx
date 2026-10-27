@@ -11,9 +11,14 @@ import { HoldCountdown } from "@/components/booking/hold-countdown";
 import { isSelfServeHoldExpired } from "@/lib/booking/hold";
 import { CoachReviewPanel } from "@/components/coach/coach-review-panel";
 import { CoachLessonPanel } from "@/components/coach/coach-lesson-panel";
+import { CoachInvitationCard } from "@/components/coach/coach-invitation-card";
+import { GroupAttendeeRoster } from "@/components/booking/group-attendee-roster";
+import { VideoAnalysisPanel } from "@/components/booking/video-analysis-panel";
+import { areBookingWaiversValid, isAttendeeWaiverValid } from "@/lib/booking/group-readiness";
 import { prisma } from "@/lib/prisma";
 import { balanceCents } from "@/lib/booking/lesson";
-import { skillLabel, levelLabel } from "@/lib/skills";
+import { levelLabel } from "@/lib/skills";
+import { requestedSkillLabel } from "@/lib/custom-skills";
 import { formatMoneyShort } from "@/lib/pricing";
 import { StatusPill } from "@/components/ui/status-pill";
 import { formatTorontoDate, formatTorontoTime } from "@/lib/time";
@@ -55,20 +60,26 @@ export default async function BookingPage({
     (booking.lessonEndAt.getTime() - booking.lessonStartAt.getTime()) / 60000,
   );
 
-  const holdExpired = isSelfServeHoldExpired(booking, new Date());
+  const now = new Date();
+  const holdExpired = isSelfServeHoldExpired(booking, now);
   const effectiveStatus = holdExpired ? "EXPIRED" : booking.status;
+  const primaryAttendee = booking.attendees.find((attendee) => attendee.ordinal === 1);
+  const primaryNeedsWaiver = booking.headcount > 1
+    ? !primaryAttendee || !isAttendeeWaiverValid(primaryAttendee, booking)
+    : !booking.waiverId;
   const needsWaiver =
     !holdExpired &&
-    !booking.waiverId &&
+    primaryNeedsWaiver &&
     access.isCustomer &&
     ["HOLD", "AWAITING_WAIVER"].includes(booking.status);
-  const needsPayment = !holdExpired && access.canPay;
+  const allSigned = areBookingWaiversValid(booking);
+  const needsPayment = !holdExpired && allSigned && access.canPay;
 
   const owing = balanceCents(booking);
   const videos = await prisma.lessonVideo.findMany({
     where: { bookingId: booking.id },
     orderBy: { uploadedAt: "asc" },
-    select: { id: true, caption: true, bytes: true },
+    select: { id: true, caption: true, uploadedAt: true, uploadedById: true, contentType: true },
   });
 
   return (
@@ -85,8 +96,27 @@ export default async function BookingPage({
         <StatusPill status={effectiveStatus} locale={loc} className="mt-1" />
       </div>
 
+      {booking.headcount === 1 && access.isCoach && booking.status === "AWAITING_WAIVER" && !booking.waiverId && booking.inviteEmail && (
+        <CoachInvitationCard locale={loc} code={booking.code} recipientEmail={booking.inviteEmail} isMinor={booking.inviteIsMinor} />
+      )}
+
+      {booking.headcount > 1 && <GroupAttendeeRoster
+        key={booking.code} locale={loc} code={booking.code}
+        allSigned={allSigned}
+        canManage={!holdExpired && (access.isCustomer || access.isCoach) && ["HOLD", "AWAITING_WAIVER"].includes(booking.status)}
+        senderRole={access.isCoach ? "coach" : "organizer"}
+        attendees={booking.attendees.map((attendee) => ({
+          id: attendee.id, ordinal: attendee.ordinal, fullName: attendee.fullName,
+          email: attendee.email, isMinor: attendee.isMinor,
+          signed: isAttendeeWaiverValid(attendee, booking),
+          signedAt: attendee.waiver?.signedAt.toISOString() ?? null,
+          canReadPdf: access.isCoach || attendee.accountId === user.id,
+          canInvite: attendee.ordinal > 1 || booking.createdByCoach,
+        }))}
+      />}
+
       {!holdExpired &&
-        ["HOLD", "AWAITING_PAYMENT"].includes(booking.status) &&
+        ["HOLD", "AWAITING_WAIVER", "AWAITING_PAYMENT"].includes(booking.status) &&
         booking.holdExpiresAt && (
           <HoldCountdown
             expiresAt={booking.holdExpiresAt.toISOString()}
@@ -199,7 +229,7 @@ export default async function BookingPage({
                   key={key}
                   className="rounded-full border border-border bg-surface-2 px-2.5 py-1 text-xs font-semibold text-ink-2"
                 >
-                  {skillLabel(key, loc)}
+                  {requestedSkillLabel(key, loc, booking.requestedSkillsSnapshot)}
                 </li>
               ))}
             </ul>
@@ -287,10 +317,7 @@ export default async function BookingPage({
         </Card>
       )}
 
-      {/* Lesson notes and clips. Shown to the student as well as the coach —
-          for the student this is the whole point of coming back to the page
-          after the lesson. */}
-      {(booking.coachSummary || videos.length > 0) && (
+      {booking.coachSummary && !access.isCoach && (
         <Card className="space-y-3">
           <CardTitle className="flex items-center gap-2">
             <NotebookPen className="size-4 text-accent" aria-hidden />
@@ -301,20 +328,6 @@ export default async function BookingPage({
               {booking.coachSummary}
             </p>
           )}
-          {videos.map((v) => (
-            <div key={v.id} className="space-y-1.5">
-              <video
-                controls
-                preload="metadata"
-                playsInline
-                src={`/api/bookings/${booking.code}/videos/${v.id}`}
-                className="w-full rounded-xl border border-border bg-black"
-              />
-              {v.caption && (
-                <p className="text-xs text-ink-3">{v.caption}</p>
-              )}
-            </div>
-          ))}
         </Card>
       )}
 
@@ -323,7 +336,9 @@ export default async function BookingPage({
           booking's coach. */}
       {access.isAnyCoach && booking.paymentPlan !== "PACKAGE" && (
         <CoachReviewPanel
+          key={`${booking.code}:${booking.updatedAt.toISOString()}`}
           locale={loc}
+          expectedUpdatedAt={booking.updatedAt.toISOString()}
           target={{ kind: "booking", code: booking.code }}
           confirmed={booking.status === "CONFIRMED"}
           submitted={booking.status === "PENDING_PAYMENT_REVIEW"}
@@ -333,6 +348,7 @@ export default async function BookingPage({
           paymentReference={booking.paymentReference}
           canReview={access.canReview}
           canUploadProof={!holdExpired && access.canPay}
+          canConfirmReceipt={!holdExpired && access.isCoach && allSigned && access.canPay}
         />
       )}
 
@@ -347,9 +363,29 @@ export default async function BookingPage({
           canSettleBalance={["CONFIRMED", "COMPLETED"].includes(booking.status)}
           canCancel={!holdExpired && access.canCancel}
           summary={booking.coachSummary}
-          videos={videos}
+          isConfirmed={booking.status === "CONFIRMED"}
+          canComplete={booking.status === "CONFIRMED" && booking.lessonEndAt.getTime() <= now.getTime()}
         />
       )}
+
+      <VideoAnalysisPanel
+        locale={loc}
+        bookingCode={booking.code}
+        bookedHours={booking.hours}
+        completed={booking.status === "COMPLETED"}
+        isCustomer={access.isCustomer}
+        isOwnCoach={access.isCoach}
+        canUpload={(access.isCustomer || access.isCoach) && ["CONFIRMED", "COMPLETED"].includes(booking.status)}
+        initialVideos={videos.map((video) => ({
+          id: video.id,
+          caption: video.caption,
+          uploadedAt: video.uploadedAt.toISOString(),
+          url: `/api/bookings/${booking.code}/videos/${video.id}`,
+          canDelete: access.isCoach || video.uploadedById === user.id,
+          contentType: video.contentType,
+          analysisSupported: video.contentType === "video/mp4" || video.contentType === "video/quicktime",
+        }))}
+      />
 
       {snapshot && (
         <Card className="space-y-2">

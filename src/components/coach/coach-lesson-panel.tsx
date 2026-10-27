@@ -1,6 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { clientFetch } from "@/lib/client-fetch";
+
+import { useState } from "react";
 import { useRouter } from "@/i18n/navigation";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,17 +14,8 @@ import {
   Check,
   Loader2,
   NotebookPen,
-  Trash2,
-  Upload,
-  Video,
   XCircle,
 } from "lucide-react";
-
-export type LessonVideoView = {
-  id: string;
-  caption: string | null;
-  bytes: number;
-};
 
 const COPY = {
   zh: {
@@ -37,8 +30,13 @@ const COPY = {
     summaryHint: "学员会在自己的订单页看到这段总结,第一次保存时会收到邮件提醒。",
     summaryPlaceholder: "今天练了什么、下次的重点、需要注意的地方……",
     saveSummary: "保存总结",
+    completeTitle: "确认课程已完成",
+    completeHint: "课程结束后确认完成，解锁本节课的共享视频分析额度：2 小时 3 次、3 小时 5 次，1v2、1v3 不按人数增加。尾款仍可继续登记。",
+    completeFuture: "授课时间结束后才能确认完成。",
+    completeAction: "确认课程已完成，解锁视频分析",
+    completeFailed: "暂时无法确认完成。请检查课程状态和结束时间后重试。",
     videoTitle: "课程视频",
-    videoHint: "上传课上拍的片段。只有这名学员和你能看到,单个文件最大 200MB。",
+    videoHint: "上传课上拍的片段。只有这名学员和平台教练能看到,单个文件最大 200MB。",
     addVideo: "上传视频",
     caption: "说明(可选)",
     deleteVideo: "删除",
@@ -70,9 +68,14 @@ const COPY = {
     summaryPlaceholder:
       "What you worked on, what to focus on next time, anything to watch…",
     saveSummary: "Save notes",
+    completeTitle: "Complete this lesson",
+    completeHint: "After the lesson ends, confirm completion to unlock shared analyses: 3 for a two-hour lesson, 5 for a three-hour lesson, regardless of group size. You can still record an outstanding balance.",
+    completeFuture: "Completion is available after the teaching time ends.",
+    completeAction: "Complete lesson and unlock video analysis",
+    completeFailed: "The lesson could not be completed. Check its status and end time, then try again.",
     videoTitle: "Lesson video",
     videoHint:
-      "Upload clips from the lesson. Only this student and you can see them; 200MB per file.",
+      "Upload clips from the lesson. Only this student and the platform coaches can see them; 200MB per file.",
     addVideo: "Upload video",
     caption: "Caption (optional)",
     deleteVideo: "Delete",
@@ -93,7 +96,7 @@ const COPY = {
 
 /**
  * Everything the coach does with a lesson that is not payment review: record
- * the outstanding balance, write the notes, attach video, call it off.
+ * the outstanding balance, write the notes, mark it completed, call it off.
  *
  * Separate from CoachReviewPanel because these actions belong to a different
  * moment — that panel is about getting the booking confirmed, this one is
@@ -109,7 +112,8 @@ export function CoachLessonPanel({
   canSettleBalance,
   canCancel,
   summary,
-  videos: initialVideos,
+  isConfirmed,
+  canComplete,
 }: {
   locale: Locale;
   bookingCode: string;
@@ -121,16 +125,14 @@ export function CoachLessonPanel({
   canSettleBalance: boolean;
   canCancel: boolean;
   summary: string | null;
-  videos: LessonVideoView[];
+  isConfirmed: boolean;
+  canComplete: boolean;
 }) {
   const router = useRouter();
   const c = COPY[locale];
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const [note, setNote] = useState("");
   const [text, setText] = useState(summary ?? "");
-  const [caption, setCaption] = useState("");
-  const [videos, setVideos] = useState(initialVideos);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
@@ -144,63 +146,19 @@ export function CoachLessonPanel({
   ) {
     setBusy(what);
     setError(null);
-    const res = await fetch(`/api/bookings/${bookingCode}${path}`, {
+    const res = await clientFetch(`/api/bookings/${bookingCode}${path}`, {
       method,
       headers: { "content-type": "application/json", "x-locale": locale },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     setBusy(null);
     if (!res.ok) {
-      setError(c.failed);
+      setError(what === "complete" ? c.completeFailed : c.failed);
       return false;
     }
     setSaved(what);
     router.refresh();
     return true;
-  }
-
-  async function uploadVideo(file: File) {
-    setBusy("video");
-    setError(null);
-    const body = new FormData();
-    body.set("file", file);
-    if (caption.trim()) body.set("caption", caption.trim());
-
-    const res = await fetch(`/api/bookings/${bookingCode}/videos`, {
-      method: "POST",
-      body,
-    });
-    setBusy(null);
-
-    if (!res.ok) {
-      const j = (await res.json().catch(() => ({}))) as { error?: string };
-      setError(
-        j.error === "too-large"
-          ? c.tooLarge
-          : j.error === "bad-type" || j.error === "bad-content"
-            ? c.badType
-            : c.failed,
-      );
-      return;
-    }
-    const created = (await res.json()) as LessonVideoView;
-    setVideos((list) => [...list, created]);
-    setCaption("");
-  }
-
-  async function removeVideo(id: string) {
-    if (!window.confirm(c.confirmDelete)) return;
-    setBusy(`del-${id}`);
-    setError(null);
-    const res = await fetch(`/api/bookings/${bookingCode}/videos/${id}`, {
-      method: "DELETE",
-    });
-    setBusy(null);
-    if (!res.ok) {
-      setError(c.failed);
-      return;
-    }
-    setVideos((list) => list.filter((v) => v.id !== id));
   }
 
   return (
@@ -314,77 +272,15 @@ export function CoachLessonPanel({
         </div>
       </Card>
 
-      <Card className="space-y-3">
-        <CardTitle className="flex items-center gap-2">
-          <Video className="size-4 text-accent" aria-hidden />
-          {c.videoTitle}
-        </CardTitle>
-        <CardDescription>{c.videoHint}</CardDescription>
-
-        {videos.length > 0 && (
-          <ul className="space-y-3">
-            {videos.map((v) => (
-              <li key={v.id} className="space-y-1.5">
-                <video
-                  controls
-                  preload="metadata"
-                  playsInline
-                  src={`/api/bookings/${bookingCode}/videos/${v.id}`}
-                  className="w-full rounded-xl border border-border bg-black"
-                />
-                <div className="flex items-center gap-2">
-                  <p className="min-w-0 flex-1 truncate text-xs text-ink-2">
-                    {v.caption ?? ""}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => removeVideo(v.id)}
-                    disabled={busy === `del-${v.id}`}
-                    className="press inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-ink-3 hover:text-[var(--danger)]"
-                  >
-                    <Trash2 className="size-3.5" aria-hidden />
-                    {c.deleteVideo}
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <div className="space-y-1.5">
-          <Label htmlFor="video-caption">{c.caption}</Label>
-          <Input
-            id="video-caption"
-            value={caption}
-            onChange={(e) => setCaption(e.target.value)}
-            maxLength={200}
-          />
-        </div>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="video/mp4,video/quicktime,video/webm"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) void uploadVideo(file);
-            e.target.value = "";
-          }}
-        />
-        <Button
-          variant="secondary"
-          className="self-start"
-          disabled={busy === "video"}
-          onClick={() => fileRef.current?.click()}
-        >
-          {busy === "video" ? (
-            <Loader2 className="animate-spin" aria-hidden />
-          ) : (
-            <Upload aria-hidden />
-          )}
-          {c.addVideo}
+      {isConfirmed && <Card className="space-y-3">
+        <CardTitle>{c.completeTitle}</CardTitle>
+        <CardDescription>{c.completeHint}</CardDescription>
+        {!canComplete && <Hint>{c.completeFuture}</Hint>}
+        <Button disabled={!canComplete || busy !== null} onClick={() => call("complete", "/complete", "POST")}>
+          {busy === "complete" ? <Loader2 className="animate-spin" aria-hidden /> : <Check aria-hidden />}
+          {c.completeAction}
         </Button>
-      </Card>
+      </Card>}
 
       {canCancel && (
         <Card

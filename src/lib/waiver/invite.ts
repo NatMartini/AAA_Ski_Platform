@@ -2,6 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { prisma } from "../prisma";
 import { baseUrl } from "../mail";
 import type { Locale } from "@/i18n/routing";
+import type { Prisma, PrismaClient } from "@prisma/client";
 
 /**
  * One-time signing links for coach-created bookings.
@@ -31,12 +32,22 @@ export function hashInviteToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
+/** Fields used for both atomic booking creation and a locked link reissue. */
+export function inviteFields(email: string, token: string, now = new Date()) {
+  return {
+    tokenHash: hashInviteToken(token),
+    email: email.trim().toLowerCase(),
+    expiresAt: new Date(now.getTime() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000),
+  };
+}
+
 export function inviteUrl(token: string, locale: Locale): string {
   return `${baseUrl()}/${locale}/w/${token}`;
 }
 
 export type InviteCheck =
-  | { ok: true; bookingId: string; bookingCode: string; email: string }
+  | { ok: true; bookingId: string; bookingCode: string; email: string;
+      attendeeId?: string; ordinal?: number; fullName?: string; isMinor?: boolean }
   | { ok: false; reason: "invalid" | "email-mismatch"; expected?: string };
 
 /**
@@ -57,9 +68,26 @@ export async function checkInvite(
     include: { booking: { select: { id: true, code: true, status: true } } },
   });
 
-  if (!invite) return { ok: false, reason: "invalid" };
+  if (!invite) {
+    const attendee = await prisma.bookingAttendee.findUnique({
+      where: { inviteTokenHash: hashInviteToken(token) },
+      include: { booking: { select: { id: true, code: true, status: true, holdExpiresAt: true } } },
+    });
+    if (!attendee || attendee.inviteUsedAt || !attendee.inviteExpiresAt ||
+        attendee.inviteExpiresAt.getTime() <= Date.now() ||
+        !["HOLD", "AWAITING_WAIVER"].includes(attendee.booking.status) ||
+        (attendee.booking.holdExpiresAt && attendee.booking.holdExpiresAt.getTime() <= Date.now())) {
+      return { ok: false, reason: "invalid" };
+    }
+    if (signedInEmail !== undefined && !sameEmail(attendee.email, signedInEmail)) {
+      return { ok: false, reason: "email-mismatch", expected: attendee.email };
+    }
+    return { ok: true, bookingId: attendee.bookingId, bookingCode: attendee.booking.code,
+      email: attendee.email, attendeeId: attendee.id, ordinal: attendee.ordinal,
+      fullName: attendee.fullName, isMinor: attendee.isMinor };
+  }
   if (invite.usedAt) return { ok: false, reason: "invalid" };
-  if (invite.expiresAt.getTime() < Date.now()) {
+  if (invite.expiresAt.getTime() <= Date.now()) {
     return { ok: false, reason: "invalid" };
   }
   if (invite.booking.status !== "AWAITING_WAIVER") {
@@ -85,38 +113,32 @@ export async function checkInvite(
   };
 }
 
+function sameEmail(expected: string, actual: string): boolean {
+  const a = Buffer.from(expected.trim().toLowerCase());
+  const b = Buffer.from(actual.trim().toLowerCase());
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 export async function createInvite(input: {
   bookingId: string;
   email: string;
-}): Promise<string> {
+}, tx: Prisma.TransactionClient | PrismaClient = prisma): Promise<string> {
   const token = generateInviteToken();
-  const expiresAt = new Date(
-    Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000,
-  );
+  const fields = inviteFields(input.email, token);
 
-  await prisma.waiverInvite.upsert({
+  await tx.waiverInvite.upsert({
     where: { bookingId: input.bookingId },
     update: {
-      tokenHash: hashInviteToken(token),
-      email: input.email.trim().toLowerCase(),
-      expiresAt,
+      ...fields,
       usedAt: null,
+      sentAt: null,
       resentCount: { increment: 1 },
     },
     create: {
       bookingId: input.bookingId,
-      tokenHash: hashInviteToken(token),
-      email: input.email.trim().toLowerCase(),
-      expiresAt,
+      ...fields,
     },
   });
 
   return token;
-}
-
-export async function consumeInvite(bookingId: string): Promise<void> {
-  await prisma.waiverInvite.update({
-    where: { bookingId },
-    data: { usedAt: new Date() },
-  });
 }

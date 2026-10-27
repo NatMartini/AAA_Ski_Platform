@@ -1,5 +1,7 @@
 "use client";
 
+import { clientFetch } from "@/lib/client-fetch";
+
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "@/i18n/navigation";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -85,6 +87,7 @@ export function WaiverForm({
   prefill,
   postTo,
   redirectTo,
+  stayOnSuccess = false,
 }: {
   locale: Locale;
   bookingCode: string;
@@ -106,6 +109,8 @@ export function WaiverForm({
   /** Differs between the normal flow and a coach-issued signing link. */
   postTo: string;
   redirectTo: string;
+  /** An extra group signer has no access to the purchaser's private order. */
+  stayOnSuccess?: boolean;
 }) {
   const router = useRouter();
   const c = COPY[locale];
@@ -123,6 +128,7 @@ export function WaiverForm({
   const [signature, setSignature] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [completion, setCompletion] = useState<{ allSigned: boolean } | null>(null);
 
   const listRef = useRef<HTMLOListElement>(null);
   const required = clauses.filter((cl) => cl.acknowledge);
@@ -237,7 +243,7 @@ export function WaiverForm({
     const agreed: Record<string, true> = {};
     for (const cl of required) agreed[cl.id] = true;
 
-    const res = await fetch(postTo, {
+    const res = await clientFetch(postTo, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -257,8 +263,24 @@ export function WaiverForm({
       setError(body.error === "already-signed" ? c.alreadySigned : c.failed);
       return;
     }
+    if (stayOnSuccess) {
+      const result = await res.json().catch(() => ({})) as { allSigned?: boolean; isBookingOwner?: boolean };
+      if (!result.isBookingOwner) {
+        setCompletion({ allSigned: result.allSigned === true });
+        return;
+      }
+    }
     router.push(redirectTo);
     router.refresh();
+  }
+
+  if (completion) {
+    return <Card className="space-y-3">
+      <CardTitle className="flex items-center gap-2"><CheckIcon className="size-5 text-emerald-600" aria-hidden />{locale === "zh" ? "你的免责协议已签署" : "Your waiver has been signed"}</CardTitle>
+      <p className="text-sm text-ink-2">{completion.allSigned
+        ? locale === "zh" ? "所有学员已签署完成，请通知预约人继续付款。你无需替其他学员签署。" : "Everyone has signed. Let the booking organizer know they can complete payment. You do not sign for other students."
+        : locale === "zh" ? "你的签署已保存。其余学员需使用各自链接独立签署，全部完成后由预约人统一付款。" : "Your signature is saved. The remaining students sign independently using their own links; the organizer pays once everyone has signed."}</p>
+    </Card>;
   }
 
   return (

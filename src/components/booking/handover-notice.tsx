@@ -5,7 +5,7 @@ import { Clock } from "lucide-react";
 
 /**
  * Said plainly where the money is: the lesson starts ten minutes past the
- * hour, and the fee for those ten minutes has been taken off. Students who
+ * hour, and the handover credit has been taken off. Students who
  * miss this turn up at the hour and wonder why the lesson is short.
  */
 export function HandoverNotice({
@@ -43,8 +43,8 @@ export function HandoverNotice({
         </p>
         <p className="leading-relaxed text-ink-2" data-numeric>
           {zh
-            ? `开头 10 分钟是教练与上一位学员的交接时间,不收费:课费里已经直接减去 ${formatMoneyShort(creditCents)}。`
-            : `The first ten minutes are the coach's handover from the previous student, so they are not charged: ${formatMoneyShort(creditCents)} has been taken off.`}
+            ? `开头 10 分钟是教练与上一位学员的交接时间:课费里已减去交接优惠 ${formatMoneyShort(creditCents)}。`
+            : `The first ten minutes are the coach's handover from the previous student. Your price includes a handover credit of ${formatMoneyShort(creditCents)}.`}
         </p>
       </div>
     </div>

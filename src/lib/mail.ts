@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer";
+import nodemailer, { type Transporter } from "nodemailer";
 
 /**
  * Transactional email only: booking confirmations and waiver signing links.
@@ -19,9 +19,9 @@ export type MailMessage = {
   html?: string;
 };
 
-let transport: nodemailer.Transporter | null = null;
+let transport: Transporter | null = null;
 
-function getTransport(): nodemailer.Transporter | null {
+function getTransport(): Transporter | null {
   if (!process.env.SMTP_HOST) return null;
   if (!transport) {
     transport = nodemailer.createTransport({

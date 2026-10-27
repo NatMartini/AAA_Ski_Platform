@@ -1,14 +1,20 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "@/i18n/navigation";
+import { clientFetch } from "@/lib/client-fetch";
+import { Link, useRouter } from "@/i18n/navigation";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FieldError, Label, Select } from "@/components/ui/field";
 import { EarlyBirdTag, PriceBreakdown } from "./price-breakdown";
 import { AddParticipantDialog } from "./add-participant-dialog";
 import { SkillPicker } from "./skill-picker";
-import { DateCalendar } from "./date-calendar";
+import { toBookingSelectionQuery, type BookingSelection } from "@/lib/booking/selection";
+import { coachCanTeachRequestedSkills, type CustomSkill } from "@/lib/custom-skills";
+import { AdditionalAttendees } from "./additional-attendees";
+import { GroupAttendeeRoster, type GroupInvitationLink } from "./group-attendee-roster";
+import { HoldCountdown } from "./hold-countdown";
+import { additionalAttendeesComplete, normalizeAdditionalAttendees, resizeAdditionalAttendees, type AdditionalAttendeeInput } from "@/lib/booking/attendee-form";
 import {
   quote,
   lessonWindow,
@@ -19,6 +25,7 @@ import { formatTorontoDate, formatTorontoTime } from "@/lib/time";
 import { rateFor, type RateRow } from "@/lib/rates";
 import { LESSON_TYPES, lessonTypeLabel } from "@/lib/lesson-types";
 import { seasonOfDateKey } from "@/lib/season";
+import { expandTeachableSkillKeys, skillLabel } from "@/lib/skills";
 import type { Locale } from "@/i18n/routing";
 import { cn } from "@/lib/utils";
 import { Clock, Loader2, MessageCircle } from "lucide-react";
@@ -87,12 +94,16 @@ const COPY = {
     review: "确认并预定",
     otherTimes: "想约其他时间?微信联系教练",
     handoverNote:
-      "开头 10 分钟是和上一位学员的交接时间:整点后 10 分开始上课、到整点结束。这 10 分钟不收费,每单直接减去这 10 分钟的课时费。",
+      "开头 10 分钟用于交接:整点后 10 分开始上课、到整点结束。每单按 10 分钟课时费计算交接优惠,向上取整至 $5 的倍数,最低 $10,且不超过课费。",
     lessonRuns: "实际授课",
     minutes: "分钟",
     needParticipant: "请选择上课学员",
+    needAttendees: "请填写每位额外学员的姓名及本人或监护人邮箱。",
+    createdGroup: "多人订单已创建，请分别转发签字链接",
+    openOrder: "查看订单并完成本人签署",
     slotTaken: "抱歉,该时段刚被他人预定,请另选时间。",
     packageFailed: "课时包剩余时长不足或已不可用,请刷新后重试,或改为直接付款。",
+    skillsUnavailable: "这位教练目前不能教授全部所选动作，请返回调整动作或更换教练。",
     failed: "预定失败,请重试。",
   },
   en: {
@@ -130,13 +141,17 @@ const COPY = {
     review: "Review and book",
     otherTimes: "Want a different time? Message the coach on WeChat",
     handoverNote:
-      "The first 10 minutes are the coach's handover from the previous student: the lesson starts at ten past and runs to the hour. Those ten minutes are free: their fee is taken straight off each booking.",
+      "Lessons start ten minutes past the booked hour and finish at the booked end. Each booking receives a handover credit based on ten minutes at the hourly rate, rounded up to the next $5, with a $10 minimum and capped at the lesson price.",
     lessonRuns: "Lesson runs",
     minutes: "min",
     needParticipant: "Please choose who is taking the lesson",
+    needAttendees: "Enter each additional student's name and their own or guardian's email.",
+    createdGroup: "Group booking created — share each personal signing link",
+    openOrder: "Open order and sign your own waiver",
     slotTaken: "Sorry — someone just took that slot. Please pick another time.",
     packageFailed:
       "That package no longer has enough hours for this lesson. Refresh and try again, or pay instead.",
+    skillsUnavailable: "This coach cannot currently teach all your selected moves. Change your moves or choose another coach.",
     failed: "Could not create the booking. Please try again.",
   },
 } as const;
@@ -149,14 +164,16 @@ export function SlotPicker({
   coachAvatarUrl,
   coachWechat,
   coachSkills,
+  customSkills,
   cancellationPolicy,
   resortName,
-  minHours,
   maxGroupSize,
   rates,
   earlyBirdActive,
   packages,
-  initialDateKey,
+  selection,
+  changeTimeHref,
+  changeCoachHref,
   days,
   participants: initialParticipants,
 }: {
@@ -166,19 +183,20 @@ export function SlotPicker({
   coachBio: string | null;
   coachAvatarUrl: string | null;
   coachWechat: string | null;
-  /** Skill keys this coach teaches; empty means show the whole catalogue. */
+  /** Explicit catalogue skills this coach teaches; custom moves are separate. */
   coachSkills: string[];
+  customSkills: CustomSkill[];
   cancellationPolicy: string;
   resortName: string;
-  minHours: number;
   maxGroupSize: number;
   /** The coach's rate card, offered types only, in price-sheet order. */
   rates: RateRow[];
   /** Early-bird prices are on offer to anyone booking today. */
   earlyBirdActive: boolean;
   packages: UsablePackage[];
-  /** A day to open on, e.g. from the calendar. Must be one of `days`. */
-  initialDateKey?: string;
+  selection: BookingSelection;
+  changeTimeHref: string;
+  changeCoachHref: string;
   days: Day[];
   participants: Participant[];
 }) {
@@ -186,18 +204,26 @@ export function SlotPicker({
   const c = COPY[locale];
 
   const [participants, setParticipants] = useState(initialParticipants);
-  const [lessonType, setLessonType] = useState(rates[0]?.lessonType ?? "");
-  const [dateKey, setDateKey] = useState(initialDateKey ?? "");
-  const [startHour, setStartHour] = useState<number | null>(null);
-  const [hours, setHours] = useState<number>(minHours);
-  const [headcount, setHeadcount] = useState(1);
-  const [skills, setSkills] = useState<string[]>([]);
+  const [lessonType, setLessonType] = useState(selection.lessonType ?? rates[0]?.lessonType ?? "");
+  const { dateKey, startHour, hours } = selection;
+  const [headcount, setHeadcount] = useState(selection.headcount ?? 1);
+  const [additionalAttendees, setAdditionalAttendees] = useState<AdditionalAttendeeInput[]>(resizeAdditionalAttendees([], selection.headcount ?? 1));
+  const [groupResult, setGroupResult] = useState<{ code: string; invitations: GroupInvitationLink[]; holdExpiresAt?: string | null } | null>(null);
+  const [skills, setSkills] = useState<string[]>(selection.requestedSkills);
   const [plan, setPlan] = useState<"FULL" | "DEPOSIT" | "PACKAGE">("FULL");
   const [participantId, setParticipantId] = useState(
     initialParticipants.find((p) => p.isSelf)?.id ?? "",
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const currentQuery = new URLSearchParams(toBookingSelectionQuery({
+    ...selection, requestedSkills: skills, lessonType, headcount,
+  })).toString();
+  const currentTimeHref = `${changeTimeHref.split("?")[0]}?${currentQuery}`;
+  const currentCoachHref = `${changeCoachHref.split("?")[0]}?${currentQuery}`;
+  const skillsSupported = coachCanTeachRequestedSkills(skills, { teachableSkills: coachSkills, customSkills });
+  const catalogueSkills = expandTeachableSkillKeys(coachSkills);
+  const unavailableSkills = skills.filter((key) => !catalogueSkills.includes(key) && !customSkills.some((skill) => skill.key === key));
 
   const day = useMemo(
     () => days.find((d) => d.dateKey === dateKey),
@@ -229,38 +255,36 @@ export function SlotPicker({
     : undefined;
   const effectivePlan = plan === "PACKAGE" && !usablePackage ? "FULL" : plan;
 
+  const startCell = day?.cells.find((cell) => cell.hour === startHour);
   const window =
-    day && startHour != null
+    startCell && option?.durations.includes(hours)
       ? lessonWindow(
-          new Date(day.cells.find((x) => x.hour === startHour)!.startIso),
+          new Date(startCell.startIso),
           new Date(
-            new Date(
-              day.cells.find((x) => x.hour === startHour)!.startIso,
-            ).getTime() +
+            new Date(startCell.startIso).getTime() +
               hours * 3_600_000,
           ),
         )
       : null;
 
-  function selectStart(hour: number) {
-    setStartHour(hour);
-    setError(null);
-    const opt = day?.startOptions.find((o) => o.hour === hour);
-    // Keep the current duration if it is still legal, else fall back to the
-    // shortest one this start allows.
-    if (opt && !opt.durations.includes(hours)) setHours(opt.durations[0]);
-  }
-
   async function submit() {
+    if (!skillsSupported) {
+      setError(c.skillsUnavailable);
+      return;
+    }
     if (!participantId) {
       setError(c.needParticipant);
       return;
     }
-    if (startHour == null || !day) return;
+    if (!additionalAttendeesComplete(additionalAttendees)) {
+      setError(c.needAttendees);
+      return;
+    }
+    if (busy || startHour == null || !day || !window) return;
 
     setBusy(true);
     setError(null);
-    const res = await fetch("/api/bookings", {
+    const res = await clientFetch("/api/bookings", {
       method: "POST",
       headers: { "content-type": "application/json", "x-locale": locale },
       body: JSON.stringify({
@@ -270,6 +294,7 @@ export function SlotPicker({
         hours,
         lessonType,
         headcount,
+        additionalAttendees: normalizeAdditionalAttendees(additionalAttendees),
         participantId,
         requestedSkills: skills,
         paymentPlan: effectivePlan,
@@ -283,6 +308,8 @@ export function SlotPicker({
       setError(
         body.error === "slot-taken"
           ? c.slotTaken
+          : body.error === "invalid-requested-skills"
+            ? c.skillsUnavailable
           : body.error?.startsWith("package-")
             ? c.packageFailed
             : c.failed,
@@ -291,15 +318,34 @@ export function SlotPicker({
       return;
     }
 
-    const { code, nextStep } = (await res.json()) as {
+    const { code, nextStep, invitations = [], holdExpiresAt } = (await res.json()) as {
       code: string;
       nextStep: "waiver" | "payment" | "done";
+      invitations?: GroupInvitationLink[];
+      holdExpiresAt?: string | null;
     };
+    if (headcount > 1) {
+      setGroupResult({ code, invitations, holdExpiresAt });
+      return;
+    }
     router.push(
       nextStep === "payment"
         ? `/booking/${code}/payment`
         : `/booking/${code}`,
     );
+  }
+
+  if (groupResult) {
+    return <div className="space-y-5">
+      <h1 className="text-2xl font-bold">{c.createdGroup}</h1>
+      {groupResult.holdExpiresAt && <HoldCountdown expiresAt={groupResult.holdExpiresAt} locale={locale} signOnly={plan === "PACKAGE"} />}
+      <GroupAttendeeRoster
+        locale={locale} code={groupResult.code} allSigned={false} canManage
+        attendees={groupResult.invitations.map((invitation) => ({ id: invitation.attendeeId, ordinal: invitation.ordinal, fullName: invitation.fullName, email: invitation.email, isMinor: invitation.isMinor, signed: false }))}
+        invitations={groupResult.invitations}
+      />
+      <Button asChild><Link href={`/booking/${groupResult.code}`}>{c.openOrder}</Link></Button>
+    </div>;
   }
 
   if (days.length === 0) {
@@ -322,7 +368,8 @@ export function SlotPicker({
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-ink-3">
           {resortName} · {coachName}
         </p>
-        <h1 className="mt-1 text-3xl">{c.pickTime}</h1>
+        <p className="mt-3 text-xs font-bold text-accent">{locale === "zh" ? "地点 → 时间 → 教练 → 确认预定" : "Location → Time → Coach → Booking details"}</p>
+        <h1 className="mt-1 text-3xl">{locale === "zh" ? "确认课程与学员" : "Complete your booking"}</h1>
       </div>
 
       {/* Coach introduction. Fed from the coach's bio; the content is set in
@@ -352,91 +399,30 @@ export function SlotPicker({
           />
         )}
 
-        <div className="space-y-1.5">
-          <Label>{c.pickDay}</Label>
-          <DateCalendar
-            locale={locale}
-            available={days.map((d) => d.dateKey)}
-            selected={dateKey || null}
-            onSelect={(next) => {
-              setDateKey(next);
-              setStartHour(null);
-            }}
-            labels={{
-              prev: c.prevMonth,
-              next: c.nextMonth,
-              none: c.noDays,
-            }}
-          />
-          {dateKey && (
-            <p className="pt-0.5 text-sm font-semibold text-ink-2">
-              {formatTorontoDate(new Date(`${dateKey}T12:00:00Z`), locale)}
-            </p>
-          )}
+        <div className="rounded-xl border border-border bg-surface-2 p-4">
+          <p className="text-xs font-semibold text-ink-3">{locale === "zh" ? "已选择的地点与时间" : "Selected location and time"}</p>
+          <p className="mt-1 font-bold">{resortName} · {formatTorontoDate(new Date(`${dateKey}T12:00:00Z`), locale)}</p>
+          <p className="mt-1 text-sm text-ink-2" data-numeric>{String(startHour).padStart(2, "0")}:00 – {String(startHour + hours).padStart(2, "0")}:00 · {hours} {c.hours}</p>
+          <div className="mt-3 flex flex-wrap gap-4 text-sm font-semibold text-accent">
+            <Link href={currentTimeHref} className="underline underline-offset-4">{locale === "zh" ? "修改时间" : "Change time"}</Link>
+            <Link href={currentCoachHref} className="underline underline-offset-4">{locale === "zh" ? "更换教练" : "Change coach"}</Link>
+          </div>
         </div>
 
-        {day && (
-          <>
-            {day.startOptions.length === 0 ? (
-              <p className="rounded-xl bg-surface-2 p-4 text-sm text-ink-2">
-                {c.noSlots}
-              </p>
-            ) : (
-              <HourGrid
-                day={day}
-                locale={locale}
-                selected={startHour}
-                onSelect={selectStart}
-              />
-            )}
-
-            {option && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="hours">{c.duration}</Label>
-                  <Select
-                    id="hours"
-                    value={hours}
-                    onChange={(e) => setHours(Number(e.target.value))}
-                  >
-                    {option.durations.map((d) => (
-                      <option key={d} value={d}>
-                        {d} {c.hours}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-
-                {maxGroupSize > 1 && (
-                  <div className="space-y-1.5">
-                    <Label htmlFor="headcount">{c.headcount}</Label>
-                    <Select
-                      id="headcount"
-                      value={headcount}
-                      onChange={(e) => setHeadcount(Number(e.target.value))}
-                    >
-                      {Array.from({ length: maxGroupSize }, (_, i) => i + 1).map(
-                        (n) => (
-                          <option key={n} value={n}>
-                            {n} {c.people}
-                            {n > 1 ? ` · ${c.oneOnN.replace("{n}", String(n))}` : ""}
-                          </option>
-                        ),
-                      )}
-                    </Select>
-                    {day.extraPersonCents > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        {c.groupNote.replace(
-                          "{extra}",
-                          formatMoneyShort(day.extraPersonCents),
-                        )}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </>
+        {maxGroupSize > 1 && (
+          <div className="space-y-1.5">
+            <Label htmlFor="headcount">{c.headcount}</Label>
+            <Select id="headcount" value={headcount} onChange={(e) => {
+              const next = Number(e.target.value);
+              setHeadcount(next);
+              setAdditionalAttendees((current) => resizeAdditionalAttendees(current, next));
+            }}>
+              {Array.from({ length: Math.min(3, maxGroupSize) }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={n}>{n} {c.people}{n > 1 ? ` · ${c.oneOnN.replace("{n}", String(n))}` : ""}</option>
+              ))}
+            </Select>
+            {day && day.extraPersonCents > 0 && <p className="text-xs text-ink-3">{c.groupNote.replace("{extra}", formatMoneyShort(day.extraPersonCents))}</p>}
+          </div>
         )}
 
         {coachWechat && (
@@ -445,6 +431,7 @@ export function SlotPicker({
             {c.otherTimes} <strong className="text-ink-2">{coachWechat}</strong>
           </p>
         )}
+        <FieldError>{error}</FieldError>
       </Card>
 
       {priced && window && (
@@ -478,11 +465,17 @@ export function SlotPicker({
           <div className="space-y-1.5">
             <Label>{c.skills}</Label>
             <p className="text-xs text-ink-3">{c.skillsHint}</p>
+            {!skillsSupported && <div className="space-y-2 rounded-xl border border-amber-border bg-amber-bg p-3 text-xs text-amber">
+              <p>{c.skillsUnavailable}</p>
+              <div className="flex flex-wrap gap-2">{unavailableSkills.map((key) => <button key={key} type="button" onClick={() => setSkills((current) => current.filter((value) => value !== key))} className="rounded-full border border-amber-border px-3 py-1.5">{skillLabel(key, locale)} ×</button>)}</div>
+            </div>}
             <SkillPicker
               locale={locale}
               selected={skills}
               onChange={setSkills}
               allowed={coachSkills}
+              customSkills={customSkills}
+              maxSelected={12}
               labels={{ alpine: c.alpine, park: c.park, tier: c.tier }}
             />
           </div>
@@ -554,6 +547,8 @@ export function SlotPicker({
             </div>
           </div>
 
+          <AdditionalAttendees locale={locale} attendees={additionalAttendees} onChange={setAdditionalAttendees} disabled={busy} />
+
           <div className="space-y-1.5 border-t border-border pt-4">
             <p className="text-sm font-bold text-ink">
               {c.cancellationPolicy}
@@ -563,11 +558,9 @@ export function SlotPicker({
             </p>
           </div>
 
-          <FieldError>{error}</FieldError>
-
           <Button
             onClick={submit}
-            disabled={busy}
+            disabled={busy || !skillsSupported || !additionalAttendeesComplete(additionalAttendees)}
             size="lg"
             className="w-full sm:w-auto sm:self-start"
           >
@@ -648,64 +641,6 @@ function LessonTypePicker({
                   {locale === "zh" ? hint.zhHint : hint.enHint}
                 </span>
               )}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/**
- * The hour grid is a radio group of buttons, not a table of divs: it has to be
- * reachable and operable by keyboard.
- *
- * Only hours that can actually start a lesson are shown — past hours, lunch,
- * booked hours and hours with no room for a full lesson simply do not appear,
- * rather than showing as greyed-out cells.
- */
-function HourGrid({
-  day,
-  locale,
-  selected,
-  onSelect,
-}: {
-  day: Day;
-  locale: Locale;
-  selected: number | null;
-  onSelect: (hour: number) => void;
-}) {
-  const byHour = new Map(day.cells.map((cell) => [cell.hour, cell]));
-
-  return (
-    <div className="space-y-2">
-      <div
-        role="group"
-        aria-label={locale === "zh" ? "可选时段" : "Available start times"}
-        className="grid grid-cols-3 gap-2 sm:grid-cols-4"
-      >
-        {day.startOptions.map((opt, i) => {
-          const isSelected = selected === opt.hour;
-          const label = `${String(opt.hour).padStart(2, "0")}:00`;
-          if (!byHour.has(opt.hour)) return null;
-
-          return (
-            <button
-              // Keyed by day as well as hour so the tiles re-run their entrance
-              // animation when the date changes.
-              key={`${day.dateKey}-${opt.hour}`}
-              type="button"
-              aria-pressed={isSelected}
-              onClick={() => onSelect(opt.hour)}
-              style={{ animationDelay: `${Math.min(i, 10) * 25}ms` }}
-              className={cn(
-                "press animate-fade-up flex min-h-14 items-center justify-center rounded-xl border text-[15px] font-bold tabular-nums",
-                isSelected
-                  ? "border-accent bg-accent text-accent-foreground shadow-[var(--shadow-sm)]"
-                  : "border-border bg-surface text-ink hover:border-accent hover:bg-[var(--accent-soft)]",
-              )}
-            >
-              {label}
             </button>
           );
         })}

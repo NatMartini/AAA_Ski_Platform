@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJsonBodyOrResponse } from "@/lib/request-body";
 import { prisma } from "@/lib/prisma";
 import { sweepExpiredHolds } from "@/lib/booking/create";
 
@@ -21,6 +22,8 @@ export async function POST(req: Request) {
   if (!secret || provided !== secret) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  const jsonBody = await readJsonBodyOrResponse(req, { allowEmpty: true });
+  if (!jsonBody.ok) return jsonBody.response;
 
   const swept = await sweepExpiredHolds(prisma, undefined, new Date());
   return NextResponse.json({ ok: true, expired: swept });

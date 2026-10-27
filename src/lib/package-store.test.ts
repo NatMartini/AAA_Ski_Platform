@@ -48,4 +48,14 @@ describe("packageAccessFor", () => {
     const other = packageAccessFor(pkg, user("lin", "CUSTOMER"), true, false);
     expect(other).toMatchObject({ canView: false, canPay: false });
   });
+  it("revokes the former payee's privileges after a coach role demotion", () => {
+    expect(packageAccessFor(pkg, user("kevin", "CUSTOMER"), true, false)).toMatchObject({
+      isPayee: false, isParty: false, canView: false, canPay: false, canReview: false,
+      canCancel: false, canAdjust: false });
+  });
+  it("retains actual purchaser rights independently of a removed coach role", () => {
+    expect(packageAccessFor({ ...pkg, accountId: "kevin", status: "AWAITING_PAYMENT" },
+      user("kevin", "CUSTOMER"), true, false)).toMatchObject({ isBuyer: true, isPayee: false,
+      canView: true, canPay: true, canCancel: true, canReview: false, canAdjust: false });
+  });
 });

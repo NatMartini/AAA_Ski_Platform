@@ -1,5 +1,5 @@
 import { setRequestLocale } from "next-intl/server";
-import { Link } from "@/i18n/navigation";
+import { Link, redirect } from "@/i18n/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUserPage } from "@/lib/auth/require-user";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
@@ -24,6 +24,9 @@ export default async function PackagesPage({
     locale,
     callbackPath: `/${locale}/packages`,
   });
+  if (user.role === "COACH" || user.role === "ADMIN") {
+    redirect({ href: "/coach/packages", locale });
+  }
 
   const loc = toLocale(locale);
   const zh = loc === "zh";

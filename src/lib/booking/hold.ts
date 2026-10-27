@@ -1,13 +1,14 @@
 import type { BookingStatus, Prisma, PrismaClient } from "@prisma/client";
 
 /**
- * Only these self-serve stages are governed by the original 30-minute
- * deadline. Once proof has been submitted, the student met the deadline and a
+ * Pending signatures and payment follow the booking's frozen deadline.
+ * Once proof has been submitted, the student met the deadline and a
  * later review/re-upload must not expire merely because holdExpiresAt remains
  * on the audit record.
  */
 export const EXPIRING_HOLD_STATUSES: BookingStatus[] = [
   "HOLD",
+  "AWAITING_WAIVER",
   "AWAITING_PAYMENT",
 ];
 

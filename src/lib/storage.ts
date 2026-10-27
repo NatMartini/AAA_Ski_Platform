@@ -168,6 +168,7 @@ export const KEY_PREFIX = {
   qr: (coachId: string) => `qr/${coachId}`,
   avatar: (coachId: string) => `avatars/${coachId}`,
   video: (bookingId: string) => `videos/${bookingId}`,
+  accountVideo: (accountId: string) => `account-videos/${accountId}`,
 } as const;
 
 /** Content types we are willing to serve back out of storage. */

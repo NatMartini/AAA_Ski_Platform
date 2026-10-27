@@ -1,39 +1,17 @@
 import { setRequestLocale } from "next-intl/server";
 import { redirect } from "@/i18n/navigation";
 import { requireUserPage } from "@/lib/auth/require-user";
-import { pickCoachForLevel } from "@/lib/coach";
-import { isLevelKey } from "@/lib/skills";
+import { parseBookingSelection, toBookingSelectionQuery } from "@/lib/booking/selection";
 
-/**
- * Resolves "pick a coach for me" into a real coach and forwards to their
- * calendar.
- *
- * A static segment, so it can never be mistaken for a coach id (those are
- * cuids). Nothing is stored here — the choice only decides which calendar the
- * student lands on, and they can still go back and pick someone else.
- */
-export default async function AutoAssignPage({
-  params,
-  searchParams,
-}: PageProps<"/[locale]/book/[resort]/auto">) {
+/** Recommendation remains a choice; it never changes the selected time. */
+export default async function AutoAssignPage({ params, searchParams }: PageProps<"/[locale]/book/[resort]/auto">) {
   const { locale, resort: resortSlug } = await params;
   setRequestLocale(locale);
-  await requireUserPage({
-    locale,
-    callbackPath: `/${locale}/book/${resortSlug}`,
-  });
-
-  const { level } = await searchParams;
-  const wanted = typeof level === "string" && isLevelKey(level) ? level : null;
-
-  const coachId = await pickCoachForLevel(resortSlug, wanted);
-  if (!coachId) redirect({ href: `/book/${resortSlug}`, locale });
-
-  redirect({
-    href: {
-      pathname: `/book/${resortSlug}/${coachId}`,
-      query: wanted ? { level: wanted } : {},
-    },
-    locale,
-  });
+  const query = await searchParams;
+  const selection = parseBookingSelection(query);
+  const suffix = selection ? new URLSearchParams(toBookingSelectionQuery(selection)).toString() : "";
+  const user = await requireUserPage({ locale, callbackPath: `/${locale}/book/${resortSlug}/auto${suffix ? `?${suffix}` : ""}` });
+  if (user.role === "COACH" || user.role === "ADMIN") redirect({ href: "/coach/bookings/new", locale });
+  if (!selection) return redirect({ href: { pathname: `/book/${resortSlug}`, query: { ...Object.fromEntries(Object.entries(query).filter((entry): entry is [string, string] => typeof entry[1] === "string")), selectionError: "missing" } }, locale });
+  redirect({ href: { pathname: `/book/${resortSlug}/coaches`, query: { ...toBookingSelectionQuery(selection), recommend: "true" } }, locale });
 }

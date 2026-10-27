@@ -1,0 +1,182 @@
+{
+  "schema_version": "freeski_explainer.v1",
+  "experimental": true,
+  "width": 1280,
+  "height": 720,
+  "fps": 20,
+  "duration_sec": 27.83,
+  "reference": "auto_matched_unreviewed",
+  "reference_status": {
+    "turn_2": "auto_matched_unreviewed",
+    "turn_3": "auto_matched_unreviewed",
+    "turn_4": "auto_matched_unreviewed"
+  },
+  "segments": [
+    {
+      "kind": "title",
+      "start_sec": 0.0,
+      "end_sec": 2.0,
+      "turn_id": null,
+      "speed": null,
+      "focus_metric_key": null,
+      "fact_ids": [],
+      "caption_zh": "动作对比讲解（试验性）· 示范平行弯",
+      "caption_en": "Technique comparison (experimental) · Demonstration parallel"
+    },
+    {
+      "kind": "realtime",
+      "start_sec": 2.0,
+      "end_sec": 3.3,
+      "speed": 1.0,
+      "turn_id": "turn_2",
+      "source_start_sec": 3.067,
+      "source_end_sec": 4.367,
+      "focus_metric_key": "turn_closure",
+      "fact_ids": [
+        "f_turn_closure"
+      ],
+      "caption_zh": "第3弯 · 原速",
+      "caption_en": "Turn 3 · real time"
+    },
+    {
+      "kind": "slow",
+      "start_sec": 3.3,
+      "end_sec": 8.5,
+      "speed": 0.25,
+      "turn_id": "turn_2",
+      "source_start_sec": 3.067,
+      "source_end_sec": 4.367,
+      "focus_metric_key": "turn_closure",
+      "fact_ids": [
+        "f_turn_closure"
+      ],
+      "caption_zh": "第3弯 · 0.25 倍慢动作：橙色是你，绿色是自动匹配的 CSIA 2 级通过示范（未审核）",
+      "caption_en": "Turn 3 · 0.25x slow motion: orange is you, green is the CSIA Level 2 pass demonstration, auto-matched (unreviewed)"
+    },
+    {
+      "kind": "freeze",
+      "start_sec": 8.5,
+      "end_sec": 11.0,
+      "speed": 0.0,
+      "turn_id": "turn_2",
+      "source_start_sec": 3.067,
+      "source_end_sec": 4.367,
+      "focus_metric_key": "turn_closure",
+      "fact_ids": [
+        "f_turn_closure"
+      ],
+      "keyframe_id": "kf_6609db04379716a8172853c41b48591c",
+      "freeze_at_sec": 3.717,
+      "caption_zh": "第3弯·弯顶：收弯完成度 57 分，在示范常见范围内",
+      "caption_en": "Turn 3 · apex: Turn closure 57, within the demonstrations' usual range"
+    },
+    {
+      "kind": "realtime",
+      "start_sec": 11.0,
+      "end_sec": 12.1,
+      "speed": 1.0,
+      "turn_id": "turn_3",
+      "source_start_sec": 4.367,
+      "source_end_sec": 5.467,
+      "focus_metric_key": "turn_closure",
+      "fact_ids": [
+        "f_turn_closure_turn_3"
+      ],
+      "caption_zh": "第4弯 · 原速",
+      "caption_en": "Turn 4 · real time"
+    },
+    {
+      "kind": "slow",
+      "start_sec": 12.1,
+      "end_sec": 16.5,
+      "speed": 0.25,
+      "turn_id": "turn_3",
+      "source_start_sec": 4.367,
+      "source_end_sec": 5.467,
+      "focus_metric_key": "turn_closure",
+      "fact_ids": [
+        "f_turn_closure_turn_3"
+      ],
+      "caption_zh": "第4弯 · 0.25 倍慢动作：橙色是你，绿色是自动匹配的 CSIA 2 级通过示范（未审核）",
+      "caption_en": "Turn 4 · 0.25x slow motion: orange is you, green is the CSIA Level 2 pass demonstration, auto-matched (unreviewed)"
+    },
+    {
+      "kind": "freeze",
+      "start_sec": 16.5,
+      "end_sec": 19.0,
+      "speed": 0.0,
+      "turn_id": "turn_3",
+      "source_start_sec": 4.367,
+      "source_end_sec": 5.467,
+      "focus_metric_key": "turn_closure",
+      "fact_ids": [
+        "f_turn_closure_turn_3"
+      ],
+      "keyframe_id": "kf_7457ca2cca3250c2c045e5bc5071a8de",
+      "freeze_at_sec": 4.917,
+      "caption_zh": "第4弯·弯顶：收弯完成度 33.4 分，低于示范常见范围",
+      "caption_en": "Turn 4 · apex: Turn closure 33.4, below the demonstrations' usual range"
+    },
+    {
+      "kind": "realtime",
+      "start_sec": 19.0,
+      "end_sec": 19.666,
+      "speed": 1.0,
+      "turn_id": "turn_4",
+      "source_start_sec": 5.467,
+      "source_end_sec": 6.133,
+      "focus_metric_key": "rotation_rate",
+      "fact_ids": [
+        "f_rotation_rate_turn_4"
+      ],
+      "caption_zh": "第5弯 · 原速",
+      "caption_en": "Turn 5 · real time"
+    },
+    {
+      "kind": "slow",
+      "start_sec": 19.666,
+      "end_sec": 22.33,
+      "speed": 0.25,
+      "turn_id": "turn_4",
+      "source_start_sec": 5.467,
+      "source_end_sec": 6.133,
+      "focus_metric_key": "rotation_rate",
+      "fact_ids": [
+        "f_rotation_rate_turn_4"
+      ],
+      "caption_zh": "第5弯 · 0.25 倍慢动作：橙色是你，绿色是自动匹配的 CSIA 2 级通过示范（未审核）",
+      "caption_en": "Turn 5 · 0.25x slow motion: orange is you, green is the CSIA Level 2 pass demonstration, auto-matched (unreviewed)"
+    },
+    {
+      "kind": "freeze",
+      "start_sec": 22.33,
+      "end_sec": 24.83,
+      "speed": 0.0,
+      "turn_id": "turn_4",
+      "source_start_sec": 5.467,
+      "source_end_sec": 6.133,
+      "focus_metric_key": "rotation_rate",
+      "fact_ids": [
+        "f_rotation_rate_turn_4"
+      ],
+      "keyframe_id": "kf_57d8016e2ab163567684bcd967da40a5",
+      "freeze_at_sec": 5.8,
+      "caption_zh": "第5弯·弯顶：旋转速率 55.1 分，高于示范常见范围",
+      "caption_en": "Turn 5 · apex: Rotation rate 55.1, above the demonstrations' usual range"
+    },
+    {
+      "kind": "outro",
+      "start_sec": 24.83,
+      "end_sec": 27.83,
+      "turn_id": null,
+      "speed": null,
+      "focus_metric_key": "rotation_rate",
+      "fact_ids": [
+        "f_rotation_rate"
+      ],
+      "caption_zh": "最需要改进：旋转速率（80.3 分）。详细解释和练习见报告。",
+      "caption_en": "Main thing to work on: Rotation rate (80.3). See the report for notes and drills."
+    }
+  ],
+  "status": "ready"
+}

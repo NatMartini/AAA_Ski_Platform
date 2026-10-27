@@ -1,5 +1,8 @@
 "use client";
 
+import { clientFetch } from "@/lib/client-fetch";
+import { useRouter } from "@/i18n/navigation";
+
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Hint, FieldError } from "@/components/ui/field";
@@ -15,6 +18,7 @@ import { Loader2, Upload } from "lucide-react";
  * public/, so the preview is fetched back through an authenticated route.
  */
 export function ImageUploadField({
+  coachId,
   purpose,
   kind,
   previewSrc,
@@ -25,6 +29,7 @@ export function ImageUploadField({
   labels,
   onUploaded,
 }: {
+  coachId: string;
   purpose: "payment-qr" | "coach-avatar";
   kind?: string;
   /** Authenticated route the preview is read back from. */
@@ -34,9 +39,10 @@ export function ImageUploadField({
   /** Circular preview for a face, square for a QR code. */
   round?: boolean;
   hint?: string;
-  labels: { upload: string; replace: string; failed: string; tooLarge: string };
+  labels: { upload: string; replace: string; failed: string; tooLarge: string; sessionChanged: string };
   onUploaded: (key: string) => void;
 }) {
+  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,14 +56,16 @@ export function ImageUploadField({
     const body = new FormData();
     body.set("file", file);
     body.set("purpose", purpose);
+    body.set("expectedCoachId", coachId);
     if (kind) body.set("kind", kind);
 
-    const res = await fetch("/api/upload", { method: "POST", body });
+    const res = await clientFetch("/api/upload", { method: "POST", body });
     setBusy(false);
 
     if (!res.ok) {
       const j = (await res.json().catch(() => ({}))) as { error?: string };
-      setError(j.error === "too-large" ? labels.tooLarge : labels.failed);
+      setError(j.error === "session-changed" ? labels.sessionChanged : j.error === "too-large" ? labels.tooLarge : labels.failed);
+      if (j.error === "session-changed" || res.status === 401 || res.status === 403) router.refresh();
       return;
     }
     const j = (await res.json()) as { key: string };

@@ -1,0 +1,52 @@
+{
+  "schema_version": "freeski_keyframes.v1",
+  "turn_id": "turn_3",
+  "status": "ready",
+  "items": [
+    {
+      "keyframe_id": "kf_8c41510c49e0c57f061b0a5cce1f4c07",
+      "phase": "initiation",
+      "time_sec": 4.532,
+      "reference_time_sec": 47.916,
+      "width": 960,
+      "height": 540,
+      "focus_metric_key": "turn_closure",
+      "caption_zh": "第4弯·入弯：收弯完成度 33.4 分，低于示范常见范围",
+      "caption_en": "Turn 4 · initiation: Turn closure 33.4, below the demonstrations' usual range",
+      "fact_ids": [
+        "f_turn_closure_turn_3"
+      ],
+      "reference_status": "auto_matched_unreviewed"
+    },
+    {
+      "keyframe_id": "kf_7457ca2cca3250c2c045e5bc5071a8de",
+      "phase": "apex",
+      "time_sec": 4.917,
+      "reference_time_sec": 48.576,
+      "width": 960,
+      "height": 540,
+      "focus_metric_key": "turn_closure",
+      "caption_zh": "第4弯·弯顶：收弯完成度 33.4 分，低于示范常见范围",
+      "caption_en": "Turn 4 · apex: Turn closure 33.4, below the demonstrations' usual range",
+      "fact_ids": [
+        "f_turn_closure_turn_3"
+      ],
+      "reference_status": "auto_matched_unreviewed"
+    },
+    {
+      "keyframe_id": "kf_faf340eb17eb4d8b9ddda3e13fee69a2",
+      "phase": "completion",
+      "time_sec": 5.302,
+      "reference_time_sec": 49.235,
+      "width": 960,
+      "height": 540,
+      "focus_metric_key": "turn_closure",
+      "caption_zh": "第4弯·收弯：收弯完成度 33.4 分，低于示范常见范围",
+      "caption_en": "Turn 4 · completion: Turn closure 33.4, below the demonstrations' usual range",
+      "fact_ids": [
+        "f_turn_closure_turn_3"
+      ],
+      "reference_status": "auto_matched_unreviewed"
+    }
+  ]
+}

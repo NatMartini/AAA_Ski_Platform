@@ -1,5 +1,7 @@
 "use client";
 
+import { clientFetch } from "@/lib/client-fetch";
+
 import { useState } from "react";
 import { useRouter } from "@/i18n/navigation";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
@@ -45,7 +47,7 @@ export function PackageCancel({
     if (!window.confirm(c.confirm)) return;
     setBusy(true);
     setError(null);
-    const res = await fetch(`/api/packages/${packageCode}/cancel`, {
+    const res = await clientFetch(`/api/packages/${packageCode}/cancel`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ reason: reason.trim() }),

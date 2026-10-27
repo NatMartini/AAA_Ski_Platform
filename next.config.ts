@@ -26,6 +26,10 @@ const CSP = [
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["sharp", "nodemailer"],
+  // These are private runtime data/config, never part of a deployment artifact.
+  outputFileTracingExcludes: {
+    "/*": ["./storage/**/*", "./tmp/**/*", "./.env*", "./.git/**/*"],
+  },
 
   async headers() {
     return [

@@ -1,5 +1,7 @@
 "use client";
 
+import { clientFetch } from "@/lib/client-fetch";
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FieldError, Hint, Input, Label, Select } from "@/components/ui/field";
@@ -95,7 +97,7 @@ export function AddParticipantDialog({
   const [open, setOpen] = useState(false);
   const [isSelf, setIsSelf] = useState(!hasSelf);
   const [fullName, setFullName] = useState("");
-  const [isMinor, setIsMinor] = useState(false);
+  const [isMinor, setIsMinor] = useState(hasSelf);
   const [emergencyContactName, setEmergencyName] = useState("");
   const [emergencyContactPhone, setEmergencyPhone] = useState("");
   const [skillLevel, setSkillLevel] = useState("");
@@ -106,7 +108,7 @@ export function AddParticipantDialog({
     setBusy(true);
     setError(null);
 
-    const res = await fetch("/api/participants", {
+    const res = await clientFetch("/api/participants", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -147,7 +149,6 @@ export function AddParticipantDialog({
     });
     setOpen(false);
     setFullName("");
-    setIsMinor(false);
   }
 
   if (!open) {
@@ -156,7 +157,16 @@ export function AddParticipantDialog({
         type="button"
         variant="secondary"
         size="sm"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setIsSelf(!hasSelf);
+          setIsMinor(hasSelf);
+          setFullName("");
+          setEmergencyName("");
+          setEmergencyPhone("");
+          setSkillLevel("");
+          setError(null);
+          setOpen(true);
+        }}
       >
         <Plus aria-hidden />
         {label}
@@ -170,6 +180,7 @@ export function AddParticipantDialog({
         <h3 className="text-sm font-semibold">{c.title}</h3>
         <button
           type="button"
+          disabled={busy}
           onClick={() => setOpen(false)}
           aria-label={c.cancel}
           className="rounded p-1 text-muted-foreground hover:text-foreground"
@@ -273,7 +284,7 @@ export function AddParticipantDialog({
           type="button"
           size="sm"
           onClick={save}
-          disabled={busy || !fullName}
+          disabled={busy || !fullName.trim()}
         >
           {busy && <Loader2 className="animate-spin" aria-hidden />}
           {c.save}
@@ -282,6 +293,7 @@ export function AddParticipantDialog({
           type="button"
           size="sm"
           variant="ghost"
+          disabled={busy}
           onClick={() => setOpen(false)}
         >
           {c.cancel}

@@ -8,6 +8,7 @@ import { toDateKey } from "@/lib/time";
 import { bookingHorizon } from "@/lib/season";
 import { MAX_SUPPORTED_HEADCOUNT } from "@/lib/booking/group";
 import { offeredRates } from "@/lib/rates";
+import { parseCustomSkills } from "@/lib/custom-skills";
 
 export default async function CoachNewBookingPage({
   params,
@@ -36,6 +37,8 @@ export default async function CoachNewBookingPage({
     <CoachBookingForm
       locale={toLocale(locale)}
       minHours={profile?.minHours ?? 2}
+      teachableSkills={profile?.teachableSkills ?? []}
+      customSkills={parseCustomSkills(profile?.customSkills)}
       maxGroupSize={Math.min(
         profile?.maxGroupSize ?? 1,
         MAX_SUPPORTED_HEADCOUNT,

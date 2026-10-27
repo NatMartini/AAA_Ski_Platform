@@ -1,5 +1,6 @@
 import { setRequestLocale } from "next-intl/server";
 import { notFound } from "next/navigation";
+import { redirect } from "@/i18n/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUserPage } from "@/lib/auth/require-user";
 import { getAvailability } from "@/lib/availability";
@@ -11,19 +12,31 @@ import { bookingHorizon } from "@/lib/season";
 import { MAX_SUPPORTED_HEADCOUNT } from "@/lib/booking/group";
 import { earlyBirdWindow, offeredRates } from "@/lib/rates";
 import { usablePackages } from "@/lib/package-store";
+import { parseBookingSelection, toBookingSelectionQuery } from "@/lib/booking/selection";
+import { recommendCoaches } from "@/lib/booking/recommendation";
+import { parseCustomSkills } from "@/lib/custom-skills";
 
 export default async function PickSlotPage({
   params,
   searchParams,
 }: PageProps<"/[locale]/book/[resort]/[coach]">) {
   const { locale, resort: resortSlug, coach: coachId } = await params;
-  const { date: askedDate } = await searchParams;
+  const query = await searchParams;
+  const selection = parseBookingSelection(query);
   setRequestLocale(locale);
 
   const user = await requireUserPage({
     locale,
-    callbackPath: `/${locale}/book/${resortSlug}/${coachId}`,
+    callbackPath: `/${locale}/book/${resortSlug}/${coachId}${selection ? `?${new URLSearchParams(toBookingSelectionQuery(selection))}` : ""}`,
   });
+  if (user.role === "COACH" || user.role === "ADMIN") {
+    redirect({ href: "/coach/bookings/new", locale });
+  }
+  if (!selection) {
+    return redirect({ href: { pathname: `/book/${resortSlug}`, query: {
+      ...(typeof query.date === "string" ? { date: query.date } : {}), selectionError: "missing",
+    } }, locale });
+  }
 
   const [resort, profile] = await Promise.all([
     prisma.resort.findUnique({ where: { slug: resortSlug } }),
@@ -33,6 +46,16 @@ export default async function PickSlotPage({
     }),
   ]);
   if (!resort?.isActive || !profile || !canAcceptBookings(profile)) notFound();
+  const eligible = await recommendCoaches({
+    resortSlug, dateKey: selection.dateKey, startHour: selection.startHour, hours: selection.hours,
+    skills: selection.requestedSkills, level: selection.level, lessonType: selection.lessonType,
+    headcount: selection.headcount,
+  }, user.id);
+  if (!eligible.some((coach) => coach.userId === coachId)) {
+    return redirect({ href: { pathname: `/book/${resortSlug}/coaches`, query: {
+      ...toBookingSelectionQuery(selection), coachUnavailable: "true",
+    } }, locale });
+  }
 
   // Runs to the end of the season rather than a fixed number of days, so
   // December dates are visible during the autumn rather than falling off the
@@ -61,15 +84,18 @@ export default async function PickSlotPage({
     usablePackages(user.id, resort.id),
   ]);
 
-  // The calendar links here with ?date= so the day arrives picked.
-  const initialDateKey =
-    typeof askedDate === "string" &&
-    forResort.some((d) => d.dateKey === askedDate)
-      ? askedDate
-      : undefined;
+  // Recheck after the recommendation read; never change a selected time silently.
+  if (!forResort.some((day) => day.dateKey === selection.dateKey && day.startOptions.some((start) =>
+    start.hour === selection.startHour && start.durations.includes(selection.hours)))) {
+    return redirect({ href: { pathname: `/book/${resortSlug}`, query: {
+      ...toBookingSelectionQuery(selection), selectionError: "unavailable",
+    } }, locale });
+  }
+  const selectedQuery = new URLSearchParams(toBookingSelectionQuery(selection)).toString();
 
   return (
     <SlotPicker
+      key={`${coachId}:${selectedQuery}`}
       locale={toLocale(locale)}
       coachId={coachId}
       coachName={profile.displayName}
@@ -77,13 +103,13 @@ export default async function PickSlotPage({
       coachAvatarUrl={profile.avatarUrl}
       coachWechat={profile.wechatId}
       coachSkills={profile.teachableSkills}
+      customSkills={parseCustomSkills(profile.customSkills)}
       cancellationPolicy={
         (locale === "zh"
           ? profile.cancellationPolicyZh
           : profile.cancellationPolicyEn) ?? ""
       }
       resortName={locale === "zh" ? resort.nameZh : resort.nameEn}
-      minHours={profile.minHours}
       maxGroupSize={Math.min(
         profile.maxGroupSize,
         MAX_SUPPORTED_HEADCOUNT,
@@ -95,7 +121,9 @@ export default async function PickSlotPage({
       }))}
       earlyBirdActive={earlyBirdWindow(today).active}
       packages={packages}
-      initialDateKey={initialDateKey}
+      selection={selection}
+      changeTimeHref={`/book/${resortSlug}?${selectedQuery}`}
+      changeCoachHref={`/book/${resortSlug}/coaches?${selectedQuery}`}
       days={forResort.map((day) => ({
         dateKey: day.dateKey,
         earlyBird: day.earlyBird,

@@ -3,7 +3,6 @@ import { Link } from "@/i18n/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUserPage } from "@/lib/auth/require-user";
 import { Card, CardDescription } from "@/components/ui/card";
-import { StatusPill } from "@/components/ui/status-pill";
 import { OCCUPYING_STATUSES } from "@/lib/booking/state";
 import { canAcceptBookings, rulesFor } from "@/lib/coach";
 import {
@@ -14,7 +13,6 @@ import {
   weekStart,
   type Segment,
 } from "@/lib/calendar";
-import { lessonTypeLabel } from "@/lib/lesson-types";
 import {
   addDaysToDateKey,
   dateKeyToDbDate,
@@ -41,10 +39,8 @@ const COPY = {
     lesson: "上课",
     open: "可约",
     lunch: "午休",
-    booked: "已约",
-    yours: "你的课",
     bookDay: "约这天",
-    oneOnN: "1 对 {n}",
+    booking: "查看订单 {code}",
     empty: "这一周还没有教练开放日期。",
   },
   en: {
@@ -61,10 +57,8 @@ const COPY = {
     lesson: "Lesson",
     open: "Bookable",
     lunch: "Lunch",
-    booked: "Booked",
-    yours: "Your lesson",
     bookDay: "Book this day",
-    oneOnN: "1-on-{n}",
+    booking: "View booking {code}",
     empty: "No coach has opened any days this week yet.",
   },
 } as const;
@@ -74,8 +68,9 @@ const SHOWN_STATUSES = [...OCCUPYING_STATUSES, "COMPLETED" as const];
 
 /**
  * The shared week timetable. Every signed-in user sees every coach's days and
- * lessons — the site is run by two coaches who keep one set of books — but a
- * student sees other students' lessons only as "booked", without a name.
+ * lessons — the site is run by two coaches who keep one set of books. Other
+ * students' lessons remain anonymous blocks; booking links are limited to
+ * coaches and the student who owns each booking.
  */
 export default async function CalendarPage({
   params,
@@ -123,7 +118,7 @@ export default async function CalendarPage({
         endHour: true,
         breakStartHour: true,
         breakEndHour: true,
-        resort: { select: { slug: true, nameEn: true, nameZh: true } },
+        resort: { select: { slug: true, nameEn: true, nameZh: true, isActive: true } },
       },
     }),
   ]);
@@ -137,16 +132,10 @@ export default async function CalendarPage({
       code: true,
       coachDayId: true,
       accountId: true,
-      status: true,
       startAt: true,
       endAt: true,
       lessonStartAt: true,
       lessonEndAt: true,
-      lessonType: true,
-      headcount: true,
-      participantNameSnapshot: true,
-      inviteName: true,
-      participant: { select: { fullName: true } },
     },
     orderBy: { startAt: "asc" },
   });
@@ -165,6 +154,7 @@ export default async function CalendarPage({
       const profile = profileOf.get(d.coachId)!;
       const dateKey = dbDateToDateKey(d.date);
       const lessons = lessonsByDay.get(d.id) ?? [];
+      const acceptsBookings = d.resort.isActive && canAcceptBookings(profile);
       const segments = daySegments<Lesson>(
         {
           dateKey,
@@ -176,6 +166,14 @@ export default async function CalendarPage({
         lessons,
         now,
         rulesFor(profile),
+      ).map((segment) =>
+        segment.kind === "open" && !acceptsBookings
+          ? { ...segment, bookable: false }
+          : segment,
+      );
+      const bookable = segments.filter(
+        (s): s is Extract<Segment<Lesson>, { kind: "open" }> =>
+          s.kind === "open" && s.bookable,
       );
       return {
         id: d.id,
@@ -187,10 +185,9 @@ export default async function CalendarPage({
         startHour: d.startHour,
         endHour: d.endHour,
         segments,
-        canBook:
-          !isCoach &&
-          canAcceptBookings(profile) &&
-          segments.some((s) => s.kind === "open" && s.bookable),
+        bookable,
+        bookingLinks: lessons.filter((b) => isCoach || b.accountId === user.id),
+        canBook: !isCoach && bookable.length > 0,
       };
     })
     .sort(
@@ -325,20 +322,29 @@ export default async function CalendarPage({
                           />
                           <strong>{r.coachName}</strong>
                           <span className="text-ink-2">
-                            · {loc === "zh" ? r.resort.nameZh : r.resort.nameEn} ·{" "}
-                            <span className="tabular-nums">
-                              {pad(r.startHour)}:00–{pad(r.endHour)}:00
-                            </span>
+                            · {loc === "zh" ? r.resort.nameZh : r.resort.nameEn}
                           </span>
                         </span>
-                        {r.canBook && (
-                          <Link
-                            href={`/book/${r.resort.slug}/${r.coachId}?date=${dateKey}`}
-                            className="text-xs font-bold text-accent underline underline-offset-2"
-                          >
-                            {c.bookDay} →
-                          </Link>
-                        )}
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                          {r.bookingLinks.map((b) => (
+                            <Link
+                              key={b.id}
+                              href={`/booking/${b.code}`}
+                              aria-label={c.booking.replace("{code}", b.code)}
+                              className="font-mono text-xs font-bold text-accent underline underline-offset-2"
+                            >
+                              {b.code}
+                            </Link>
+                          ))}
+                          {r.canBook && (
+                            <Link
+                              href={`/book/${r.resort.slug}?date=${dateKey}`}
+                              className="text-xs font-bold text-accent underline underline-offset-2"
+                            >
+                              {c.bookDay} →
+                            </Link>
+                          )}
+                        </div>
                       </div>
 
                       <Timeline
@@ -348,18 +354,18 @@ export default async function CalendarPage({
                         colour={r.colour}
                       />
 
-                      <ul className="space-y-1 text-xs">
-                        {r.segments.map((s) => (
-                          <SegmentRow
-                            key={`${s.kind}-${s.startAt.toISOString()}`}
-                            segment={s}
-                            locale={loc}
-                            labels={c}
-                            viewerId={user.id}
-                            isCoach={isCoach}
-                          />
-                        ))}
-                      </ul>
+                      {r.bookable.length > 0 && (
+                        <ul className="space-y-1 text-xs">
+                          {r.bookable.map((s) => (
+                            <li key={s.startAt.toISOString()} className="flex gap-2">
+                              <span className="tabular-nums text-ink-2">
+                                {hhmm(s.startAt)}–{hhmm(s.endAt)}
+                              </span>
+                              <span className="font-semibold text-accent">{c.open}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -409,28 +415,19 @@ function pct(hour: number, axis: Axis): number {
   return ((hour - axis.start) / (axis.end - axis.start)) * 100;
 }
 
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
 type LessonRow = {
   code: string;
   accountId: string | null;
-  status: Parameters<typeof StatusPill>[0]["status"];
   startAt: Date;
   endAt: Date;
   lessonStartAt: Date;
   lessonEndAt: Date;
-  lessonType: string;
-  headcount: number;
-  participantNameSnapshot: string | null;
-  inviteName: string | null;
-  participant: { fullName: string } | null;
 };
 
 /**
- * The day drawn to scale. Decorative: every block is also listed in words
- * underneath, so nothing here is conveyed by colour or position alone.
+ * The day drawn to scale. Bookable ranges are listed underneath; booking
+ * links stay in the coach/day heading so lesson and lunch lines do not
+ * compete with the times a student can actually choose.
  */
 function Timeline({
   segments,
@@ -504,77 +501,6 @@ function Timeline({
       })}
     </div>
   );
-}
-
-function SegmentRow({
-  segment: s,
-  locale,
-  labels,
-  viewerId,
-  isCoach,
-}: {
-  segment: Segment<LessonRow>;
-  locale: Locale;
-  labels: (typeof COPY)[Locale];
-  viewerId: string;
-  isCoach: boolean;
-}) {
-  if (s.kind === "lesson") {
-    const b = s.lesson;
-    const own = b.accountId === viewerId;
-    const student =
-      b.participantNameSnapshot ?? b.participant?.fullName ?? b.inviteName ?? "—";
-    const detail = [
-      lessonTypeLabel(b.lessonType, locale),
-      b.headcount > 1 ? labels.oneOnN.replace("{n}", String(b.headcount)) : null,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-    return (
-      <li className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="font-semibold tabular-nums text-ink">
-          {hhmm(b.lessonStartAt)}–{hhmm(b.lessonEndAt)}
-        </span>
-        {isCoach ? (
-          <span className="text-ink">
-            {student} <span className="text-ink-2">· {detail}</span>
-          </span>
-        ) : (
-          <span className="text-ink-2">{own ? labels.yours : labels.booked}</span>
-        )}
-        {isCoach && <StatusPill status={b.status} locale={locale} className="px-2 py-0.5" />}
-        {(isCoach || own) && (
-          <Link
-            href={`/booking/${b.code}`}
-            className="font-mono font-bold text-accent underline underline-offset-2"
-          >
-            {b.code}
-          </Link>
-        )}
-      </li>
-    );
-  }
-  if (s.kind === "open" && s.bookable) {
-    return (
-      <li className="flex gap-2">
-        <span className="tabular-nums text-ink-2">
-          {hhmm(s.startAt)}–{hhmm(s.endAt)}
-        </span>
-        <span className="font-semibold text-accent">{labels.open}</span>
-      </li>
-    );
-  }
-  if (s.kind === "break") {
-    return (
-      <li className="flex gap-2 text-ink-3">
-        <span className="tabular-nums">
-          {hhmm(s.startAt)}–{hhmm(s.endAt)}
-        </span>
-        <span>{labels.lunch}</span>
-      </li>
-    );
-  }
-  return null;
 }
 
 function Legend({

@@ -1,3 +1,4 @@
+import { readJsonBodyOrResponse } from "@/lib/request-body";
 import { NextResponse } from "next/server";
 import { requireCoach } from "@/lib/auth/require-user";
 import { rateLimitOrRespond } from "@/lib/rate-limit";
@@ -21,7 +22,9 @@ export async function POST(req: Request) {
   const r = await requireCoach();
   if (!r.ok) return r.response;
 
-  const parsed = translateSchema.safeParse(await req.json().catch(() => null));
+  const jsonBody = await readJsonBodyOrResponse(req);
+  if (!jsonBody.ok) return jsonBody.response;
+  const parsed = translateSchema.safeParse(jsonBody.data);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "validation", fields: fieldErrors(parsed.error) },

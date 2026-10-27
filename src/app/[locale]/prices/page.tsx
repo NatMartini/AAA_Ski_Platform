@@ -1,5 +1,5 @@
 import { setRequestLocale } from "next-intl/server";
-import { Link } from "@/i18n/navigation";
+import { Link, redirect } from "@/i18n/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUserPage } from "@/lib/auth/require-user";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
@@ -28,7 +28,10 @@ export default async function PricesPage({
 }: PageProps<"/[locale]/prices">) {
   const { locale } = await params;
   setRequestLocale(locale);
-  await requireUserPage({ locale, callbackPath: `/${locale}/prices` });
+  const user = await requireUserPage({ locale, callbackPath: `/${locale}/prices` });
+  if (user.role === "COACH" || user.role === "ADMIN") {
+    redirect({ href: "/coach/settings", locale });
+  }
 
   const loc = toLocale(locale);
   const zh = loc === "zh";
@@ -161,12 +164,12 @@ export default async function PricesPage({
             ? [
                 "至少 2 小时,按整小时约。2 小时是平衡体力和练习肌肉记忆的黄金时长。",
                 "开课时间是整点后 10 分钟:例如约了 10:00–12:00,实际上课 10:10–12:00。前 10 分钟是和上一位学员的交接时间。",
-                "这 10 分钟不收费,每单直接减!",
+                "每单减去开头 10 分钟课时费，减免额向上凑到 $5 的倍数，最低 $10，且不超过课费。",
               ]
             : [
                 "Two hours minimum, booked in whole hours. Two hours is the sweet spot for stamina and muscle memory.",
                 "Lessons start ten minutes past the hour: book 10:00–12:00 and the lesson runs 10:10–12:00. The first ten minutes are the handover from the previous student.",
-                "Those ten minutes are free: their fee comes straight off every booking.",
+                "Each booking receives a credit for those ten minutes, rounded up to the next $5, with a $10 minimum and capped at the lesson price.",
               ]
           ).map((line) => (
             <li key={line}>{line}</li>

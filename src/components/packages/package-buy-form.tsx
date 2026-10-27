@@ -1,5 +1,7 @@
 "use client";
 
+import { clientFetch } from "@/lib/client-fetch";
+
 import { useState } from "react";
 import { useRouter } from "@/i18n/navigation";
 import { Button } from "@/components/ui/button";
@@ -44,7 +46,7 @@ export function PackageBuyForm({
   async function buy() {
     setBusy(true);
     setError(null);
-    const res = await fetch("/api/packages", {
+    const res = await clientFetch("/api/packages", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ offerKey, payeeCoachId }),

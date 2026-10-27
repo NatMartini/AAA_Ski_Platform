@@ -5,15 +5,15 @@ import { addMinutes } from "./time";
  * handover from the previous student, so the lesson starts ten past and runs
  * to the end of the hour. A 1:00-3:00 booking is taught 1:10-3:00.
  *
- * The fee for those ten minutes is taken off the price — once per booking,
- * not per hour, because the handover only happens once no matter how long the
- * lesson is. It is ten minutes at the booked hourly rate: $60/h for 2h is
- * $120 less $10, so $110; at $70/h the credit is $11.67.
+ * The handover credit is ten minutes at the booked hourly rate, rounded up
+ * to the next $5 with a $10 minimum for a priced lesson. It is deducted once
+ * per booking, regardless of duration: $60/h for 2h is $120 less $10, so
+ * $110; at $70/h the credit is $15 and the total is $125.
  *
  * Group lessons: the per-hour rate rises by a fixed amount for each additional
  * student. With a $60 base and a $20 per-extra-person rate, one-on-one is
  * $60/h, one-on-two $80/h, one-on-three $100/h. The handover credit is ten
- * minutes at that group rate, still once per booking.
+ * minutes at that group rate, rounded up by the same rule, once per booking.
  *
  * Which base rate applies — lesson type, early bird or regular — is decided in
  * rates.ts. No tax is calculated or displayed anywhere: the published prices
@@ -27,6 +27,8 @@ export const HANDOVER_TOTAL_MINUTES =
   HANDOVER_HEAD_MINUTES + HANDOVER_TAIL_MINUTES;
 
 export const CURRENCY = "CAD";
+const HANDOVER_MINIMUM_CENTS = 1000;
+const HANDOVER_INCREMENT_CENTS = 500;
 
 /** Default extra charge per additional student per hour ($20). */
 export const DEFAULT_EXTRA_PERSON_CENTS = 2000;
@@ -50,11 +52,18 @@ export type Quote = {
 };
 
 /**
- * The handover credit: the fee for the ten minutes not taught, at the
- * effective hourly rate, rounded to the cent.
+ * Ten minutes at the effective hourly rate, rounded up in $5 tiers with a
+ * $10 minimum. A free lesson receives no credit; quote caps it at the subtotal.
  */
 export function handoverCreditCents(perHourCents: number): number {
-  return Math.round((perHourCents * HANDOVER_TOTAL_MINUTES) / 60);
+  if (perHourCents <= 0) return 0;
+  return Math.max(
+    HANDOVER_MINIMUM_CENTS,
+    Math.ceil(
+      (perHourCents * HANDOVER_TOTAL_MINUTES) /
+        (60 * HANDOVER_INCREMENT_CENTS),
+    ) * HANDOVER_INCREMENT_CENTS,
+  );
 }
 
 /** Effective per-hour rate for a group of `headcount` students. */
@@ -93,7 +102,7 @@ export function quote(input: {
     extraPersonCents,
   );
   const subtotalCents = hours * perHourCents;
-  // Ten minutes can never cost more than the lesson, but clamp regardless.
+  // The minimum credit can exceed a very small lesson price; never go negative.
   const discount = Math.min(handoverCreditCents(perHourCents), subtotalCents);
 
   return {

@@ -7,6 +7,7 @@ import { clausesFor, WARNING } from "@/lib/waiver/template-v1";
 import { WaiverForm } from "@/components/waiver/waiver-form";
 import { toLocale } from "@/i18n/routing";
 import { isSelfServeHoldExpired } from "@/lib/booking/hold";
+import { isAttendeeWaiverValid } from "@/lib/booking/group-readiness";
 
 export default async function SignWaiverPage({
   params,
@@ -29,8 +30,12 @@ export default async function SignWaiverPage({
   }
 
   // Nothing to sign: either already covered, or past that step.
+  const primaryAttendee = booking.attendees.find((attendee) => attendee.ordinal === 1);
+  const primarySigned = booking.headcount > 1
+    ? Boolean(primaryAttendee && isAttendeeWaiverValid(primaryAttendee, booking))
+    : Boolean(booking.waiverId);
   if (
-    booking.waiverId ||
+    primarySigned ||
     !["HOLD", "AWAITING_WAIVER"].includes(booking.status) ||
     isSelfServeHoldExpired(booking, new Date())
   ) {
@@ -81,7 +86,7 @@ export default async function SignWaiverPage({
             : null,
         }}
         postTo={`/api/bookings/${booking.code}/waiver`}
-        redirectTo={`/booking/${booking.code}/payment`}
+        redirectTo={booking.headcount > 1 ? `/booking/${booking.code}` : `/booking/${booking.code}/payment`}
       />
     </div>
   );

@@ -2,6 +2,7 @@ import { prisma } from "./prisma";
 import type { CoachProfile, CoachRate } from "@prisma/client";
 import type { SlotRules } from "./slots";
 import { offeredRates } from "./rates";
+import { dateKeyToDbDate, toDateKey } from "./time";
 
 /** A coach profile together with its rate card. */
 export type CoachProfileWithRates = CoachProfile & { rates: CoachRate[] };
@@ -33,7 +34,7 @@ export function canAcceptBookings(profile: CoachProfileWithRates): boolean {
 export function hasAnyPaymentMethod(profile: CoachProfile): boolean {
   return (
     (profile.emtEnabled && Boolean(profile.emtEmail)) ||
-    (profile.wechatPayEnabled && Boolean(profile.wechatPayQrKey)) ||
+    (profile.wechatPayEnabled && Boolean(profile.wechatPayQrKey || profile.wechatId)) ||
     (profile.alipayEnabled && Boolean(profile.alipayQrKey))
   );
 }
@@ -56,7 +57,7 @@ export async function getCoachProfile(userId: string) {
 /** Coaches a student may book: published and fully set up. */
 export async function listBookableCoaches(resortSlug?: string) {
   const coaches = await prisma.coachProfile.findMany({
-    where: { isPublished: true },
+    where: { isPublished: true, user: { disabledAt: null, role: { in: ["COACH", "ADMIN"] } } },
     include: {
       user: { select: { id: true, name: true, image: true } },
       rates: true,
@@ -70,7 +71,7 @@ export async function listBookableCoaches(resortSlug?: string) {
   // Only show coaches who have at least one upcoming day at this resort.
   const withDays = await prisma.coachDay.findMany({
     where: {
-      resort: { slug: resortSlug },
+      resort: { slug: resortSlug, isActive: true },
       date: { gte: startOfToday() },
       coachId: { in: ready.map((c) => c.userId) },
     },
@@ -81,54 +82,20 @@ export async function listBookableCoaches(resortSlug?: string) {
   return ready.filter((c) => allowed.has(c.userId));
 }
 
-/**
- * Picks a coach for a student who would rather not choose one.
- *
- * Preference order:
- *  1. coaches who list the student's level as one they teach;
- *  2. among those, the one with the fewest live bookings, so the two of them
- *     stay roughly even rather than one taking everything;
- *  3. name, purely so the result is stable when everything else ties.
- *
- * A coach who has not filled in `teachableLevels` at all is treated as
- * teaching everything — an empty list means "not configured", not "teaches
- * nothing", and the alternative would silently make them unbookable.
- */
+/** Compatibility wrapper: a recommendation needs a specific place and time. */
 export async function pickCoachForLevel(
   resortSlug: string,
   level: string | null,
+  slot?: { dateKey: string; startHour: number; hours: number },
+  userId?: string,
 ): Promise<string | null> {
-  const coaches = await listBookableCoaches(resortSlug);
-  if (coaches.length === 0) return null;
-
-  const matching = level
-    ? coaches.filter(
-        (c) => c.teachableLevels.length === 0 || c.teachableLevels.includes(level),
-      )
-    : coaches;
-  const pool = matching.length > 0 ? matching : coaches;
-  if (pool.length === 1) return pool[0].userId;
-
-  const loads = await prisma.booking.groupBy({
-    by: ["coachId"],
-    where: {
-      coachId: { in: pool.map((c) => c.userId) },
-      status: { notIn: ["CANCELLED", "COMPLETED"] },
-    },
-    _count: { _all: true },
-  });
-  const loadBy = new Map(loads.map((l) => [l.coachId, l._count._all]));
-
-  return [...pool].sort((a, b) => {
-    const d = (loadBy.get(a.userId) ?? 0) - (loadBy.get(b.userId) ?? 0);
-    return d !== 0 ? d : a.displayName.localeCompare(b.displayName);
-  })[0].userId;
+  if (!slot) return null;
+  const { recommendCoaches } = await import("./booking/recommendation");
+  const coaches = await recommendCoaches({ resortSlug, ...slot, level }, userId);
+  return coaches[0]?.userId ?? null;
 }
 
 /** UTC midnight of today, matching how @db.Date columns are stored. */
 function startOfToday(): Date {
-  const now = new Date();
-  return new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-  );
+  return dateKeyToDbDate(toDateKey(new Date()));
 }

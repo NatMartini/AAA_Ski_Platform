@@ -1,9 +1,11 @@
+import { readJsonBodyOrResponse } from "@/lib/request-body";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireCoach } from "@/lib/auth/require-user";
 import { coachSettingsSchema, fieldErrors } from "@/lib/validators";
 import { rateLimitOrRespond } from "@/lib/rate-limit";
 import { sanitizeLevelKeys, sanitizeSkillKeys } from "@/lib/skills";
+import { parseCustomSkills } from "@/lib/custom-skills";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,9 +17,9 @@ export async function PATCH(req: Request) {
   const r = await requireCoach();
   if (!r.ok) return r.response;
 
-  const parsed = coachSettingsSchema.safeParse(
-    await req.json().catch(() => null),
-  );
+  const jsonBody = await readJsonBodyOrResponse(req);
+  if (!jsonBody.ok) return jsonBody.response;
+  const parsed = coachSettingsSchema.safeParse(jsonBody.data);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "validation", fields: fieldErrors(parsed.error) },
@@ -25,6 +27,9 @@ export async function PATCH(req: Request) {
     );
   }
   const d = parsed.data;
+  if (d.expectedCoachId !== r.user.id) {
+    return NextResponse.json({ error: "session-changed" }, { status: 409 });
+  }
 
   // A coach may only ever edit their own profile; the id is taken from the
   // session, never from the request body.
@@ -47,6 +52,7 @@ export async function PATCH(req: Request) {
       csiaLevel: d.csiaLevel,
       csiaParkLevel: d.csiaParkLevel,
       teachableSkills: sanitizeSkillKeys(d.teachableSkills),
+      ...(d.customSkills === undefined ? {} : { customSkills: parseCustomSkills(d.customSkills) }),
       teachableLevels: sanitizeLevelKeys(d.teachableLevels),
       extraPersonCents: d.extraPersonCents,
       maxGroupSize: d.maxGroupSize,

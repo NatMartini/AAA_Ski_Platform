@@ -15,6 +15,8 @@
     "participants": "Participants",
     "coach": "Coach area",
     "coachShort": "Coach",
+    "videoAnalysis": "Video analysis",
+    "videoAnalysisShort": "Video",
     "signIn": "Sign in",
     "signOut": "Sign out",
     "language": "Language"
@@ -26,6 +28,16 @@
     "startBooking": "Start booking",
     "viewBookings": "View my bookings",
     "coachArea": "Go to coach area"
+  },
+  "videoAnalysis": {
+    "title": "FreeSki Video Ski Analysis",
+    "attribution": "From Kevin’s personal project",
+    "body": "Upload lesson clips for technical scores and practice advice. See your currently available analysis credits across all your lesson bookings.",
+    "coachBody": "View analysis credits, student clips and feedback for the lessons you teach, and review extra-credit payments.",
+    "quotaPolicy": "Credits unlock after completion: a two-hour lesson includes 3 analyses; a three-hour lesson includes 5.",
+    "sharedPolicy": "A 1-on-2 or 1-on-3 lesson shares one allowance; credits do not increase with group size. Failed or ungradable analyses do not use a credit.",
+    "action": "View my available analyses",
+    "coachAction": "View lesson analysis credits"
   },
   "signIn": {
     "title": "Sign in",
@@ -45,7 +57,7 @@
     "stepPayment": "Payment",
     "hours": "{count} hours",
     "lessonWindow": "Lesson runs {start} – {end} ({minutes} min)",
-    "handoverNote": "The first 10 minutes are the coach's handover from the previous student: the lesson starts at ten past and runs to the hour. Those ten minutes are free: their fee is taken straight off each booking.",
+    "handoverNote": "Lessons start ten minutes past the booked hour and finish at the booked end. Each booking receives a handover credit based on ten minutes at the hourly rate, rounded up to the next $5, with a $10 minimum and capped at the lesson price.",
     "minimum": "Minimum booking is {count} hours",
     "noSlots": "No times available on this day.",
     "offSeason": "The season runs 1 December to 1 May. This date is outside it.",

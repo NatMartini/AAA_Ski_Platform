@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { clientFetch } from "@/lib/client-fetch";
 import { useRouter } from "@/i18n/navigation";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,7 @@ const COPY = {
     hasBookings: "该日仍有订单,无法删除。",
     conflicts: "新的时间段会把已有订单挤出去:{codes}",
     season: "{season} 雪季",
+    failed: "操作失败,请检查连接和填写内容后重试。",
   },
   en: {
     title: "Availability",
@@ -68,6 +70,7 @@ const COPY = {
     hasBookings: "This day still has bookings and cannot be removed.",
     conflicts: "The new window would strand existing bookings: {codes}",
     season: "{season} season",
+    failed: "Could not save the change. Check your connection and details, then try again.",
   },
 } as const;
 
@@ -104,7 +107,7 @@ export function AvailabilityManager({
       return;
     }
     setBusy(true);
-    const res = await fetch("/api/coach/availability", {
+    const res = await clientFetch("/api/coach/availability", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -129,7 +132,7 @@ export function AvailabilityManager({
         setError(c.conflicts.replace("{codes}", (body.bookings ?? []).join(", ")));
       } else {
         setError(
-          body.fields ? Object.values(body.fields)[0] : (body.error ?? "failed"),
+          body.fields ? Object.values(body.fields)[0] : c.failed,
         );
       }
       return;
@@ -144,13 +147,14 @@ export function AvailabilityManager({
       setError(c.hasBookings);
       return;
     }
+    setError(null);
     setBusy(true);
-    const res = await fetch(`/api/coach/availability?id=${day.id}`, {
+    const res = await clientFetch(`/api/coach/availability?id=${day.id}`, {
       method: "DELETE",
     });
     setBusy(false);
     if (res.ok) router.refresh();
-    else setError(c.hasBookings);
+    else setError(res.status === 409 ? c.hasBookings : c.failed);
   }
 
   return (

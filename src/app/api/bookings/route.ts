@@ -1,3 +1,4 @@
+import { readJsonBodyOrResponse } from "@/lib/request-body";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/require-user";
@@ -7,6 +8,7 @@ import { createBooking } from "@/lib/booking/create";
 import { checkSelfServeParticipant } from "@/lib/participants";
 import { toLocale } from "@/i18n/routing";
 import { sendBookingConfirmation } from "@/lib/booking/notify";
+import { attendeeInvitation } from "@/lib/booking/attendees";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,10 +19,13 @@ export async function POST(req: Request) {
 
   const r = await requireUser();
   if (!r.ok) return r.response;
+  if (r.user.role === "COACH" || r.user.role === "ADMIN") {
+    return NextResponse.json({ error: "coach-booking-required" }, { status: 403 });
+  }
 
-  const parsed = createBookingSchema.safeParse(
-    await req.json().catch(() => null),
-  );
+  const jsonBody = await readJsonBodyOrResponse(req);
+  if (!jsonBody.ok) return jsonBody.response;
+  const parsed = createBookingSchema.safeParse(jsonBody.data);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "validation", fields: fieldErrors(parsed.error) },
@@ -70,12 +75,14 @@ export async function POST(req: Request) {
     hours: d.hours,
     lessonType: d.lessonType,
     headcount: d.headcount,
+    additionalAttendees: d.additionalAttendees,
     requestedSkills: d.requestedSkills,
     paymentPlan: d.paymentPlan,
     packageId: d.packageId ?? null,
     locale,
     account: {
       id: r.user.id,
+      email: r.user.email,
       participantId: participant.id,
       participantName: participant.fullName,
       participantIsMinor: participant.isMinor,
@@ -96,7 +103,8 @@ export async function POST(req: Request) {
   await sendBookingConfirmation(result.code, locale).catch(() => null);
 
   return NextResponse.json(
-    { ok: true, code: result.code, nextStep: result.nextStep },
+    { ok: true, code: result.code, nextStep: result.nextStep, holdExpiresAt: result.holdExpiresAt,
+      invitations: (result.attendeeInvites ?? []).map((a) => attendeeInvitation(a, result.code, result.coachName ?? "", locale)) },
     { status: 201 },
   );
 }

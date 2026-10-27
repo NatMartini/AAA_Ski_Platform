@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { isDateKey } from "./time";
 import { isWithinSeason } from "./season";
-import { MAX_SUPPORTED_HEADCOUNT } from "./booking/group";
+import { MAX_SUPPORTED_HEADCOUNT, attendeeIdentity } from "./booking/group";
 import { isLessonTypeKey, LESSON_TYPES } from "./lesson-types";
+import { MAX_CUSTOM_SKILLS } from "./custom-skills";
 
 /**
  * All request bodies are parsed here before anything touches the database.
@@ -70,7 +71,22 @@ export const coachRateSchema = z
     },
   );
 
+export const customSkillSchema = z.object({
+  id: z.string().uuid(),
+  key: z.string().max(96),
+  zh: z.string().trim().min(1).max(120),
+  en: z.string().trim().max(120).optional().default(""),
+}).refine((skill) => skill.key === `custom:${skill.id}`, {
+  message: "Custom skill identity cannot change", path: ["key"],
+});
+export const customSkillsSchema = z.array(customSkillSchema).max(MAX_CUSTOM_SKILLS).refine(
+  (skills) => new Set(skills.map((skill) => skill.key)).size === skills.length,
+  { message: "Each custom skill must have a unique identity" },
+);
+
 export const coachSettingsSchema = z.object({
+  /** Reject a draft rendered under another coach's session. Never selects the write target. */
+  expectedCoachId: z.string().min(1).max(128),
   displayName: z.string().trim().min(1).max(80),
   /** Coach introduction shown at the top of the booking page. */
   bioZh: z.string().trim().max(2000).nullable().optional(),
@@ -87,6 +103,8 @@ export const coachSettingsSchema = z.object({
   csiaLevel: z.number().int().min(1).max(4).nullable(),
   csiaParkLevel: z.number().int().min(1).max(2).nullable(),
   teachableSkills: z.array(z.string().max(40)).max(40).default([]),
+  // Omitted by an older client: preserve the current custom catalogue.
+  customSkills: customSkillsSchema.optional(),
   teachableLevels: z.array(z.string().max(40)).max(10).default([]),
   minHours: z.number().int().min(1).max(12),
   maxHours: z.number().int().min(1).max(12),
@@ -147,7 +165,16 @@ export const participantSchema = z.object({
   emergencyContactPhone: z.string().trim().max(40).nullable().optional(),
 });
 
-/** Multi-person orders stay closed until every attendee can carry a waiver. */
+/** Extra guests sign using their own email (a guardian's email for minors). */
+export const additionalAttendeeSchema = z.object({
+  fullName: z.string().trim().min(1).max(120),
+  email: z.string().trim().email().transform((s) => s.toLowerCase()),
+  isMinor: z.boolean(),
+});
+const additionalAttendeesSchema = z.array(additionalAttendeeSchema).max(2).default([])
+  .refine((rows) => new Set(rows.map((a) => attendeeIdentity(a.fullName, a.email))).size === rows.length,
+    { message: "Each attendee must be a different person" });
+
 const headcountSchema = z
   .number()
   .int()
@@ -163,13 +190,20 @@ export const createBookingSchema = z
     hours: z.number().int().min(1).max(12),
     lessonType: lessonTypeSchema,
     headcount: headcountSchema,
+    additionalAttendees: additionalAttendeesSchema,
     participantId: z.string().min(1),
     /** Skill keys the student wants to work on; unknown keys are dropped. */
-    requestedSkills: z.array(z.string().max(40)).max(12).default([]),
+    requestedSkills: z.array(z.string().max(96)).max(12).default([]),
     paymentPlan: z.enum(["FULL", "DEPOSIT", "PACKAGE"]).default("FULL"),
     /** The lesson package to spend, when paymentPlan is PACKAGE. */
     packageId: z.string().min(1).nullable().optional(),
     notes: z.string().trim().max(1000).nullable().optional(),
+  })
+  .refine((d) => d.headcount === d.additionalAttendees.length + 1, {
+    message: "Enter every additional attendee", path: ["additionalAttendees"],
+  })
+  .refine((d) => d.paymentPlan !== "PACKAGE" || d.headcount === 1, {
+    message: "Lesson packages support one attendee", path: ["paymentPlan"],
   })
   .refine((d) => d.paymentPlan !== "PACKAGE" || Boolean(d.packageId), {
     message: "Choose which lesson package to use",
@@ -189,13 +223,19 @@ export const coachCreateBookingSchema = z.object({
   hours: z.number().int().min(1).max(12),
   lessonType: lessonTypeSchema,
   headcount: headcountSchema,
+  additionalAttendees: additionalAttendeesSchema,
   studentName: z.string().trim().min(1).max(120),
   /** The signing link is issued to this address and only it can sign. */
   studentEmail: z.string().trim().email(),
   /** Under 18 — the signing link then asks a guardian to sign. */
   studentIsMinor: z.boolean().default(false),
-  requestedSkills: z.array(z.string().max(40)).max(12).default([]),
+  requestedSkills: z.array(z.string().max(96)).max(12).default([]),
   notes: z.string().trim().max(1000).nullable().optional(),
+}).refine((d) => d.headcount === d.additionalAttendees.length + 1, {
+  message: "Enter every additional attendee", path: ["additionalAttendees"],
+}).refine((d) => !d.additionalAttendees.some((a) =>
+  attendeeIdentity(a.fullName, a.email) === attendeeIdentity(d.studentName, d.studentEmail)), {
+  message: "Each attendee must be a different person", path: ["additionalAttendees"],
 });
 
 export const waiverSignSchema = z.object({
@@ -296,7 +336,22 @@ export const settleBalanceSchema = z.object({
 export const reviewSchema = z.object({
   action: z.enum(["confirm", "reject"]),
   note: z.string().trim().max(500).nullable().optional(),
+  /** The snapshot actually shown to the reviewer, not a fresh POST-time read. */
+  expectedUpdatedAt: z.iso.datetime(),
 });
+
+/** A coach can record money received directly, after the waiver is signed. */
+export const bookingReviewSchema = reviewSchema
+  .extend({
+    manualReceipt: z.object({
+      method: z.enum(["EMT", "WECHAT", "ALIPAY"]),
+      reference: z.string().trim().max(200).optional(),
+    }).optional(),
+  })
+  .refine((d) => !d.manualReceipt || d.action === "confirm", {
+    message: "A manual receipt can only confirm payment",
+    path: ["manualReceipt"],
+  });
 
 /** Flatten a ZodError into `{ field: message }` for form rendering. */
 export function fieldErrors(error: z.ZodError): Record<string, string> {

@@ -1,3 +1,4 @@
+import { readJsonBodyOrResponse } from "@/lib/request-body";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/require-user";
@@ -24,10 +25,13 @@ export async function POST(req: Request) {
 
   const r = await requireUser();
   if (!r.ok) return r.response;
+  if (r.user.role === "COACH" || r.user.role === "ADMIN") {
+    return NextResponse.json({ error: "customer-package-purchase-only" }, { status: 403 });
+  }
 
-  const parsed = packagePurchaseSchema.safeParse(
-    await req.json().catch(() => null),
-  );
+  const jsonBody = await readJsonBodyOrResponse(req);
+  if (!jsonBody.ok) return jsonBody.response;
+  const parsed = packagePurchaseSchema.safeParse(jsonBody.data);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "validation", fields: fieldErrors(parsed.error) },

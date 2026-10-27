@@ -42,9 +42,9 @@ export function devBypassEnabled(): boolean {
  * Called from instrumentation.ts, which Next runs once at boot.
  */
 export function assertNotProduction(): void {
-  if (process.env.NODE_ENV === "production" && process.env.DEV_AUTH_BYPASS) {
+  if (process.env.NODE_ENV === "production" && (process.env.DEV_AUTH_BYPASS || process.env.DEV_LAN_TEST_PASSWORD !== undefined)) {
     throw new Error(
-      "DEV_AUTH_BYPASS is set in a production build. This would let anyone " +
+      "Development test authentication is configured in a production build. This would let anyone " +
         "read every booking, waiver and payment screenshot. Remove it from " +
         "the environment before starting the server.",
     );

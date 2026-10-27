@@ -1,7 +1,7 @@
 "use client";
 
 import { Link, usePathname } from "@/i18n/navigation";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 
 const ITEMS = [
@@ -18,6 +18,7 @@ const ITEMS = [
 export function CoachNav() {
   const pathname = usePathname();
   const t = useTranslations("coach");
+  const locale = useLocale();
 
   return (
     <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 text-sm">
@@ -43,6 +44,7 @@ export function CoachNav() {
           </Link>
         );
       })}
+      <Link href="/coach/video-reviews" aria-current={pathname.startsWith("/coach/video-reviews") ? "page" : undefined} className={cn("press whitespace-nowrap rounded-xl border px-3.5 py-2 font-semibold", pathname.startsWith("/coach/video-reviews") ? "border-accent bg-accent text-accent-foreground" : "border-border bg-surface text-ink-2 hover:border-accent hover:text-ink")}>{locale === "zh" ? "视频点评" : "Video reviews"}</Link>
     </nav>
   );
 }

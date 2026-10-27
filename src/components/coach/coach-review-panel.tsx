@@ -1,10 +1,12 @@
 "use client";
 
+import { clientFetch } from "@/lib/client-fetch";
+
 import { useRef, useState } from "react";
 import { useRouter } from "@/i18n/navigation";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FieldError, Input, Label } from "@/components/ui/field";
+import { FieldError, Input, Label, Select } from "@/components/ui/field";
 import type { PaymentMethod, UploadedBy } from "@prisma/client";
 import type { Locale } from "@/i18n/routing";
 import { paymentPaths, type PaymentTarget } from "@/lib/payment-target";
@@ -34,6 +36,13 @@ const COPY = {
     needReference: "请填写转账参考号。",
     failed: "操作失败,请重试。",
     confirmed: "已确认收款。",
+    manualReceipt: "直接登记收款",
+    manualHelp: "学员签字后，可直接登记你已实际收到的付款，无需学员上传截图。",
+    receiptMethod: "实际收款方式",
+    receiptReference: "收款参考号(选填)",
+    receivedConfirm: "已核对到账，确认收款",
+    manuallyRecorded: "教练已直接登记并确认收款。",
+    receiptFailed: "收款未能确认，请刷新订单检查状态后重试。",
   },
   en: {
     title: "Payment review",
@@ -60,6 +69,13 @@ const COPY = {
     needReference: "Please enter the transfer reference.",
     failed: "That did not work. Please try again.",
     confirmed: "Payment confirmed.",
+    manualReceipt: "Record a payment received",
+    manualHelp: "After the student signs, record money you have actually received. A student screenshot is not required.",
+    receiptMethod: "Payment method received",
+    receiptReference: "Receipt reference (optional)",
+    receivedConfirm: "Payment received — confirm",
+    manuallyRecorded: "The coach recorded and confirmed this payment directly.",
+    receiptFailed: "Payment could not be confirmed. Refresh the booking and check its status before retrying.",
   },
 } as const;
 
@@ -74,6 +90,8 @@ export function CoachReviewPanel({
   paymentReference,
   canReview,
   canUploadProof,
+  canConfirmReceipt = false,
+  expectedUpdatedAt,
 }: {
   locale: Locale;
   /** The booking or lesson package whose payment is being reviewed. */
@@ -88,6 +106,10 @@ export function CoachReviewPanel({
   paymentReference: string | null;
   canReview: boolean;
   canUploadProof: boolean;
+  /** Only the booking's coach, after a waiver, before a payment is submitted. */
+  canConfirmReceipt?: boolean;
+  /** Version of the exact payment shown on this page, required for every review. */
+  expectedUpdatedAt: string;
 }) {
   const router = useRouter();
   const c = COPY[locale];
@@ -100,6 +122,26 @@ export function CoachReviewPanel({
   const [proofKey, setProofKey] = useState<string | null>(null);
   const [studentReference, setStudentReference] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [receiptMethod, setReceiptMethod] = useState<PaymentMethod>("EMT");
+  const [receiptReference, setReceiptReference] = useState("");
+
+  async function confirmReceipt() {
+    if (!canConfirmReceipt || target.kind !== "booking") return;
+    setBusy(true);
+    setError(null);
+    const response = await clientFetch(paths.review, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-locale": locale },
+      body: JSON.stringify({
+        action: "confirm",
+        expectedUpdatedAt,
+        manualReceipt: { method: receiptMethod, reference: receiptReference.trim() || undefined },
+      }),
+    });
+    setBusy(false);
+    if (!response.ok) setError(c.receiptFailed);
+    router.refresh();
+  }
 
   async function review(action: "confirm" | "reject") {
     if (action === "reject" && !reason.trim()) {
@@ -108,14 +150,15 @@ export function CoachReviewPanel({
     }
     setBusy(true);
     setError(null);
-    const res = await fetch(paths.review, {
+    const res = await clientFetch(paths.review, {
       method: "POST",
       headers: { "content-type": "application/json", "x-locale": locale },
-      body: JSON.stringify({ action, note: reason.trim() || null }),
+      body: JSON.stringify({ action, note: reason.trim() || null, expectedUpdatedAt }),
     });
     setBusy(false);
     if (!res.ok) {
       setError(c.failed);
+      if (res.status === 409) router.refresh();
       return;
     }
     router.refresh();
@@ -128,7 +171,7 @@ export function CoachReviewPanel({
     body.set("file", file);
     body.set("purpose", paths.upload.purpose);
     body.set(paths.upload.field, target.code);
-    const res = await fetch("/api/upload", { method: "POST", body });
+    const res = await clientFetch("/api/upload", { method: "POST", body });
     setUploading(false);
     if (!res.ok) {
       setError(c.failed);
@@ -146,7 +189,7 @@ export function CoachReviewPanel({
     }
     setBusy(true);
     setError(null);
-    const res = await fetch(paths.submit, {
+    const res = await clientFetch(paths.submit, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -170,20 +213,19 @@ export function CoachReviewPanel({
   async function wechatReceived() {
     setBusy(true);
     setError(null);
-    const submitted = await fetch(paths.submit, {
+    const submitted = await clientFetch(paths.submit, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ method: "WECHAT" }),
     });
-    const confirmed =
-      submitted.ok &&
-      (
-        await fetch(paths.review, {
-          method: "POST",
-          headers: { "content-type": "application/json", "x-locale": locale },
-          body: JSON.stringify({ action: "confirm", note: null }),
-        })
-      ).ok;
+    const submission = await submitted.json().catch(() => null) as { updatedAt?: string } | null;
+    const submittedVersion = submission?.updatedAt;
+    const confirmed = submitted.ok && typeof submittedVersion === "string" && !Number.isNaN(Date.parse(submittedVersion))
+      && (await clientFetch(paths.review, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-locale": locale },
+        body: JSON.stringify({ action: "confirm", note: null, expectedUpdatedAt: submittedVersion }),
+      })).ok;
     setBusy(false);
     if (!confirmed) setError(c.failed);
     router.refresh();
@@ -221,11 +263,17 @@ export function CoachReviewPanel({
           {/* eslint-disable-next-line @next/next/no-img-element -- streamed from
               an authenticated route, never a static asset */}
           <img
-            src={paths.proof}
+            src={`${paths.proof}?v=${encodeURIComponent(expectedUpdatedAt)}`}
             alt=""
             className="max-h-96 rounded-lg border border-border"
           />
         </>
+      ) : confirmed && proofUploadedBy === "COACH" ? (
+        <div className="space-y-2 text-sm text-ink-2">
+          <p>{c.manuallyRecorded}</p>
+          {paymentMethod && <p>{c.method}: {paymentMethod}</p>}
+          {paymentReference && <p>{c.reference}: <span className="font-mono">{paymentReference}</span></p>}
+        </div>
       ) : paymentMethod === "WECHAT" && (submitted || confirmed) ? (
         <p className="text-sm text-ink-2">
           {confirmed
@@ -277,6 +325,31 @@ export function CoachReviewPanel({
         </div>
       )}
 
+      {canConfirmReceipt && target.kind === "booking" && (
+        <div className="space-y-3 rounded-xl border border-border bg-surface-2 p-4">
+          <h3 className="text-sm font-bold">{c.manualReceipt}</h3>
+          <p className="text-xs leading-relaxed text-ink-2">{c.manualHelp}</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="receipt-method">{c.receiptMethod}</Label>
+              <Select id="receipt-method" value={receiptMethod} disabled={busy || uploading} onChange={(event) => setReceiptMethod(event.target.value as PaymentMethod)}>
+                <option value="EMT">Interac e-Transfer</option>
+                <option value="WECHAT">{locale === "zh" ? "微信" : "WeChat"}</option>
+                <option value="ALIPAY">{locale === "zh" ? "支付宝" : "Alipay"}</option>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="receipt-reference">{c.receiptReference}</Label>
+              <Input id="receipt-reference" value={receiptReference} disabled={busy || uploading} maxLength={200} onChange={(event) => setReceiptReference(event.target.value)} />
+            </div>
+          </div>
+          <Button onClick={confirmReceipt} disabled={busy || uploading}>
+            {busy ? <Loader2 className="animate-spin" aria-hidden /> : <Check aria-hidden />}
+            {c.receivedConfirm}
+          </Button>
+        </div>
+      )}
+
       {canUploadProof && !canReview && (
         <div className="space-y-2">
           <input
@@ -303,7 +376,7 @@ export function CoachReviewPanel({
               )}
               {c.uploadForStudent}
             </Button>
-            <Button
+            {target.kind === "package" && <Button
               variant="secondary"
               disabled={busy || uploading}
               onClick={wechatReceived}
@@ -314,7 +387,7 @@ export function CoachReviewPanel({
                 <Check aria-hidden />
               )}
               {c.wechatReceived}
-            </Button>
+            </Button>}
           </div>
           {proofKey && (
             <div className="space-y-2">

@@ -129,7 +129,7 @@ export function packageAccessFor(
   hasLiveBookings: boolean,
 ): PackageAccess {
   const isBuyer = pkg.accountId === user.id;
-  const isPayee = pkg.payeeCoachId === user.id || user.role === "ADMIN";
+  const isPayee = (user.role === "COACH" && pkg.payeeCoachId === user.id) || user.role === "ADMIN";
   const isParty = isBuyer || isPayee;
   const isCoach = user.role === "COACH" || user.role === "ADMIN";
   return {

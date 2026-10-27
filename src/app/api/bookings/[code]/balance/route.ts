@@ -1,3 +1,4 @@
+import { readJsonBodyOrResponse } from "@/lib/request-body";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireCoach } from "@/lib/auth/require-user";
@@ -43,9 +44,9 @@ export async function POST(
     return NextResponse.json({ error: "nothing-owing" }, { status: 409 });
   }
 
-  const parsed = settleBalanceSchema.safeParse(
-    await req.json().catch(() => ({})),
-  );
+  const jsonBody = await readJsonBodyOrResponse(req, { allowEmpty: true });
+  if (!jsonBody.ok) return jsonBody.response;
+  const parsed = settleBalanceSchema.safeParse(jsonBody.data);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "validation", fields: fieldErrors(parsed.error) },

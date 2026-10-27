@@ -1,3 +1,4 @@
+import { readJsonBodyOrResponse } from "@/lib/request-body";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireCoach } from "@/lib/auth/require-user";
@@ -17,7 +18,9 @@ export async function PUT(req: Request) {
   const r = await requireCoach();
   if (!r.ok) return r.response;
 
-  const parsed = coachDaySchema.safeParse(await req.json().catch(() => null));
+  const jsonBody = await readJsonBodyOrResponse(req);
+  if (!jsonBody.ok) return jsonBody.response;
+  const parsed = coachDaySchema.safeParse(jsonBody.data);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "validation", fields: fieldErrors(parsed.error) },
@@ -107,6 +110,8 @@ export async function DELETE(req: Request) {
 
   const r = await requireCoach();
   if (!r.ok) return r.response;
+  const jsonBody = await readJsonBodyOrResponse(req, { allowEmpty: true });
+  if (!jsonBody.ok) return jsonBody.response;
 
   const id = new URL(req.url).searchParams.get("id");
   if (!id) return NextResponse.json({ error: "missing-id" }, { status: 400 });

@@ -109,6 +109,18 @@ const LEGACY_LABELS: Record<string, { zh: string; en: string }> = {
   dynamic_parallel: { zh: "动态平行式", en: "Dynamic parallel" },
 };
 
+const LEGACY_TEACHABLE_EXPANSIONS = new Map<string, readonly string[]>([
+  ["park_intro", ["jibbing"]],
+  ["box_rail", ["box", "rail"]],
+  ["spins", ["spin_180", "spin_360"]],
+  ["dynamic_parallel", ["advanced_parallel"]],
+]);
+
+/** Profile-read compatibility, exactly matching 20260726090000_csia_skill_keys. */
+export function expandTeachableSkillKeys(keys: readonly string[]): string[] {
+  return [...new Set(keys.flatMap((key) => LEGACY_TEACHABLE_EXPANSIONS.get(key) ?? [key]))].sort();
+}
+
 const BY_KEY = new Map(SKILLS.map((s) => [s.key, s]));
 
 export function skillLabel(key: string, locale: "zh" | "en"): string {

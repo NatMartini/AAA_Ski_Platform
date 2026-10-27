@@ -13,6 +13,10 @@
 # testing
 /coverage
 
+# Python runtime/test bytecode
+__pycache__/
+*.py[cod]
+
 # next.js
 /.next/
 /out/

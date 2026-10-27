@@ -3,7 +3,7 @@ import { prisma } from "../prisma";
 import { generateBookingCode } from "./code";
 import { isOverlapViolation } from "./overlap";
 import { depositFor, lessonWindow, quote, type PaymentPlan } from "../pricing";
-import { sanitizeSkillKeys } from "../skills";
+import { coachCanTeachRequestedSkills, sanitizeCoachRequestedSkills, snapshotRequestedSkills } from "../custom-skills";
 import {
   torontoWallTimeToUtc,
   dateKeyToDbDate,
@@ -26,10 +26,17 @@ import { buildDisclosure, type DisclosureSnapshot } from "./disclosure";
 import type { Locale } from "@/i18n/routing";
 import { resolveWaiver } from "../waiver/validity";
 import { EXPIRING_HOLD_STATUSES } from "./hold";
-import { MAX_SUPPORTED_HEADCOUNT } from "./group";
+import { MAX_SUPPORTED_HEADCOUNT, attendeeIdentity, type AdditionalAttendee } from "./group";
+import { canAcceptBookings } from "../coach";
+import { generateInviteToken, inviteFields } from "../waiver/invite";
 
 /** Minutes a self-serve booking holds its slot while the student finishes up. */
 export const HOLD_MINUTES = 30;
+export const GROUP_HOLD_HOURS = 24;
+
+export type CreatedAttendeeInvite = AdditionalAttendee & {
+  attendeeId: string; ordinal: number; token: string; expiresAt: Date;
+};
 
 export type CreateBookingResult =
   | {
@@ -38,6 +45,12 @@ export type CreateBookingResult =
       id: string;
       /** "done" when a package paid for it and a waiver was already on file. */
       nextStep: "waiver" | "payment" | "done";
+      /** Returned only to the creating coach; only its hash is persisted. */
+      inviteToken?: string;
+      inviteExpiresAt?: Date;
+      attendeeInvites?: CreatedAttendeeInvite[];
+      holdExpiresAt?: Date | null;
+      coachName?: string;
     }
   | {
       ok: false;
@@ -47,6 +60,7 @@ export type CreateBookingResult =
         | "coach-unavailable"
         | "lesson-type-unavailable"
         | "group-booking-unavailable"
+        | "invalid-requested-skills"
         | "slot-unavailable"
         | "slot-taken"
         | "package-not-found"
@@ -60,8 +74,9 @@ type CreateInput = {
   hours: number;
   /** Key from lib/lesson-types.ts; must be one the coach has a rate for. */
   lessonType: string;
-  /** Number of students; defaults to 1. Capped at the coach's maxGroupSize. */
+  /** Number of students; refuses requests above the coach's maxGroupSize. */
   headcount?: number;
+  additionalAttendees?: AdditionalAttendee[];
   /** Skill keys the student wants to work on; unknown keys are dropped. */
   requestedSkills?: string[];
   /**
@@ -75,6 +90,7 @@ type CreateInput = {
   /** Self-serve booking by the account holder. */
   account?: {
     id: string;
+    email?: string;
     participantId: string;
     participantName: string;
     /** Stored participant flag; determines whether an existing waiver applies. */
@@ -110,9 +126,16 @@ export async function createBooking(
   input: CreateInput,
 ): Promise<CreateBookingResult> {
   const now = input.now ?? new Date();
+  const extras = input.additionalAttendees ?? [];
+  const headcount = input.headcount ?? 1;
+  const primaryName = input.account?.participantName ?? input.invite?.name ?? "";
+  const primaryEmail = input.account?.email ?? input.invite?.email ?? "";
 
   if (!isWithinSeason(input.dateKey)) return { ok: false, reason: "off-season" };
-  if ((input.headcount ?? 1) > MAX_SUPPORTED_HEADCOUNT) {
+  if (!Number.isInteger(headcount) || headcount < 1 || headcount > MAX_SUPPORTED_HEADCOUNT ||
+      headcount !== extras.length + 1 || (headcount > 1 && !primaryEmail) ||
+      new Set([attendeeIdentity(primaryName, primaryEmail), ...extras.map((a) =>
+        attendeeIdentity(a.fullName, a.email))]).size !== headcount) {
     return { ok: false, reason: "group-booking-unavailable" };
   }
 
@@ -120,7 +143,14 @@ export async function createBooking(
     where: { userId: input.coachId },
     include: { rates: true },
   });
-  if (!profile) return { ok: false, reason: "coach-unavailable" };
+  if (!profile || (!input.invite && !canAcceptBookings(profile))) {
+    return { ok: false, reason: "coach-unavailable" };
+  }
+  if (headcount > profile.maxGroupSize) return { ok: false, reason: "group-booking-unavailable" };
+  const requestedSkills = sanitizeCoachRequestedSkills(input.requestedSkills ?? [], profile);
+  if (!coachCanTeachRequestedSkills(input.requestedSkills ?? [], profile)) {
+    return { ok: false, reason: "invalid-requested-skills" };
+  }
 
   const rate = rateFor(
     profile.rates,
@@ -130,6 +160,7 @@ export async function createBooking(
   if (!rate) return { ok: false, reason: "lesson-type-unavailable" };
 
   const usePackage = input.paymentPlan === "PACKAGE";
+  if (usePackage && headcount > 1) return { ok: false, reason: "group-booking-unavailable" };
   // Packages belong to a student account; a coach-created booking has none.
   if (usePackage && (!input.account || !input.packageId)) {
     return { ok: false, reason: "package-not-found" };
@@ -145,17 +176,13 @@ export async function createBooking(
     include: { resort: true },
   });
   if (!day) return { ok: false, reason: "no-such-day" };
+  if (!day.resort.isActive) {
+    return { ok: false, reason: "no-such-day" };
+  }
 
   const startAt = torontoWallTimeToUtc(input.dateKey, input.startHour);
   const endAt = torontoWallTimeToUtc(input.dateKey, input.startHour + input.hours);
   const { lessonStartAt, lessonEndAt } = lessonWindow(startAt, endAt);
-
-  // The request boundary currently admits one participant. Keep the coach cap
-  // as a second guard so this remains correct when group booking is enabled.
-  const headcount = Math.min(
-    Math.max(1, input.headcount ?? 1),
-    profile.maxGroupSize,
-  );
 
   const priced = quote({
     hours: input.hours,
@@ -189,12 +216,29 @@ export async function createBooking(
     participantName: input.account?.participantName ?? input.invite?.name ?? "",
   });
 
-  // Coach-created bookings hold the slot indefinitely: the coach owns it and
-  // chases the signature themselves. Self-serve holds expire.
+  // Groups need time to circulate individual signatures without retaining an
+  // unfinished reservation past the coach's notice deadline.
   const createdByCoach = Boolean(input.invite);
-  const holdExpiresAt = createdByCoach
-    ? null
-    : new Date(now.getTime() + HOLD_MINUTES * 60_000);
+  const inviteToken = input.invite ? generateInviteToken() : undefined;
+  const signingInvite = input.invite && inviteToken
+    ? inviteFields(input.invite.email, inviteToken, now) : null;
+  const groupDeadline = new Date(lessonStartAt.getTime() -
+    (createdByCoach ? 24 : profile.leadTimeHours) * 3_600_000);
+  const holdExpiresAt = headcount > 1
+    ? new Date(Math.min(groupDeadline.getTime(), createdByCoach ? Infinity : now.getTime() + GROUP_HOLD_HOURS * 3_600_000))
+    : createdByCoach ? null : new Date(now.getTime() + HOLD_MINUTES * 60_000);
+  if (headcount > 1 && holdExpiresAt!.getTime() <= now.getTime()) {
+    return { ok: false, reason: "slot-unavailable" };
+  }
+  if (signingInvite && holdExpiresAt && signingInvite.expiresAt > holdExpiresAt) {
+    signingInvite.expiresAt = holdExpiresAt;
+  }
+  const guestInvites = extras.map((attendee, index) => {
+    const token = generateInviteToken();
+    const fields = inviteFields(attendee.email, token, now);
+    const expiresAt = new Date(Math.min(fields.expiresAt.getTime(), holdExpiresAt!.getTime()));
+    return { ...attendee, email: fields.email, ordinal: index + 2, token, expiresAt, tokenHash: fields.tokenHash };
+  });
 
   try {
     const booking = await prisma.$transaction(async (tx) => {
@@ -293,7 +337,8 @@ export async function createBooking(
           depositCents: pkg ? 0 : depositCents,
           // Unknown skill keys are dropped rather than stored, so a stale or
           // hand-crafted client cannot write junk into the record.
-          requestedSkills: sanitizeSkillKeys(input.requestedSkills ?? []),
+          requestedSkills,
+          requestedSkillsSnapshot: snapshotRequestedSkills(requestedSkills, profile) as Prisma.InputJsonValue,
           studentLevel: input.account?.level ?? null,
           // hourlyRateCents is the base (one-student) rate; the surcharge is
           // stored separately so the effective rate stays re-derivable. A
@@ -329,15 +374,26 @@ export async function createBooking(
           // it is confirmed outright.
           status: createdByCoach
             ? "AWAITING_WAIVER"
-            : reusableWaiverId
+            : reusableWaiverId && headcount === 1
               ? pkg
                 ? "CONFIRMED"
                 : "AWAITING_PAYMENT"
               : "HOLD",
           holdExpiresAt: pkg && reusableWaiverId ? null : holdExpiresAt,
           waiverId: reusableWaiverId,
+          // The slot and its signing link commit together, so an invite write
+          // failure cannot leave a reservation that the student cannot finish.
+          ...(signingInvite ? { waiverInvite: { create: signingInvite } } : {}),
+          ...(headcount > 1 ? { attendees: { create: [
+            { ordinal: 1, fullName: primaryName, email: primaryEmail.trim().toLowerCase(),
+              isMinor: input.account?.participantIsMinor ?? input.invite?.isMinor ?? false,
+              accountId: input.account?.id ?? null, participantId: input.account?.participantId ?? null,
+              waiverId: reusableWaiverId },
+            ...guestInvites.map((a) => ({ ordinal: a.ordinal, fullName: a.fullName, email: a.email,
+              isMinor: a.isMinor, inviteTokenHash: a.tokenHash, inviteExpiresAt: a.expiresAt })),
+          ] } } : {}),
         },
-        select: { id: true, code: true, status: true },
+        select: { id: true, code: true, status: true, attendees: { select: { id: true, ordinal: true } } },
       });
     });
 
@@ -345,6 +401,19 @@ export async function createBooking(
       ok: true,
       code: booking.code,
       id: booking.id,
+      holdExpiresAt,
+      coachName: profile.displayName,
+      attendeeInvites: [
+        ...(headcount > 1 && inviteToken && signingInvite ? [{ attendeeId: booking.attendees.find((b) => b.ordinal === 1)!.id,
+          ordinal: 1, fullName: primaryName, email: signingInvite.email, isMinor: input.invite!.isMinor,
+          token: inviteToken, expiresAt: signingInvite.expiresAt }] : []),
+        ...guestInvites.map((a) => ({ attendeeId: booking.attendees.find((b) => b.ordinal === a.ordinal)!.id,
+          ordinal: a.ordinal, fullName: a.fullName, email: a.email, isMinor: a.isMinor, token: a.token, expiresAt: a.expiresAt })),
+      ],
+      ...(inviteToken && signingInvite ? {
+        inviteToken,
+        inviteExpiresAt: signingInvite.expiresAt,
+      } : {}),
       nextStep:
         booking.status === "CONFIRMED"
           ? "done"
@@ -452,7 +521,7 @@ function withPackage(
 /**
  * Releases holds whose timer ran out.
  *
- * Coach-created bookings have a null holdExpiresAt and are never swept.
+ * Legacy single coach arrangements have a null holdExpiresAt and are not swept.
  */
 export async function sweepExpiredHolds(
   tx: Prisma.TransactionClient | PrismaClient,

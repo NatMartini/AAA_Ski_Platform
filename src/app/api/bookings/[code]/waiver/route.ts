@@ -1,3 +1,4 @@
+import { readJsonBodyOrResponse } from "@/lib/request-body";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/require-user";
 import { rateLimitOrRespond } from "@/lib/rate-limit";
@@ -5,6 +6,7 @@ import { fieldErrors, waiverSignSchema } from "@/lib/validators";
 import { accessFor, loadBooking } from "@/lib/booking/access";
 import { signWaiver } from "@/lib/waiver/sign";
 import { clientIp } from "@/lib/request";
+import { isAttendeeWaiverValid } from "@/lib/booking/group-readiness";
 import { prisma } from "@/lib/prisma";
 import {
   expireElapsedHold,
@@ -37,7 +39,8 @@ export async function POST(
   if (!booking.participant) {
     return NextResponse.json({ error: "no-participant" }, { status: 409 });
   }
-  if (booking.waiverId) {
+  const primary = booking.attendees.find((a) => a.ordinal === 1);
+  if (booking.waiverId && (booking.headcount === 1 || (primary && isAttendeeWaiverValid(primary, booking)))) {
     return NextResponse.json({ error: "already-signed" }, { status: 409 });
   }
   if (!["HOLD", "AWAITING_WAIVER"].includes(booking.status)) {
@@ -50,7 +53,9 @@ export async function POST(
     return NextResponse.json({ error: "expired" }, { status: 409 });
   }
 
-  const parsed = waiverSignSchema.safeParse(await req.json().catch(() => null));
+  const jsonBody = await readJsonBodyOrResponse(req);
+  if (!jsonBody.ok) return jsonBody.response;
+  const parsed = waiverSignSchema.safeParse(jsonBody.data);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "validation", fields: fieldErrors(parsed.error) },

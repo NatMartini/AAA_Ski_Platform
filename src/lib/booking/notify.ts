@@ -68,42 +68,6 @@ export async function sendBookingConfirmation(
   }
 }
 
-export async function sendWaiverInviteEmail(input: {
-  code: string;
-  to: string;
-  studentName: string;
-  coachName: string;
-  signingUrl: string;
-  locale: Locale;
-}): Promise<void> {
-  const zh = input.locale === "zh";
-
-  const body = [
-    zh ? `${input.studentName} 你好,` : `Hello ${input.studentName},`,
-    "",
-    zh
-      ? `教练 ${input.coachName} 已为你安排了一节滑雪课(订单号 ${input.code})。`
-      : `${input.coachName} has arranged a ski lesson for you (booking ${input.code}).`,
-    zh
-      ? "上课前需要你本人签署一份免责协议。请打开下面的链接,用这个邮箱对应的 Google 账号登录后签署:"
-      : "Before the lesson you need to sign a liability waiver yourself. Open the link below and sign in with the Google account for this email address:",
-    "",
-    input.signingUrl,
-    "",
-    zh
-      ? "该链接 7 天内有效,只能使用一次,且只有这个邮箱的账号可以签署。"
-      : "The link is valid for 7 days, can be used once, and only the account for this address can sign it.",
-  ].join("\n");
-
-  await sendMail({
-    to: input.to,
-    subject: zh
-      ? `请签署免责协议 · ${input.code}`
-      : `Please sign your waiver · ${input.code}`,
-    text: body,
-  });
-}
-
 export async function sendPaymentReviewed(input: {
   code: string;
   to: string;

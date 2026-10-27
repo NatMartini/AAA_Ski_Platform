@@ -15,6 +15,8 @@
     "participants": "学员管理",
     "coach": "教练后台",
     "coachShort": "教练",
+    "videoAnalysis": "视频分析",
+    "videoAnalysisShort": "视频",
     "signIn": "登录",
     "signOut": "退出登录",
     "language": "语言"
@@ -26,6 +28,16 @@
     "startBooking": "开始预定",
     "viewBookings": "查看我的预定",
     "coachArea": "进入教练后台"
+  },
+  "videoAnalysis": {
+    "title": "FreeSki 视频滑雪分析平台",
+    "attribution": "来自 Kevin 的个人项目",
+    "body": "上传课程片段，查看技术评分与练习建议。在这里查看本人所有课程订单当前可用的分析次数。",
+    "coachBody": "查看你执教课程的分析次数、学员视频和反馈，并处理额外分析付款。",
+    "quotaPolicy": "课程完成后解锁：每节 2 小时课含 3 次，3 小时课含 5 次。",
+    "sharedPolicy": "1 对 2、1 对 3 由整节课共享，不按人数增加；分析失败或无法评分不扣次数。",
+    "action": "查看我的可用分析次数",
+    "coachAction": "查看课程分析次数"
   },
   "signIn": {
     "title": "登录",
@@ -45,7 +57,7 @@
     "stepPayment": "付款",
     "hours": "{count} 小时",
     "lessonWindow": "实际授课 {start} – {end}({minutes} 分钟)",
-    "handoverNote": "开头 10 分钟是和上一位学员的交接时间:整点后 10 分开始上课、到整点结束。这 10 分钟不收费,每单直接减去这 10 分钟的课时费。",
+    "handoverNote": "开头 10 分钟用于交接:整点后 10 分开始上课、到整点结束。每单按 10 分钟课时费计算交接优惠,向上取整至 $5 的倍数,最低 $10,且不超过课费。",
     "minimum": "最少预定 {count} 小时",
     "noSlots": "该日暂无可预定时段。",
     "offSeason": "雪季为每年 12 月 1 日至次年 5 月 1 日,该日期不在雪季内。",

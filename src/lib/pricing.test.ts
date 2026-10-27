@@ -4,10 +4,11 @@ import {
   handoverCreditCents,
   lessonWindow,
   quote,
+  quoteFromBooking,
 } from "./pricing";
 import { torontoWallTimeToUtc } from "./time";
 
-const RATE = 6000; // $60/h — Kevin, ski lesson, early bird
+const RATE = 6000; // $60/h example rate
 
 describe("quote", () => {
   it("charges 2 hours at $60 as $120 less ten minutes' fee, $10 = $110", () => {
@@ -19,11 +20,42 @@ describe("quote", () => {
     });
   });
 
-  it("takes off ten minutes at the booked rate, to the cent", () => {
-    expect(handoverCreditCents(7000)).toBe(1167); // $70/h → $11.67
-    expect(handoverCreditCents(8000)).toBe(1333); // $80/h → $13.33
-    expect(handoverCreditCents(5000)).toBe(833); // $50/h → $8.33
-    expect(quote({ hours: 2, hourlyRateCents: 7000 }).totalCents).toBe(14000 - 1167);
+  it("rounds the ten-minute credit up to $5 tiers with a $10 minimum", () => {
+    expect(handoverCreditCents(7000)).toBe(1500);
+    expect(handoverCreditCents(8000)).toBe(1500);
+    expect(handoverCreditCents(5000)).toBe(1000);
+    expect(quote({ hours: 2, hourlyRateCents: 7000 }).totalCents).toBe(12500);
+    expect(quote({ hours: 2, hourlyRateCents: 8000 }).totalCents).toBe(14500);
+  });
+
+  it.each([
+    [0, 0],
+    [1, 1000],
+    [5999, 1000],
+    [6000, 1000],
+    [6001, 1500],
+    [8999, 1500],
+    [9000, 1500],
+    [9001, 2000],
+    [12000, 2000],
+    [12001, 2500],
+    [15000, 2500],
+    [15001, 3000],
+  ])("at %i cents/hour credits %i cents at the tier boundary", (rate, credit) => {
+    expect(handoverCreditCents(rate)).toBe(credit);
+  });
+
+  it("keeps free lessons at zero and caps the minimum at a tiny subtotal", () => {
+    expect(quote({ hours: 2, hourlyRateCents: 0 })).toMatchObject({
+      subtotalCents: 0,
+      handoverDiscountCents: 0,
+      totalCents: 0,
+    });
+    expect(quote({ hours: 2, hourlyRateCents: 1 })).toMatchObject({
+      subtotalCents: 2,
+      handoverDiscountCents: 2,
+      totalCents: 0,
+    });
   });
 
   it("deducts the handover only once, however long the lesson", () => {
@@ -42,7 +74,7 @@ describe("quote", () => {
   });
 
   it("charges a group at base + $20 per extra student per hour", () => {
-    // 1-on-1 $60/h, 1-on-2 $80/h, 1-on-3 $100/h; ten minutes at that rate off.
+    // Credits use the effective group rate, rounded up in $5 tiers.
     const two = quote({
       hours: 2,
       hourlyRateCents: RATE,
@@ -51,7 +83,7 @@ describe("quote", () => {
     });
     expect(two.perHourCents).toBe(8000);
     expect(two.subtotalCents).toBe(16000); // 80 × 2
-    expect(two.totalCents).toBe(16000 - 1333);
+    expect(two.totalCents).toBe(14500);
 
     const three = quote({
       hours: 2,
@@ -61,7 +93,7 @@ describe("quote", () => {
     });
     expect(three.perHourCents).toBe(10000);
     expect(three.subtotalCents).toBe(20000); // 100 × 2
-    expect(three.totalCents).toBe(20000 - 1667);
+    expect(three.totalCents).toBe(18000);
   });
 
   it("treats a single student as no surcharge", () => {
@@ -83,7 +115,30 @@ describe("quote", () => {
   it("stays in integer cents for awkward rates", () => {
     const q = quote({ hours: 3, hourlyRateCents: 8333 });
     expect(Number.isInteger(q.totalCents)).toBe(true);
-    expect(q.totalCents).toBe(8333 * 3 - 1389);
+    expect(q.totalCents).toBe(8333 * 3 - 1500);
+  });
+});
+
+describe("quoteFromBooking", () => {
+  it("preserves the original credit and total on a historical booking", () => {
+    const stored = quoteFromBooking({
+      hours: 2,
+      headcount: 1,
+      hourlyRateCents: 7000,
+      extraPersonCents: 0,
+      subtotalCents: 14000,
+      handoverDiscountCents: 1167,
+      totalCents: 12833,
+      currency: "CAD",
+      lessonStartAt: new Date("2026-01-08T14:10:00Z"),
+      lessonEndAt: new Date("2026-01-08T16:00:00Z"),
+    });
+    expect(stored).toMatchObject({
+      handoverDiscountCents: 1167,
+      totalCents: 12833,
+      lessonMinutes: 110,
+    });
+    expect(quote({ hours: 2, hourlyRateCents: 7000 }).totalCents).toBe(12500);
   });
 });
 

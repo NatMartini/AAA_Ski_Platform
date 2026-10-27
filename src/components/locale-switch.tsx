@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "@/i18n/navigation";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { locales, type Locale } from "@/i18n/routing";
 import { useTransition } from "react";
 
@@ -16,6 +16,7 @@ export function LocaleSwitch({ current }: { current: Locale }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useParams();
+  const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
 
   const index = locales.indexOf(current);
@@ -25,7 +26,11 @@ export function LocaleSwitch({ current }: { current: Locale }) {
     startTransition(() => {
       router.replace(
         // @ts-expect-error -- params are re-applied verbatim to the same route
-        { pathname, params },
+        { pathname, params, query: Array.from(searchParams.entries()).reduce<Record<string, string | string[]>>((query, [key, value]) => {
+          const previous = query[key];
+          query[key] = previous === undefined ? value : Array.isArray(previous) ? [...previous, value] : [previous, value];
+          return query;
+        }, Object.create(null) as Record<string, string | string[]>) },
         { locale: next },
       );
     });
@@ -49,6 +54,7 @@ export function LocaleSwitch({ current }: { current: Locale }) {
         <button
           key={locale}
           type="button"
+          disabled={pending}
           onClick={() => switchTo(locale)}
           aria-current={locale === current ? "true" : undefined}
           className={`relative z-10 flex min-h-9 min-w-9 items-center justify-center rounded-[6px] px-1.5 text-xs sm:min-w-11 sm:px-2 font-bold transition-colors ${

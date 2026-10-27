@@ -1,3 +1,4 @@
+import { readJsonBodyOrResponse } from "@/lib/request-body";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/require-user";
@@ -42,9 +43,9 @@ export async function POST(
     return NextResponse.json({ error: "invalid-state" }, { status: 409 });
   }
 
-  const parsed = cancelBookingSchema.safeParse(
-    await req.json().catch(() => null),
-  );
+  const jsonBody = await readJsonBodyOrResponse(req);
+  if (!jsonBody.ok) return jsonBody.response;
+  const parsed = cancelBookingSchema.safeParse(jsonBody.data);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "validation", fields: fieldErrors(parsed.error) },

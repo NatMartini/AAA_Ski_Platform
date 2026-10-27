@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJsonBodyOrResponse } from "@/lib/request-body";
 import { prisma } from "@/lib/prisma";
 import { listObjects } from "@/lib/storage";
 import { deletePaymentProofIfUnreferenced } from "@/lib/payment-proof";
@@ -31,6 +32,8 @@ export async function POST(req: Request) {
   if (!secret || provided !== secret) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  const jsonBody = await readJsonBodyOrResponse(req, { allowEmpty: true });
+  if (!jsonBody.ok) return jsonBody.response;
 
   const cutoff = new Date();
   cutoff.setMonth(cutoff.getMonth() - PROOF_RETENTION_MONTHS);

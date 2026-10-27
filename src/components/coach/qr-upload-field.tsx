@@ -9,12 +9,14 @@ const COPY = {
     replace: "更换二维码",
     failed: "上传失败,请重试。",
     tooLarge: "图片太大,请压缩后再传。",
+    sessionChanged: "登录账号已变化，请确认当前教练后重新上传。",
   },
   en: {
     upload: "Upload QR",
     replace: "Replace QR",
     failed: "Upload failed. Please try again.",
     tooLarge: "That image is too large.",
+    sessionChanged: "Your signed-in account changed. Check the current coach before uploading again.",
   },
 } as const;
 
@@ -35,6 +37,7 @@ export function QrUploadField({
 }) {
   return (
     <ImageUploadField
+      coachId={coachId}
       purpose="payment-qr"
       kind={kind}
       previewSrc={`/api/files/qr/${coachId}?kind=${kind}`}

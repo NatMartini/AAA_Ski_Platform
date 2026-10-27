@@ -31,7 +31,7 @@ export function DevUserSwitch({
   }
 
   return (
-    <span className="ml-auto flex items-center gap-1" aria-busy={pending}>
+    <span className="ml-auto flex max-w-full flex-wrap items-center gap-1" aria-busy={pending}>
       {choices.map((c) => (
         <button
           key={c.email}
@@ -40,8 +40,8 @@ export function DevUserSwitch({
           aria-current={c.email === current ? "true" : undefined}
           className={
             c.email === current
-              ? "inline-flex min-h-8 items-center rounded-lg bg-red-600 px-2.5 font-semibold text-white"
-              : "inline-flex min-h-8 items-center rounded-lg border border-red-500/50 px-2.5 hover:bg-red-500/20"
+              ? "inline-flex min-h-8 max-w-full items-center break-all rounded-lg bg-red-600 px-2.5 font-semibold text-white"
+              : "inline-flex min-h-8 max-w-full items-center break-all rounded-lg border border-red-500/50 px-2.5 hover:bg-red-500/20"
           }
         >
           {c.name ?? c.email} · {c.role}

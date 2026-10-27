@@ -12,6 +12,7 @@ import {
 import { packageAccessFor } from "@/lib/package-store";
 import { isOfferOnSale } from "@/lib/packages";
 import { toDateKey } from "@/lib/time";
+import { readLimitedFormData, requestBodyErrorResponse } from "@/lib/request-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,9 +38,11 @@ export async function POST(req: Request) {
 
   let form: FormData;
   try {
-    form = await req.formData();
-  } catch {
-    return NextResponse.json({ error: "invalid-form" }, { status: 400 });
+    form = await readLimitedFormData(req, MAX_INPUT_BYTES + 64 * 1024);
+  } catch (error) {
+    const response = requestBodyErrorResponse(error);
+    if (response) return response;
+    throw error;
   }
 
   const file = form.get("file");
@@ -56,6 +59,13 @@ export async function POST(req: Request) {
   if (purpose === "payment-qr" || purpose === "coach-avatar") {
     if (r.user.role !== "COACH" && r.user.role !== "ADMIN") {
       return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+    const expectedCoachId = form.get("expectedCoachId");
+    if (typeof expectedCoachId !== "string" || !expectedCoachId) {
+      return NextResponse.json({ error: "validation" }, { status: 400 });
+    }
+    if (expectedCoachId !== r.user.id) {
+      return NextResponse.json({ error: "session-changed" }, { status: 409 });
     }
     // Always the caller's own id, never one from the request body.
     prefix =
@@ -82,7 +92,8 @@ export async function POST(req: Request) {
     }
     // Only the person who booked it or the coach teaching it.
     const allowed =
-      booking.accountId === r.user.id || booking.coachId === r.user.id;
+      booking.accountId === r.user.id || r.user.role === "ADMIN" ||
+      (r.user.role === "COACH" && booking.coachId === r.user.id);
     if (!allowed) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 });
     }

@@ -9,7 +9,7 @@ title AAA Ski Platform
 where node >nul 2>nul
 if errorlevel 1 (
   echo.
-  echo Node.js was not found on your PATH. Install Node 20.9 or newer first.
+  echo Node.js was not found on your PATH. Install Node 20.12 or newer first.
   echo.
   pause
   exit /b 1
@@ -17,7 +17,12 @@ if errorlevel 1 (
 
 if not exist "node_modules" (
   echo Installing dependencies for the first time...
-  call npm install
+  call npm ci
+  if errorlevel 1 (
+    echo Dependency installation failed.
+    pause
+    exit /b 1
+  )
 )
 
 node scripts\launch.mjs

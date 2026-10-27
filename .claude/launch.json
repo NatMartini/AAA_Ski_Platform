@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "ski-launch",
+      "runtimeExecutable": "powershell.exe",
+      "runtimeArgs": ["-NoProfile", "-Command", "$env:SKI_LAUNCH_OPEN_BROWSER='0'; node scripts/launch.mjs"],
+      "port": 3000
     }
   ]
 }

@@ -3,6 +3,7 @@ import {
   LEVELS,
   SKILLS,
   csiaLabel,
+  expandTeachableSkillKeys,
   isLevelKey,
   levelRank,
   sanitizeLevelKeys,
@@ -60,6 +61,29 @@ describe("skill catalogue", () => {
     for (const key of ["grab", "spin_grab", "box", "rail", "spin_180", "spin_360"]) {
       expect(park.has(key)).toBe(true);
     }
+  });
+});
+
+describe("legacy coach capability expansion", () => {
+  it.each([
+    ["park_intro", ["jibbing"]],
+    ["box_rail", ["box", "rail"]],
+    ["spins", ["spin_180", "spin_360"]],
+    ["dynamic_parallel", ["advanced_parallel"]],
+  ])("maps %s using the existing migration's exact abilities", (key, expected) => {
+    expect(expandTeachableSkillKeys([key as string])).toEqual(expected);
+  });
+  it("deduplicates mixed current/retired keys idempotently without modifying stored values", () => {
+    const original = Object.freeze(["box_rail", "box", "wedge", "park_intro", "box_rail"]);
+    const expanded = expandTeachableSkillKeys(original);
+    expect(expanded).toEqual(["box", "jibbing", "rail", "wedge"]);
+    expect(expandTeachableSkillKeys(expanded)).toEqual(expanded);
+    expect(original).toEqual(["box_rail", "box", "wedge", "park_intro", "box_rail"]);
+  });
+  it("adds no capability to an empty profile and preserves other raw keys for the caller", () => {
+    expect(expandTeachableSkillKeys([])).toEqual([]);
+    expect(expandTeachableSkillKeys(["wedge", "unknown-legacy"])).toEqual(["unknown-legacy", "wedge"]);
+    expect(skillLabel("box_rail", "en")).toBe("Boxes & rails");
   });
 });
 

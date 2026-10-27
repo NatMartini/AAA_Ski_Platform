@@ -3,6 +3,8 @@ import { requireCoachPage } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/prisma";
 import { CoachSettingsForm } from "@/components/coach/coach-settings-form";
 import { toLocale } from "@/i18n/routing";
+import { parseCustomSkills } from "@/lib/custom-skills";
+import { VideoAnalysisSettings } from "@/components/coach/video-analysis-settings";
 
 export default async function CoachSettingsPage({
   params,
@@ -25,7 +27,7 @@ export default async function CoachSettingsPage({
   }
 
   return (
-    <CoachSettingsForm
+    <div className="space-y-5"><CoachSettingsForm
       locale={toLocale(locale)}
       coachId={user.id}
       initial={{
@@ -36,6 +38,7 @@ export default async function CoachSettingsPage({
         csiaLevel: profile.csiaLevel,
         csiaParkLevel: profile.csiaParkLevel,
         teachableSkills: profile.teachableSkills,
+        customSkills: parseCustomSkills(profile.customSkills),
         teachableLevels: profile.teachableLevels,
         rates: profile.rates.map((r) => ({
           lessonType: r.lessonType,
@@ -62,6 +65,6 @@ export default async function CoachSettingsPage({
         isPublished: profile.isPublished,
         icsToken: profile.icsToken,
       }}
-    />
+    /><VideoAnalysisSettings locale={toLocale(locale)} coachId={user.id} /></div>
   );
 }

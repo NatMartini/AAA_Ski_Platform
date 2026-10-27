@@ -15,7 +15,7 @@ export function Card({
         // The inset shadow is a hairline highlight along the top edge — the way
         // light catches a lip of snow. It is the whole reason cards read as
         // lit rather than flat, and it is theme-aware via --frost-edge.
-        "frosted rounded-2xl border border-border bg-surface p-5 shadow-[var(--shadow)] sm:p-[22px]",
+        "frosted rounded-2xl border border-border bg-surface p-5 shadow-[var(--shadow)] sm:p-6",
         interactive && "lift hover:border-accent/40",
         className,
       )}

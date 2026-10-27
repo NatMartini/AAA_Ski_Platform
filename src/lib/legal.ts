@@ -21,8 +21,8 @@ export type LegalContent = {
 
 export type LegalDocId = "terms" | "privacy" | "accessibility";
 
-const UPDATED_EN = "Draft — pending legal review. Last updated 28 September 2026.";
-const UPDATED_ZH = "草稿 —— 尚待法律审阅。最后更新:2026 年 9 月 28 日。";
+const UPDATED_EN = "Draft — pending legal review. Last updated 8 October 2026.";
+const UPDATED_ZH = "草稿 —— 尚待法律审阅。最后更新:2026 年 10 月 8 日。";
 
 export const LEGAL_DOCS: Record<
   LegalDocId,
@@ -44,7 +44,7 @@ export const LEGAL_DOCS: Record<
           heading: "Booking and lesson times",
           paragraphs: [
             "Lessons are booked on the hour, with a two-hour minimum. Every lesson starts ten minutes after the booked hour and runs to the end of the booking, so the instructor can hand over from the previous student. A 1:00–3:00 booking is taught 1:10–3:00.",
-            "The fee for those ten minutes, at the lesson's hourly rate, is taken off the price — once per booking, not per hour, because the handover happens once however long the lesson. The full breakdown is shown before you confirm and again when you pay.",
+            "Each booking receives a handover credit based on ten minutes at the lesson's hourly rate, rounded up to the next $5 with a $10 minimum and capped at the lesson price. The credit is deducted once per booking, regardless of duration. The full breakdown is shown before you confirm and again when you pay.",
           ],
         },
         {
@@ -54,6 +54,14 @@ export const LEGAL_DOCS: Record<
             "Prices are in Canadian dollars, one-on-one, and final: no tax is added. Each additional student in a group lesson adds a per-hour surcharge shown before you confirm.",
             "Early-bird prices apply to bookings made on or before 1 December for lessons in that season.",
             "A lesson package is paid to the instructor you choose. Its hours can be booked with any instructor on the site, for the lesson type and resort it covers, during the season it was bought for. The instructor you paid can add or remove hours; every change is recorded with its reason and shown to you.",
+          ],
+        },
+        {
+          heading: "Lesson video analysis",
+          paragraphs: [
+            "FreeSki Video Ski Analysis is Kevin’s personal project. After your instructor confirms a lesson as completed, each two-hour booking includes three free analyses and each three-hour booking includes five. The allowance belongs to that lesson and is shared by 1-to-1, 1-to-2 or 1-to-3 bookings, rather than multiplied by the number of students. Uploading or watching a clip does not use an analysis credit.",
+            "Extra credits are priced by your instructor and paid to that instructor. The price and quantity are fixed when you order them; credits become available only after the instructor confirms receipt. Failed or unusable analyses return their credit. Deleting a successful analysis does not restore its credit.",
+            "Automated feedback supports teaching and the instructor's review. Scores may be unavailable when a clip or movement cannot be graded; the service does not issue instructor certification assessments.",
           ],
         },
         {
@@ -101,7 +109,7 @@ export const LEGAL_DOCS: Record<
           heading: "预定与上课时间",
           paragraphs: [
             "课程按整点预定,最少两小时。每节课在预定时段开始 10 分钟后开始、到预定时段结束为止,以便教练与上一位学员交接。预定 1:00–3:00,实际授课时间为 1:10–3:00。",
-            "这 10 分钟的课时费(按该课的小时价计算)会从课费中减去 —— 每张订单减一次,而非按小时扣减,因为交接每节课只发生一次。确认下单前和付款时都会完整展示价格明细。",
+            "每单按该课小时价计算 10 分钟交接优惠,向上取整至 $5 的倍数,最低 $10,且不超过课费。每张订单减一次,不随时长增加。确认下单前和付款时都会完整展示价格明细。",
           ],
         },
         {
@@ -111,6 +119,14 @@ export const LEGAL_DOCS: Record<
             "所有价格以加元计,为一对一价格,且为最终价,不另加税。多人课每增加一名学员,每小时另加费用,下单前会显示。",
             "12 月 1 日(含)之前下的订单,按早鸟价收取该雪季的课程费用。",
             "课时包在购买时付款给你选择的教练。课时可以约本站任意一位教练,但只能在购买的雪季内、按课时包对应的雪场和课程类型使用。收款教练可以增减课时,每次调整都会注明原因并对你可见。",
+          ],
+        },
+        {
+          heading: "课程视频分析",
+          paragraphs: [
+            "FreeSki 视频滑雪分析平台来自 Kevin 的个人项目。教练确认课程完成后，每节 2 小时课赠送 3 次免费分析，每节 3 小时课赠送 5 次。1v1、1v2、1v3 均共用该节课的次数，不按学员人数倍增。上传或观看视频不消耗分析次数。",
+            "额外次数由教练定价，款项直接支付给该课教练；购买时固定价格和数量，教练确认到账后才可使用。分析失败或视频无法分析时返还次数；删除成功的分析不返还已使用次数。",
+            "自动反馈供教学与教练复核使用。视频或动作无法评分时可能不提供分数；本服务不作教练资格认证评估。",
           ],
         },
         {
@@ -157,7 +173,7 @@ export const LEGAL_DOCS: Record<
             "For each participant: their name, whether they are under 18, and optionally an emergency contact and ability level. We do not collect a date of birth; the under-18 flag decides whether a guardian must sign the waiver.",
             "When you sign a waiver: your drawn signature, your typed name, the time, your IP address and your browser's user agent string. These make the signature evidentially meaningful.",
             "When you pay: the screenshot you upload, the method and any reference you enter.",
-            "After a lesson, the instructor may upload short lesson videos for feedback. A clip may contain the participant's image and any caption the instructor adds.",
+            "The booking account and instructor may upload short lesson videos for feedback. A clip may contain the participant's image, its caption, and feedback generated when video analysis is requested.",
           ],
         },
         {
@@ -178,14 +194,15 @@ export const LEGAL_DOCS: Record<
           paragraphs: [
             "Payment screenshots are deleted automatically 24 months after they are submitted. The booking record itself, without the image, is kept.",
             "A screenshot that was never submitted, was replaced, or was rejected is removed earlier through routine cleanup once it is no longer attached to a booking.",
-            "Lesson videos have no automatic deletion date. They remain with the booking until the instructor deletes them; you may also ask for a clip to be removed by contacting CONTACT EMAIL.",
+            "Lesson videos have no automatic deletion date. They remain with the booking until its instructor removes them. The booking account may remove clips it uploaded; removal also clears the associated analysis report, while the credit usage record is retained. You may ask for other clips to be removed by contacting CONTACT EMAIL.",
             "Signed waivers are kept for at least seven years and are never deleted automatically. A waiver for someone marked as under 18 requires manual review before deletion because the site does not collect a date of birth and cannot calculate when that person turns 18.",
           ],
         },
         {
           heading: "Who we share it with",
           paragraphs: [
-            "Nobody outside the site's instructors. The instructors on this site keep one set of records together, so everything about your bookings and lesson packages — lessons, payments and payment screenshots, signed waivers and lesson videos — is visible to you and to every instructor on the site.",
+            "The instructors on this site keep one set of records together. Your bookings, payments, payment screenshots, lesson videos and analysis reports are visible to the booking account and the site's instructors. Each signed waiver is visible to its signer and the site's instructors; a group purchaser does not gain access to another adult's signature.",
+            "When you request FreeSki analysis, the clip is sent privately to the site's configured FreeSki service for processing. The booking records the returned teaching feedback and credit usage. The analysis service is not given your payment screenshots or signed waivers. Only upload videos you are entitled to share for this lesson; a parent or guardian must authorize use of a child's footage.",
             "There is no visitor analytics, no advertising and no third-party tracking on this site.",
           ],
         },
@@ -214,7 +231,7 @@ export const LEGAL_DOCS: Record<
             "每位学员:姓名、是否未满 18 周岁,以及可选的紧急联系人与水平。本站不收集出生日期;未成年人标记用于判断是否需要监护人签署免责协议。",
             "签署免责协议时:手写签名、打印姓名、签署时间、IP 地址与浏览器 User-Agent。这些是使签名具备证据意义的必要信息。",
             "付款时:你上传的截图、付款方式与你填写的备注。",
-            "课程结束后,教练可上传用于课后反馈的课程视频片段。片段可能包含学员影像及教练填写的说明。",
+            "预定账号与教练可以上传用于课程反馈的视频片段。片段可能包含学员影像、填写的说明，以及请求视频分析后生成的反馈。",
           ],
         },
         {
@@ -235,14 +252,15 @@ export const LEGAL_DOCS: Record<
           paragraphs: [
             "付款截图在提交 24 个月后自动删除;订单记录本身(不含图片)予以保留。",
             "未完成提交、已被替换或被拒绝的付款截图,会在不再关联任何订单后通过例行清理提前删除。",
-            "课程视频目前不设自动删除日期,会随订单保留至教练删除;你也可联系 联系邮箱 要求删除片段。",
+            "课程视频目前不设自动删除日期，会随订单保留至该课教练删除。预定账号可删除自己上传的视频；删除时一并清除相关分析报告，但保留次数使用记录。其他视频可联系 联系邮箱 要求删除。",
             "已签署的免责协议至少保留 7 年,且不会自动删除。对于签署时标记为未满 18 周岁的学员,由于本站不收集出生日期、无法自动计算其成年日期,删除前须人工审核。",
           ],
         },
         {
           heading: "是否对外共享",
           paragraphs: [
-            "不对本站教练以外的任何人共享。本站教练共同记账,因此你的预约和课时包的全部信息 —— 课程、付款与付款截图、已签署的免责协议和课程视频 —— 你本人和本站所有教练都能看到。",
+            "本站教练共同记账。预约、付款、付款截图、课程视频与分析报告对预定账号及本站教练可见。每份已签免责协议仅对签署本人及本站教练可见，多人课的下单人不会因此获得其他成年学员的签名。",
+            "你请求 FreeSki 分析时，视频会通过私有连接发送至本站配置的 FreeSki 服务处理，订单保存返回的教学反馈及次数使用记录。分析服务不会收到付款截图或签署的免责协议。请只上传有权用于该课程教学的视频；儿童影像须经父母或监护人同意。",
             "本站没有访客分析统计、广告或第三方追踪。",
           ],
         },

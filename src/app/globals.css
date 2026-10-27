@@ -50,7 +50,7 @@
 }
 
 :root {
-  --bg: #e9f1f9;
+  --bg: #edf4fa;
   --surface: #ffffff;
   --surface-2: #e8f0f8;
   --surface-3: #f4f9fd;
@@ -88,10 +88,12 @@
   --frost-bloom: rgba(255, 255, 255, 0.85);
   --frost-top: rgba(255, 255, 255, 0.6);
   --frost-edge: rgba(255, 255, 255, 0.9);
+  --landscape-opacity: 0.7;
+  --hero-landscape-opacity: 0.65;
 
   --shadow-sm: 0 1px 2px rgba(18, 32, 46, 0.06);
   --shadow:
-    0 1px 2px rgba(18, 32, 46, 0.05), 0 10px 28px -12px rgba(18, 32, 46, 0.18);
+    0 1px 2px rgba(18, 32, 46, 0.03), 0 12px 32px -18px rgba(29, 65, 96, 0.2);
 
   /* Status pills. Each state gets a background, border and foreground so the
      pill reads clearly in both themes without per-component overrides. */
@@ -167,6 +169,8 @@
     --frost-bloom: rgba(64, 122, 168, 0.16);
     --frost-top: rgba(28, 60, 92, 0.22);
     --frost-edge: rgba(255, 255, 255, 0.06);
+    --landscape-opacity: 0.13;
+    --hero-landscape-opacity: 0.13;
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 34px -14px rgba(0, 0, 0, 0.6);
@@ -236,6 +240,8 @@
   --frost-bloom: rgba(64, 122, 168, 0.16);
   --frost-top: rgba(28, 60, 92, 0.22);
   --frost-edge: rgba(255, 255, 255, 0.06);
+  --landscape-opacity: 0.13;
+  --hero-landscape-opacity: 0.13;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 34px -14px rgba(0, 0, 0, 0.6);
@@ -311,12 +317,10 @@ html {
 }
 
 body {
+  position: relative;
+  isolation: isolate;
   background: var(--bg);
-  /* Snow glare: a cold wash down the page and a soft bloom behind the top of
-     the content, so the page reads as daylight on snow rather than flat grey.
-     Fixed attachment keeps it a backdrop instead of something that scrolls
-     past. Both layers are pure colour, so there is no image to download and
-     nothing to go wrong at any viewport size. */
+  /* A soft wash keeps the decorative mountain backdrop below the content. */
   background-image:
     radial-gradient(
       70rem 32rem at 50% -14rem,
@@ -332,6 +336,40 @@ body {
   font-size: 15px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: url("/images/alpine-background.svg") center 4rem / max(100%, 90rem) auto no-repeat;
+  opacity: var(--landscape-opacity);
+}
+
+.home-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 1.75rem;
+  background: linear-gradient(115deg, var(--surface) 15%, var(--surface-3) 100%);
+  box-shadow: inset 0 1px 0 var(--frost-edge), var(--shadow);
+}
+
+.home-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: url("/images/alpine-background.svg") right 35% / 52rem auto no-repeat;
+  opacity: var(--hero-landscape-opacity);
+}
+
+.home-action {
+  min-height: 15rem;
 }
 
 @layer base {
@@ -514,6 +552,11 @@ body {
 }
 
 @media print {
+  body::before,
+  .home-hero::before {
+    display: none;
+  }
+
   .no-print {
     display: none !important;
   }

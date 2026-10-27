@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import type { UserRole } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { inspectSessionIssuedAt, normalizedAuthEmail } from "./verified-google";
+import { hasLanTestAccess, lanTestAccessEnabled } from "./lan-test-access";
 
 /**
  * Bridges the JWT's self-reported claims and the database's current truth.
@@ -32,9 +34,13 @@ type UserStatus =
   | { kind: "token-invalidated" }
   | { kind: "token-expired" };
 
-const MAX_TOKEN_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-
 async function inspect(): Promise<UserStatus> {
+  // Large media routes intentionally bypass Proxy's body cloning. Recheck the
+  // LAN gate here before accepting either a demo cookie or a real session.
+  if (lanTestAccessEnabled()) {
+    const { headers } = await import("next/headers");
+    if (!hasLanTestAccess(await headers())) return { kind: "anon" };
+  }
   // Development-only bypass. Compiled out of production builds entirely; see
   // dev-bypass.ts for why it is safe to have this branch here at all.
   if (process.env.NODE_ENV !== "production") {
@@ -45,6 +51,11 @@ async function inspect(): Promise<UserStatus> {
 
   const session = await auth();
   if (!session?.user?.id) return { kind: "anon" };
+  const verifiedEmail = normalizedAuthEmail(session.user.verifiedGoogleEmail);
+  if (!verifiedEmail) return { kind: "token-invalidated" };
+  const issued = inspectSessionIssuedAt(session.user.tokenIssuedAt);
+  if (issued.kind === "invalid") return { kind: "token-invalidated" };
+  if (issued.kind === "expired") return { kind: "token-expired" };
 
   const dbUser = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -63,22 +74,12 @@ async function inspect(): Promise<UserStatus> {
 
   if (!dbUser) return { kind: "not-found" };
   if (dbUser.disabledAt) return { kind: "disabled" };
-
-  const issuedRaw = session.user.tokenIssuedAt ?? null;
+  if (normalizedAuthEmail(dbUser.email) !== verifiedEmail) return { kind: "token-invalidated" };
 
   // Forced sign-out: any token issued at or before the invalidation mark dies.
   if (dbUser.tokenInvalidatedAt) {
-    if (!issuedRaw) return { kind: "token-invalidated" };
-    if (new Date(issuedRaw).getTime() <= dbUser.tokenInvalidatedAt.getTime()) {
+    if (issued.issuedAt <= dbUser.tokenInvalidatedAt.getTime()) {
       return { kind: "token-invalidated" };
-    }
-  }
-
-  // Hard weekly ceiling, independent of what the cookie says.
-  if (issuedRaw) {
-    const issued = new Date(issuedRaw).getTime();
-    if (!Number.isNaN(issued) && Date.now() - issued > MAX_TOKEN_AGE_MS) {
-      return { kind: "token-expired" };
     }
   }
 
@@ -92,7 +93,7 @@ async function inspect(): Promise<UserStatus> {
       role: dbUser.role,
       phone: dbUser.phone,
       wechatId: dbUser.wechatId,
-      tokenIssuedAt: issuedRaw,
+      tokenIssuedAt: issued.raw,
     },
   };
 }
