@@ -61,11 +61,21 @@ v1.1 相对 v1 的改动（由 Freeski 对话修改，2026-10-26）：
   某个指标被改进项引用时，引用同一指标的优点一律删掉。§4/§5 图注和字幕把“标准动作”统一改为“示范”，关键帧右上角和慢动作字幕
   写出实际对比的示范（如“CSIA 2 级通过示范”）；讲解视频优先选定格指标在范围外的弯。已渲染的关键帧和讲解会按新画法重做。
   §6 任务状态新增 `queue_reason`。以上不改分数。
+- 2026-10-28（社长要求：大模型输出的文字解释动作全部引申于 CSIA 的标准）：§3 提示词升为 `teaching-v10`。
+  每条优点、改进和练习理由都必须写且只写一条“对应 CSIA 要求：{要求名}”，而且是所引事实的指标对应的要求；
+  模型讲动作只能用该要求在指南里的描述和改进建议（`criteria[].guide_*`、`develop_*`，出自 2026-27 各级考生指南，
+  L1 的“常见问题与对策”）。本级别指南没有对应要求的指标，借用最近的指南条目（同一动作最近级别优先，再到其他动作），
+  要求名后面写明出处，如“双板始终保持平行（3 级小回转）”；任何指南都没有对应要求的指标不进教学事实。
+  练习只从指南里出现过的练习中选（`csia_criteria_2026.yaml` 的 `exercises`，12 个），理由里的要求必须是指南用这个练习练的那条；
+  原练习目录里指南没有的 11 个（`railroad_tracks`、`garlands`、`pole_plant_rhythm` 等）不再出现，新增 `diagonal_side_slips`、
+  `side_slips_on_off`、`rollerblade_turns`、`step_up_turns`、`side_stepping`、`stork_turns`；保留的练习 id 不变，中文名改用指南叫法
+  （如 `braquage` 原地小弯、`javelin` 标枪转弯、`hop_turn` 跳跃转弯）。`summary_*` 一律是代码模板，模型不再写总结。
+  `limitations_*` 加一条说明讲解出处。分数不变。
 
 ## 0. 已确定的产品决定
 
-1. 本地模型可以写教学解释和练习建议，但只能依据代码算出的对比事实（§3 `facts`）。
-   每条结论必须引用事实 ID，没有引用的条目丢弃。全部标为试验性。
+1. 本地模型可以写教学解释和练习建议，但只能依据代码算出的对比事实（§3 `facts`），讲动作的内容全部出自
+   CSIA 考生指南（社长 2026-10-28）。每条结论必须引用事实 ID 并写明对应的 CSIA 要求，否则丢弃。全部标为试验性。
 2. 视频估算指标（目前列出的是 `edge_angle`、`edge_change_sync`、`flexion_range`）**只显示、不计分**：
    列在评分卡里，标 `measurement: "estimated"`，`weight` 恒为 0，不给原始值，可以作为教学事实引用
    （措辞须为“视频估算/看起来”）。它们不影响总分和质量标签。
@@ -200,7 +210,7 @@ AAA 结算：TECH 已评分，或 `scorecard.overall.score` 不为 `null` 且 `q
   "strengths": [{ "text_zh": "…", "text_en": "…", "fact_ids": ["f_…"] }],
   "improvements": [{ "text_zh": "…", "text_en": "…", "fact_ids": ["f_…"], "turn_ids": ["turn_3"],
                      "keyframe_ids": ["kf_…"], "priority": "primary" }],
-  "drills": [{ "drill_id": "railroad_tracks", "name_zh": "…", "name_en": "…",
+  "drills": [{ "drill_id": "rollerblade_turns", "name_zh": "…", "name_en": "…",
                "why_zh": "…", "why_en": "…", "fact_ids": ["f_…"] }],
   "limitations_zh": ["…"], "limitations_en": ["…"],
   "model": { "model": "…", "project": "ski-platform-text", "prompt_version": "teaching-v1" }
@@ -220,7 +230,7 @@ AAA 结算：TECH 已评分，或 `scorecard.overall.score` 不为 `null` 且 `q
   条目和总结（总分、整体评分、综合评分、总体评分、整体得分、综合得分、总评分、overall/total/run score、overall/total rating），
   总分数值也不在允许的数字里；单项分、逐弯分照常可以引用。
 - FreeSki 校验器拒绝：未引用事实或引用了不存在事实的条目；含有所引事实以外数字的条目（只允许所引事实的
-  `user_score` 和弯号）；不在 FreeSki 练习目录（`server/rubrics/coaching_systems/csia.yaml`）中的 `drill_id`；
+  `user_score` 和弯号）；不在 CSIA 指南练习清单（`server/rubrics/csia_criteria_2026.yaml` 的 `exercises`，`teaching-v10` 起）中的 `drill_id`；
   URL、文件路径；引用估算指标却没有“视频估算/看起来/estimate/appears”一类措辞的条目；含有测量无法支持的因果或
   程度词的条目和总结（导致、造成、因为、由于、所以、失控、剧烈、严重、极端、完美、完全、彻底、危险、受伤；
   cause、because、due to、lead(s) to、result in、out of control、violent、severe、extreme、perfect、completely、totally、
@@ -230,14 +240,21 @@ AAA 结算：TECH 已评分，或 `scorecard.overall.score` 不为 `null` 且 `q
   `primary`，其余 `secondary`；只引用估算指标的改进永远不是 `primary`，所以可能没有 `primary`）、`limitations_*`。
   同一个弯、同一条事实或同一个指标同时被优点和改进引用时，删掉那条优点（`teaching-v6`）。说某条 CSIA 要求整体达到了的条目
   （“符合/满足/达到/体现……标准/要求”“达标”，英文 meets/satisfies/achieves… criterion/standard/requirement）被拒收。
-  对比对象名里的级别数字（“CSIA 2 级通过示范”的 2）可以写。`summary_*` 不合格时换成代码模板。
-  全部条目都不合格时 `teachingStatus` 为 `failed`（模型最多答两次）。`model.prompt_version` 现为 `teaching-v9`。
+  对比对象名里的级别数字（“CSIA 2 级通过示范”的 2）可以写。`summary_*` 由代码模板生成（`teaching-v10` 起模型不写总结）。
+  全部条目都不合格时 `teachingStatus` 为 `failed`（模型最多答两次）。`model.prompt_version` 现为 `teaching-v10`。
   `teaching-v7`：`primary` 是引用了直接测量事实的改进里，最差的**整趟**事实（`turn_id: null`）所在的那条，没有整趟事实时才取最差的单弯；
   只有某指标的整趟事实被改进引用时，才删掉引用该指标的优点（单个弯差不否定整趟在范围内）；正文和练习理由里只能出现所引事实的指标名；
   模型写的“示范范围/典型范围”等改写为“示范常见范围”（英文 typical range → usual range），中文与 “CSIA” 之间补空格（代码模板的总结也补）。
   `teaching-v8`：CSIA 要求名只能以固定句式出现——“对应 CSIA 要求：{要求名}”（英文 “CSIA criterion: {name}”），每条最多一条要求，
   而且必须是所引事实的指标对应的要求；“体现了/影响了/有助于 + 要求名”之类的说法整条拒收。
   `teaching-v9`：没有句末标点的条目补上“。”或“.”；某指标已有整趟优点时，同一指标的单弯优点删掉。
+  `teaching-v10`：每条优点、改进和练习理由都必须有且只有一条“对应 CSIA 要求：…”，没有或多于一条的整条拒收；
+  指南原话以“指南描述：…”（优点）或“指南建议：…”（改进）引出，英文 “The guide describes: …” / “The guide suggests: …”；
+  练习理由复述指南对这个练习的用法（模型拿到的 `drills[].purpose_zh/purpose_en`，如“指南用它练习用腿转动雪板…”），
+  不再照抄改进建议，可以不写指标名，但不能写所引事实以外的指标名；
+  `criteria` 每项另带 `guide_zh/guide_en`（指南对这条要求的描述）和可选的 `develop_zh/develop_en`（指南的改进建议），
+  借用的要求名带出处“（N 级动作名）”/“(Level N action)”，其中的数字不算引用的数字；模型漏写出处时代码补上；
+  只有能对上某条 CSIA 要求的指标才生成事实；练习的 `criteria_zh/criteria_en` 列出它在这张评分卡上能练的要求。
   提示词版本一变，已有的解释（`ready` 或 `failed`）在下次读报告时回到 `pending` 并重新生成，和关键帧、讲解随 `MEDIA_VERSION` 重做一样。
 - 方向一致（`teaching-v4`）：改进项引用的每条事实都必须在示范常见范围外的“差”的一侧（直条指标 `below`，钟形指标
   `below` 或 `above`），否则整条丢弃；优点不能引用这类事实。

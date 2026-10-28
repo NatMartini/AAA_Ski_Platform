@@ -737,12 +737,12 @@
         "measurement": "direct"
       }
     ],
-    "summary_zh": "这一趟整体与 CSIA 2 级通过示范接近，上身稳定最好，收弯完成度在个别弯里落后。",
-    "summary_en": "Close to the CSIA Level 2 pass demonstration overall: quiet upper body is strongest, turn closure lags in some turns.",
+    "summary_zh": "本次按 3 个中间弯与 CSIA 2 级通过示范逐项对比（试验性）。",
+    "summary_en": "Each metric was compared with the CSIA Level 2 pass demonstration over 3 middle turns (experimental).",
     "strengths": [
       {
-        "text_zh": "上身稳定与 CSIA 2 级通过示范接近（100 分）。",
-        "text_en": "Quiet upper body is close to the CSIA Level 2 pass demonstration (100).",
+        "text_zh": "上身稳定与 CSIA 2 级通过示范接近（100 分）。对应 CSIA 要求：用旋转动作带出这条线路需要的转向。指南描述：旋转动作给出这条线路需要的转向角度。",
+        "text_en": "Quiet upper body is close to the CSIA Level 2 pass demonstration (100). CSIA criterion: Rotary movements give the steering the run needs. The guide describes: Rotational movements give the steering angle the run needs.",
         "fact_ids": [
           "f_upper_body_quiet_index"
         ]
@@ -750,8 +750,8 @@
     ],
     "improvements": [
       {
-        "text_zh": "第4弯的收弯完成度只有 33.4 分，低于 CSIA 2 级通过示范的常见范围，慢动作里可以对照绿色骨架。",
-        "text_en": "Turn 4 scored 33.4 for turn closure, below the usual range of the CSIA Level 2 pass demonstration; compare with the green skeleton in slow motion.",
+        "text_zh": "第4弯的收弯完成度只有 33.4 分，低于 CSIA 2 级通过示范的常见范围。对应 CSIA 要求：弯型圆滑，弯与弯连贯。指南建议：在过山下线之前就开始转动腿部，并把每个弯滑完整。",
+        "text_en": "Turn 4 scored 33.4 for turn closure, below the usual range of the CSIA Level 2 pass demonstration. CSIA criterion: Round, linked turns. The guide suggests: Start turning the legs above the fall line and finish each turn.",
         "fact_ids": [
           "f_turn_closure_turn_3"
         ],
@@ -768,32 +768,34 @@
     ],
     "drills": [
       {
-        "drill_id": "pole_plant_rhythm",
-        "name_zh": "杆法节奏",
-        "name_en": "Pole Plant Rhythm",
-        "why_zh": "用点杖固定每个弯的节奏，改善收弯完成度。",
-        "why_en": "Pole plants set a steady rhythm for every turn, working on turn closure.",
+        "drill_id": "hockey_stops",
+        "name_zh": "曲棍球急停",
+        "name_en": "Hockey stops",
+        "why_zh": "针对第4弯的收弯完成度。对应 CSIA 要求：弯型圆滑，弯与弯连贯。指南用它练习用腿转动雪板，用在上身带头进弯、弯型和速度控制不住的时候。",
+        "why_en": "For turn closure in turn 4. CSIA criterion: Round, linked turns. The guide uses it to work on leg turning, when the upper body leads into the turn and turn shape or speed is not controlled.",
         "fact_ids": [
           "f_turn_closure_turn_3"
         ]
       }
     ],
     "limitations_zh": [
-      "试验性结果：分数来自单机位二维视频与 FreeSki 标准动作参考的对比，不是考官评分。",
+      "试验性结果：分数来自单机位二维视频与 CSIA 示范的对比，不是考官评分。",
       "标为“估算”的指标是视频估算，只显示、不计分。",
       "只对比视频能测量的 CSIA 考核要求。",
+      "讲解只引用 CSIA 指南的要求和改进建议；本级别没有对应要求的指标，引用最近的指南条目并注明级别和动作。",
       "转弯阶段按时间划分，未经人工审核。"
     ],
     "limitations_en": [
-      "Experimental: scores compare a single-camera 2D video with FreeSki's standard demonstrations; this is not an examiner's mark.",
+      "Experimental: scores compare a single-camera 2D video with CSIA demonstrations; this is not an examiner's mark.",
       "Metrics marked as estimates are video estimates: shown, not scored.",
       "Only the CSIA criteria a video can measure are compared.",
+      "Notes cite only the CSIA guides' criteria and development advice; a metric with no criterion at this level cites the nearest guide entry, with its level and action.",
       "Turn phases are split by time and have not been reviewed by a person."
     ],
     "model": {
       "model": "sample-handwritten",
       "project": "ski-platform-text",
-      "prompt_version": "teaching-v9"
+      "prompt_version": "teaching-v10"
     }
   },
   "explainerStatus": "ready",
