@@ -10,7 +10,8 @@ import { formatMoneyShort } from "@/lib/pricing";
 import { formatTorontoDate } from "@/lib/time";
 import { toLocale } from "@/i18n/routing";
 import { cn } from "@/lib/utils";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Users } from "lucide-react";
+import { PageHeader } from "@/components/ui/page-header";
 
 const FILTERS = ["all", "hours", "owed"] as const;
 type Filter = (typeof FILTERS)[number];
@@ -66,7 +67,13 @@ export default async function CoachStudentsPage({
     balances.reduce((total, b) => total + pick(b), 0);
 
   return (
-    <div className="stagger space-y-5">
+    <div className="space-y-5">
+      <PageHeader
+        icon={<Users aria-hidden />}
+        tone="people"
+        title={zh ? "学员" : "Students"}
+        description={zh ? "你的学员、剩余课时和待收款。" : "Your students, package hours left and money owed."}
+      />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile label={zh ? "学员" : "Students"} value={String(balances.length)} />
         <StatTile

@@ -1,5 +1,6 @@
 import { turnNumber, type ReferenceStatus, type Scorecard } from "@/lib/freeski/scorecard";
 import type { FreeSkiCurrentLevel } from "@/lib/freeski/actions";
+import { metricConfidence, metricDelta, metricInsight, perTurnScores, worstTurnFor } from "@/lib/freeski/metric-insight";
 
 type Metric = Scorecard["metrics"][number];
 
@@ -113,16 +114,44 @@ export function turnLabel(turnId: string, zh: boolean): string {
   return zh ? `第 ${number} 弯` : `Turn ${number}`;
 }
 
-function MetricBar({ metric, zh }: { metric: Metric; zh: boolean }) {
+const CONFIDENCE: Record<"high" | "medium" | "low", [string, string, string]> = {
+  high: ["可信度高", "High confidence", "bg-success-bg text-success"],
+  medium: ["可信度中", "Medium confidence", "bg-amber-bg text-amber"],
+  low: ["可信度低", "Low confidence", "bg-surface-2 text-ink-3"],
+};
+
+/** This metric turn by turn: a tiny bar chart whose lowest counted turn is marked. */
+function TurnSparkline({ card, metricKey, zh }: { card: Scorecard; metricKey: string; zh: boolean }) {
+  const scores = perTurnScores(card, metricKey);
+  if (scores.every(entry => entry.score === null)) return null;
+  const worst = worstTurnFor(card, metricKey);
+  return <div className="flex h-7 items-end gap-px" role="img"
+    aria-label={zh ? `逐弯：${scores.map(entry => entry.score === null ? "无" : round(entry.score)).join("、")}` : `By turn: ${scores.map(entry => entry.score === null ? "n/a" : round(entry.score)).join(", ")}`}>
+    {scores.map(entry => <span key={entry.turnId} title={`${turnLabel(entry.turnId, zh)}${entry.score === null ? "" : ` · ${round(entry.score)}`}`}
+      className={`min-w-1 flex-1 rounded-sm ${entry.score === null ? "bg-surface-2" : entry.turnId === worst ? "bg-amber" : entry.counted ? "bg-accent/70" : "bg-ink-3/40"}`}
+      style={{ height: `${entry.score === null ? 15 : Math.max(8, entry.score)}%` }} />)}
+  </div>;
+}
+
+function MetricBar({ metric, card, previous, zh, selected, onSelect }: { metric: Metric; card: Scorecard; previous: Scorecard | null; zh: boolean;
+  selected: boolean; onSelect?: (key: string) => void }) {
   const label = zh ? metric.label_zh : metric.label_en;
   const value = metricValue(metric, metric.value, zh), reference = metricValue(metric, metric.reference?.median ?? null, zh);
   const band = metric.band && BAND[metric.band][zh ? 0 : 1];
-  return <div className="min-w-0 space-y-2 rounded-lg bg-surface p-3">
+  const confidence = metricConfidence(card, metric);
+  const [confZh, confEn, confTone] = CONFIDENCE[confidence.level];
+  const delta = metricDelta(card, previous, metric.key);
+  const insight = metricInsight(metric.key);
+  const worst = worstTurnFor(card, metric.key);
+  const body = <>
     <div className="flex items-start justify-between gap-3">
-      <p className="min-w-0 break-words text-sm text-ink-2">{label}
-        {metric.measurement === "estimated" && <span className="ml-2 whitespace-nowrap rounded-full border border-amber-border bg-amber-bg px-2 py-0.5 text-xs text-amber">{zh ? "视频估算 · 不计分" : "Video estimate · not scored"}</span>}
+      <p className="min-w-0 break-words text-sm font-medium">{label}
+        {metric.measurement === "estimated" && <span className="ml-2 whitespace-nowrap rounded-full border border-amber-border bg-amber-bg px-2 py-0.5 text-xs font-normal text-amber">{zh ? "视频估算 · 不计分" : "Video estimate · not scored"}</span>}
       </p>
-      <p className="shrink-0 text-sm font-semibold">{metric.score === null ? (zh ? "暂无" : "N/A") : round(metric.score)}</p>
+      <p className="flex shrink-0 items-baseline gap-1.5 text-sm font-semibold" data-numeric>
+        {metric.score === null ? (zh ? "暂无" : "N/A") : round(metric.score)}
+        {delta !== null && delta !== 0 && <span className={`text-xs ${delta > 0 ? "text-success" : "text-danger"}`} title={zh ? "和上一次分析相比" : "Compared with your previous analysis"}>{delta > 0 ? "+" : ""}{delta}</span>}
+      </p>
     </div>
     {metric.target ? <div role="meter" aria-label={`${label}${band ? `：${band}` : ""}`} aria-valuemin={0} aria-valuemax={100}
       aria-valuenow={metric.position ?? undefined} className="relative h-2 rounded-full bg-surface-2">
@@ -138,7 +167,19 @@ function MetricBar({ metric, zh }: { metric: Metric; zh: boolean }) {
     {(band || value) && <p className="text-xs text-ink-3">
       {[band, value && (zh ? `你的：${value}` : `Yours: ${value}`), reference && (zh ? `示范：${reference}` : `Examples: ${reference}`)]
         .filter(Boolean).join(" · ")}</p>}
-  </div>;
+    {insight && <p className="text-xs leading-relaxed text-ink-2">{zh ? insight.zh : insight.en}</p>}
+    <div className="flex flex-wrap items-center gap-2">
+      <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${confTone}`}
+        title={confidence.reasons.map(reason => reason[zh ? 0 : 1]).join(zh ? "；" : "; ") || undefined}>{zh ? confZh : confEn}</span>
+      {confidence.reasons.length > 0 && <span className="text-[11px] text-ink-3">{confidence.reasons.map(reason => reason[zh ? 0 : 1]).join(zh ? "、" : ", ")}</span>}
+    </div>
+    <TurnSparkline card={card} metricKey={metric.key} zh={zh} />
+    {onSelect && worst && <span className="text-xs font-semibold text-accent">{selected ? (zh ? "已在播放器里高亮" : "Highlighted in the player") : (zh ? `看最差的${turnLabel(worst, zh)} ›` : `See weakest ${turnLabel(worst, zh).toLowerCase()} ›`)}</span>}
+  </>;
+  const className = `min-w-0 space-y-2 rounded-lg p-3 text-left ${selected ? "bg-accent-soft ring-2 ring-accent" : "bg-surface"}`;
+  return onSelect
+    ? <button type="button" aria-pressed={selected} onClick={() => onSelect(metric.key)} className={`${className} press w-full hover:bg-surface-3`}>{body}</button>
+    : <div className={className}>{body}</div>;
 }
 
 /**
@@ -146,7 +187,13 @@ function MetricBar({ metric, zh }: { metric: Metric; zh: boolean }) {
  * The overall score is withheld until it is validated against examiner scores (decision of 2026-10-26), and what
  * video cannot measure is not listed at all (2026-10-27), so `unavailable_metrics` is ignored.
  */
-export function AnalysisScorecard({ card, zh, currentLevel = null }: { card: Scorecard; zh: boolean; currentLevel?: FreeSkiCurrentLevel | null }) {
+export function AnalysisScorecard({ card, zh, currentLevel = null, previous = null, selectedMetric = null, onSelectMetric }: {
+  card: Scorecard; zh: boolean; currentLevel?: FreeSkiCurrentLevel | null;
+  /** A comparable earlier scorecard of the same action, for "since last time" deltas. */
+  previous?: Scorecard | null;
+  /** When given, each metric is a button that focuses the turn player on that metric's weakest turn. */
+  selectedMetric?: string | null; onSelectMetric?: (key: string) => void;
+}) {
   const [qualityZh, qualityEn, qualityTone] = QUALITY[card.quality];
   const metrics = [...card.metrics].sort((a, b) => Number(a.measurement === "estimated") - Number(b.measurement === "estimated") || b.weight - a.weight);
   const separateTurns = card.turns.some(turn => turn.role !== "middle");
@@ -174,7 +221,9 @@ export function AnalysisScorecard({ card, zh, currentLevel = null }: { card: Sco
     {card.quality_reasons.length > 0 && <ul className="list-disc space-y-1 pl-5 text-xs text-ink-3">
       {card.quality_reasons.map(reason => <li key={reason}>{(reason === "no_matching_reference" && card.level === null && target === "advanced"
         ? NO_EXPERT : REASONS[reason])[zh ? 0 : 1]}</li>)}</ul>}
-    {metrics.length > 0 && <div className="grid gap-2 sm:grid-cols-2">{metrics.map(metric => <MetricBar key={metric.key} metric={metric} zh={zh} />)}</div>}
+    {previous && <p className="text-xs text-ink-3">{zh ? "分数旁的 +/− 是和你上一次同一动作分析的变化。" : "The +/− beside a score is the change since your previous analysis of this action."}</p>}
+    {metrics.length > 0 && <div className="grid gap-2 sm:grid-cols-2">{metrics.map(metric => <MetricBar key={metric.key} metric={metric} card={card} previous={previous} zh={zh}
+      selected={selectedMetric === metric.key} onSelect={onSelectMetric} />)}</div>}
     {card.turns.length > 0 && <div className="space-y-2">
       <p className="text-sm font-semibold">{zh ? "逐弯得分" : "Score by turn"}</p>
       <ul className="flex flex-wrap gap-2">{card.turns.map(turn => {

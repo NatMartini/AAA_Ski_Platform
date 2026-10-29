@@ -41,8 +41,8 @@ export async function readDynamicReport(input: { scope: string; jobId: string; r
     : resource.length === 2 && resource[0] === "assets" && resource[1] === "keyframe" && KEYFRAME_ID.test(keyframeId ?? "") ? "keyframe"
     : resource.length === 1 && resource[0] === "explainer" ? "explainer"
     : resource.length === 2 && resource[0] === "assets" && resource[1] === "explainer" ? "explainer-video"
-    : resource.length === 2 && resource[0] === "assets" && ["background", "user-pose", "reference-pose"].includes(resource[1])
-      ? resource[1] as "background" | "user-pose" | "reference-pose" : null;
+    : resource.length === 2 && resource[0] === "assets" && ["background", "user-pose", "reference-pose", "standard-pose"].includes(resource[1])
+      ? resource[1] as "background" | "user-pose" | "reference-pose" | "standard-pose" : null;
   if (!kind || turnId && !/^turn_\d{1,5}$/.test(turnId)) throw new DynamicReportError(404, "not-found");
   const video = kind === "background" || kind === "explainer-video";
   let response: Response;

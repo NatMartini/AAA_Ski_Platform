@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({ bookings: vi.fn(), packages: vi.fn(), analysis
 vi.mock("./prisma", () => ({ prisma: {
   booking: { findMany: mocks.bookings }, lessonPackage: { findMany: mocks.packages },
   videoAnalysisPurchase: { findMany: mocks.analysisPurchases }, videoAnalysisJob: { findMany: mocks.analysisJobs },
+  accountAnalysisJob: { findMany: async () => [] },
   coachVideoReviewRequest: { findMany: mocks.videoReviews },
 } }));
 import { loadNotifications } from "./notification-store";

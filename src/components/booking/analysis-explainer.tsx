@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { explainerSchema, type Explainer } from "@/lib/freeski/scorecard";
+import { explainerSchema, isCurrentMedia, type Explainer } from "@/lib/freeski/scorecard";
 import { clientFetch } from "@/lib/client-fetch";
 import { referenceNote, type ReferenceTarget } from "./analysis-scorecard";
 
@@ -31,7 +31,8 @@ export function AnalysisExplainer({ base, zh, target = null }: { base: string; z
     void load();
     return () => { controller.abort(); clearTimeout(timer); };
   }, [base]);
-  if (!explainer || explainer.status === "unavailable") return null;
+  // A v1 explainer compares against a raw reference clip that may turn the other way; it is not shown.
+  if (!explainer || explainer.status === "unavailable" || !isCurrentMedia(explainer)) return null;
   if (explainer.status === "pending" || explainer.status === "running")
     return <p className="text-sm text-ink-3">{zh ? "慢动作讲解视频生成中…" : "Generating the slow-motion explainer…"}</p>;
   if (explainer.status === "failed" || !explainer.segments)

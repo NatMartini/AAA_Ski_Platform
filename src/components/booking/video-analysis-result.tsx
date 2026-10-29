@@ -40,27 +40,40 @@ export function readAnalysisResult(value: unknown): SafeAnalysisResult | null {
   };
 }
 
-export function VideoAnalysisResult({ result: rawResult, locale, dynamicReportBase }: { result: unknown; locale: Locale; dynamicReportBase?: string }) {
+const REASONS: Record<string, [string, string]> = {
+  "wrong-action": ["识别到的动作与所选动作不一致。", "The detected action does not match the selected action."],
+  "insufficient-turns": ["有效滑行片段或转弯次数不足。", "There are not enough usable turns in this clip."],
+  "low-confidence": ["动作识别置信度不足。", "The action could not be recognized with enough confidence."],
+  "score-unavailable": ["这个片段暂不满足评分条件。", "This clip does not meet the scoring requirements."],
+};
+
+/** Why FreeSki could not grade a clip, in words; null for an unknown reason. */
+export function analysisReasonText(reason: string | null, zh: boolean): string | null {
+  return reason && Object.hasOwn(REASONS, reason) ? REASONS[reason][zh ? 0 : 1] : null;
+}
+
+export function VideoAnalysisResult({ result: rawResult, locale, dynamicReportBase, previousResult = null, expanded = false }: {
+  result: unknown; locale: Locale; dynamicReportBase?: string;
+  /** The raw result of a comparable earlier analysis, for "since last time" deltas. */
+  previousResult?: unknown; expanded?: boolean;
+}) {
   const zh = locale === "zh";
   const result = readAnalysisResult(rawResult);
   const card = result?.scorecard ?? null;
+  const previous = readAnalysisResult(previousResult)?.scorecard ?? null;
   // New jobs carry a scorecard; their overall scores (scorecard and legacy TECH) stay hidden until validated.
   const comparison = card !== null && analysisResultUsable(result!);
   const available = !card && result?.gradingStatus === "graded" && result.scoreKind === "TECH" && result.score !== null && result.score >= 0 && result.score <= 100;
   // Legacy TECH cues quote TECH metric scores that disagree with the scorecard; FreeSki's teaching replaces them.
   const coaching = comparison ? [] : zh ? result?.coachingZh : result?.coachingEn;
-  const reasons: Record<string, string> = {
-    "wrong-action": zh ? "识别到的动作与所选动作不一致。" : "The detected action does not match the selected action.",
-    "insufficient-turns": zh ? "有效滑行片段或转弯次数不足。" : "There are not enough usable turns in this clip.",
-    "low-confidence": zh ? "动作识别置信度不足。" : "The action could not be recognized with enough confidence.",
-    "score-unavailable": zh ? "这个片段暂不满足评分条件。" : "This clip does not meet the scoring requirements.",
-  };
+  // With a dynamic report the scorecard is rendered inside it, after the explanation and player.
+  const dynamic = Boolean(dynamicReportBase);
   return <div className="space-y-2 rounded-xl border border-border bg-surface-2 p-3">
-    {comparison ? <AnalysisScorecard card={card} zh={zh} currentLevel={result!.currentLevel} /> : <>
+    {comparison ? !dynamic && <AnalysisScorecard card={card} zh={zh} currentLevel={result!.currentLevel} previous={previous} /> : <>
     <p className="text-sm font-semibold">{available ? <>{zh ? "技术评分" : "Technical score"}: <span className="font-display text-xl text-accent">{Number(result.score!.toFixed(1))}</span></>
       : zh ? "本次无法评分，不扣分析次数。" : "A score is unavailable for this analysis. No credit is used."}</p>
     {!available && <p className="text-xs text-ink-3">{zh ? "动作识别、有效滑行片段或评分条件不足时，不会显示为 0 分。可换一个更清晰、完整的片段重试。" : "An unrecognized action, insufficient usable turns or unmet scoring requirements is shown as unavailable. Try a clearer, complete clip."}</p>}
-    {!available && result?.gradingReason && reasons[result.gradingReason] && <p className="text-sm text-ink-2">{reasons[result.gradingReason]}</p>}
+    {!available && analysisReasonText(result?.gradingReason ?? null, zh) && <p className="text-sm text-ink-2">{analysisReasonText(result?.gradingReason ?? null, zh)}</p>}
     {available && result.numTurns !== null && <p className="text-xs text-ink-3">{zh ? `有效转弯：${result.numTurns} 次` : `Usable turns: ${result.numTurns}`}</p>}
     {available && result.metrics.length > 0 && <div className="space-y-2 border-t border-border pt-3">
       <p className="text-sm font-semibold">{zh ? "技术指标" : "Technique metrics"}</p>
@@ -71,7 +84,8 @@ export function VideoAnalysisResult({ result: rawResult, locale, dynamicReportBa
     </div>}
     </>}
     {coaching && coaching.length > 0 && <ul className="space-y-1 text-sm leading-relaxed text-ink-2">{coaching.map((text, index) => <li key={index}>{text}</li>)}</ul>}
-    {dynamicReportBase && <DynamicCoachingReport base={dynamicReportBase} zh={zh} />}
+    {dynamicReportBase && <DynamicCoachingReport base={dynamicReportBase} zh={zh} card={comparison ? card : null} currentLevel={result?.currentLevel ?? null}
+      previous={previous} defaultOpen={expanded} />}
   </div>;
 }
 

@@ -8,7 +8,8 @@ import { offerLabel, packageTotalHours } from "@/lib/packages";
 import { hoursLeft, packageInclude, type LoadedPackage } from "@/lib/package-store";
 import { formatMoneyShort } from "@/lib/pricing";
 import { toLocale } from "@/i18n/routing";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Package } from "lucide-react";
+import { PageHeader } from "@/components/ui/page-header";
 
 /**
  * Packages from the coach's side: payments waiting on this coach, the
@@ -53,7 +54,13 @@ export default async function CoachPackagesPage({
   );
 
   return (
-    <div className="stagger space-y-6">
+    <div className="space-y-6">
+      <PageHeader
+        icon={<Package aria-hidden />}
+        tone="people"
+        title={zh ? "课时包" : "Lesson packages"}
+        description={zh ? "学员购买的课时包，以及等你确认的付款。" : "Packages students bought and payments waiting for you to check."}
+      />
       {section(
         zh ? "待确认收款" : "Payments to check",
         waiting,

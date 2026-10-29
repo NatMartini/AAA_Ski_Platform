@@ -24,8 +24,15 @@ describe("video analysis notifications", () => {
   });
   it("links failed analyses to the order without leaking result data", () => {
     const items = inbox("student", "CUSTOMER", { purchases: [], jobs: [{ ...job, status: "FAILED" }] });
-    expect(items[0]).toMatchObject({ kind: "analysis-failed", href: "/booking/SKI-TEST#video-analysis" });
+    // A finished analysis opens on its own report page, inside the lesson's library.
+    expect(items[0]).toMatchObject({ kind: "analysis-failed", href: `/video-analysis/report/${job.id}?lesson=SKI-TEST` });
     expect(Object.keys(items[0]).sort()).toEqual(["actionable", "code", "href", "key", "kind", "occurredAt"]);
+  });
+  it("tells a student about a finished personal analysis, and nobody else", () => {
+    const personal = { ...job, id: "personal", booking: null, accountId: "student" };
+    const mine = inbox("student", "CUSTOMER", { purchases: [], jobs: [personal] });
+    expect(mine[0]).toMatchObject({ kind: "analysis-ready", code: "FreeSki", href: "/video-analysis/report/personal" });
+    expect(inbox("coach", "COACH", { purchases: [], jobs: [personal] })).toEqual([]);
   });
   it("gives separate purchases independent unread identities", () => {
     const items = inbox("coach", "COACH", { jobs: [], purchases: [purchase, { ...purchase, id: "second" }] });

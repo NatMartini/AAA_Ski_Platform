@@ -17,6 +17,7 @@ import MyBookingsPage from "./my/bookings/page";
 const mocks = vi.hoisted(() => ({
   user: null as ActiveUser | null,
   locale: "en" as "zh" | "en",
+  pathname: "/",
   resorts: vi.fn(),
   redirect: vi.fn((target: { href: string | object; locale: string }) => {
     throw new Error(`REDIRECT:${target.locale}:${JSON.stringify(target.href)}`);
@@ -33,6 +34,7 @@ vi.mock("next-intl/server", () => ({
 vi.mock("@/i18n/navigation", () => ({
   Link: (props: ComponentProps<"a">) => createElement("a", props),
   redirect: mocks.redirect,
+  usePathname: () => mocks.pathname,
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
 vi.mock("next/navigation", () => ({
@@ -78,6 +80,11 @@ function links(html: string): string[] {
   return [...html.matchAll(/href="([^"]+)"/g)].map((link) => link[1]);
 }
 
+/** The header repeats its sections in the phone tab bar; compare each destination once. */
+function destinations(html: string): string[] {
+  return [...new Set(links(html))].sort();
+}
+
 function pageProps<P extends Record<string, string>>(params: P) {
   return { params: Promise.resolve(params), searchParams: Promise.resolve({}) };
 }
@@ -85,6 +92,7 @@ function pageProps<P extends Record<string, string>>(params: P) {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.locale = "en";
+  mocks.pathname = "/";
   mocks.user = null;
   mocks.resorts.mockResolvedValue([]);
 });
@@ -97,18 +105,24 @@ describe("role-specific navigation", () => {
   it.each(COACH_CASES)("gives $role only coach navigation in $locale and retains notifications", async ({ role, locale }) => {
     mocks.user = activeUser(role);
     mocks.locale = locale;
+    mocks.pathname = "/coach/schedule";
     const html = renderToStaticMarkup(await SiteHeader({ user: mocks.user, locale }));
-    const destinations = links(html);
 
-    expect(destinations).toContain("/coach");
-    expect(destinations).toContain("/coach/schedule");
-    expect(destinations).toContain("/coach/bookings/new");
-    expect(destinations).toContain("/calendar");
-    expect(destinations).not.toContain("/book");
-    expect(destinations).not.toContain("/prices");
-    expect(destinations).not.toContain("/my/bookings");
+    // Sections, plus the pages of the lessons section the coach is in.
+    expect(destinations(html)).toEqual(["/calendar", "/coach", "/coach/availability", "/coach/bookings",
+      "/coach/bookings/new", "/coach/schedule", "/coach/stats", "/coach/students", "/video-analysis"]);
     expect(html).toContain('data-notification-user="active-user"');
     expect(html).toContain(locale === "zh" ? "代学员建课" : "Book for a student");
+  });
+
+  it("shows each coach section's own pages and marks the current one", async () => {
+    mocks.user = activeUser("COACH");
+    mocks.pathname = "/coach/video-reviews";
+    const html = renderToStaticMarkup(await SiteHeader({ user: mocks.user, locale: "en" }));
+
+    expect(links(html)).toEqual(expect.arrayContaining(["/video-analysis", "/coach/video-analysis", "/coach/video-reviews"]));
+    expect(links(html)).not.toContain("/coach/bookings/new");
+    expect(html).toMatch(/<a href="\/coach\/video-reviews" aria-current="page"/);
   });
 
   it.each(COACH_CASES)("makes the $role home a coach workspace in $locale", async ({ role, locale }) => {
@@ -116,18 +130,22 @@ describe("role-specific navigation", () => {
     mocks.locale = locale;
     const html = renderToStaticMarkup(await HomePage(pageProps({ locale })));
 
-    expect(links(html)).toEqual(["/video-analysis", "/coach", "/coach/schedule", "/coach/bookings/new", "/calendar"]);
+    expect(links(html)).toEqual(["/coach", "/video-analysis", "/coach/schedule", "/coach/bookings/new", "/calendar",
+      "/coach/students", "/coach/packages", "/video-analysis", "/coach/video-analysis", "/coach/video-reviews"]);
     expect(html).toContain(locale === "zh" ? "待办事项" : "pending actions");
     expect(html).not.toContain(locale === "zh" ? "课时包 4 小时" : "4 hours at Blue Mountain");
   });
 
   it("keeps student booking and purchase links on the header and home", async () => {
     mocks.user = activeUser("CUSTOMER");
+    mocks.pathname = "/prices";
     const header = renderToStaticMarkup(await SiteHeader({ user: mocks.user, locale: "en" }));
     const home = renderToStaticMarkup(await HomePage(pageProps({ locale: "en" })));
 
-    expect(links(header)).toEqual(["/", "/book", "/prices", "/calendar", "/my/bookings", "/video-analysis"]);
-    expect(links(home)).toEqual(["/video-analysis", "/book", "/my/bookings", "/calendar", "/prices", "/packages"]);
+    expect(destinations(header)).toEqual(["/", "/book", "/calendar", "/my/bookings", "/packages", "/prices", "/video-analysis"]);
+    expect(header).toMatch(/<a href="\/prices" aria-current="page"/);
+    // The home banner offers booking and video analysis first, then every feature by category.
+    expect(links(home)).toEqual(["/book", "/video-analysis", "/book", "/prices", "/packages", "/calendar", "/my/bookings", "/video-analysis"]);
     expect(home).not.toContain('href="/coach"');
   });
 
@@ -135,7 +153,7 @@ describe("role-specific navigation", () => {
     const header = renderToStaticMarkup(await SiteHeader({ user: null, locale: "en" }));
     const home = renderToStaticMarkup(await HomePage(pageProps({ locale: "en" })));
 
-    expect(links(header)).toEqual(["/", "/video-analysis"]);
+    expect(destinations(header)).toEqual(["/", "/sign-in", "/video-analysis"]);
     expect(links(home)).toEqual(["/sign-in", "/video-analysis"]);
     expect(header).not.toContain("Notifications");
     expect(home).not.toContain("/packages");

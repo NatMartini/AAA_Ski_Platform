@@ -14,7 +14,8 @@ import { formatTorontoDate, toDateKey } from "@/lib/time";
 import { formatSeason } from "@/lib/season";
 import { toLocale, type Locale } from "@/i18n/routing";
 import { cn } from "@/lib/utils";
-import { ArrowRight, Clock, Mountain, Package } from "lucide-react";
+import { ArrowRight, Clock, Mountain, Package, Tag } from "lucide-react";
+import { PageHeader } from "@/components/ui/page-header";
 
 /**
  * The price sheet, rendered from the live rate cards rather than typed in,
@@ -64,13 +65,13 @@ export default async function PricesPage({
       : extras.map((c) => formatMoneyShort(c)).join(" / ");
 
   return (
-    <div className="stagger space-y-5">
-      <div>
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-ink-3">
-          {formatSeason(early.season, loc)}
-        </p>
-        <h1 className="mt-1 text-3xl">{zh ? "价目表" : "Prices"}</h1>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        icon={<Tag aria-hidden />}
+        eyebrow={formatSeason(early.season, loc)}
+        title={zh ? "价目表" : "Prices"}
+        description={zh ? "各教练、各雪场的课程价格和课时包。" : "Lesson prices and packages for each coach and resort."}
+      />
 
       <p
         className="rounded-xl p-3.5 text-sm font-semibold"

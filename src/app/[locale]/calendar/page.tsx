@@ -23,7 +23,8 @@ import {
 } from "@/lib/time";
 import { toLocale, type Locale } from "@/i18n/routing";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarRange, ChevronLeft, ChevronRight } from "lucide-react";
+import { PageHeader } from "@/components/ui/page-header";
 
 const COPY = {
   zh: {
@@ -219,11 +220,8 @@ export default async function CalendarPage({
   );
 
   return (
-    <div className="stagger space-y-5">
-      <div className="space-y-1.5">
-        <h1 className="text-3xl">{c.title}</h1>
-        <p className="text-sm text-ink-2">{c.intro}</p>
-      </div>
+    <div className="space-y-5">
+      <PageHeader icon={<CalendarRange aria-hidden />} tone={isCoach ? "lessons" : "book"} title={c.title} description={c.intro} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">

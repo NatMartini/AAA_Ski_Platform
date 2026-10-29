@@ -60,7 +60,9 @@ export type NotificationAnalysisPurchase = {
 };
 export type NotificationAnalysisJob = {
   id: string; status: string; finishedAt: Date | null;
-  booking: { code: string; accountId: string | null; coachId: string };
+  /** A lesson analysis names its booking; a personal (account) analysis names its owner instead. */
+  booking: { code: string; accountId: string | null; coachId: string } | null;
+  accountId?: string;
 };
 export type NotificationCoachVideoReview = {
   id: string; accountId: string; coachId: string; sourceVideoId: string; status: string;
@@ -178,11 +180,11 @@ export function buildNotifications(
     }
   }
 
-  function addAnalysis(kind: NotificationKind, id: string, code: string, actionable: boolean, occurredAt: Date) {
+  function addAnalysis(kind: NotificationKind, id: string, code: string, actionable: boolean, occurredAt: Date, href?: string) {
     if (!actionable && occurredAt.getTime() < recentSince) return;
     const timestamp = occurredAt.toISOString();
     result.push({ key: `${kind}:${id}:${timestamp}`, kind, code,
-      href: `/booking/${encodeURIComponent(code)}#video-analysis`, occurredAt: timestamp, actionable });
+      href: href ?? `/booking/${encodeURIComponent(code)}#video-analysis`, occurredAt: timestamp, actionable });
   }
   for (const purchase of analysis.purchases) {
     if (purchase.accountId === user.id) {
@@ -201,10 +203,16 @@ export function buildNotifications(
     }
   }
   for (const job of analysis.jobs) {
-    if (job.booking.accountId !== user.id && !(coach && job.booking.coachId === user.id)) continue;
     if (!job.finishedAt || !["SUCCEEDED", "FAILED"].includes(job.status)) continue;
-    addAnalysis(job.status === "SUCCEEDED" ? "analysis-ready" : "analysis-failed", job.id,
-      job.booking.code, false, job.finishedAt);
+    const kind = job.status === "SUCCEEDED" ? "analysis-ready" : "analysis-failed";
+    if (job.booking) {
+      if (job.booking.accountId !== user.id && !(coach && job.booking.coachId === user.id)) continue;
+      // The finished analysis opens on its own report page, inside the lesson's library.
+      addAnalysis(kind, job.id, job.booking.code, false, job.finishedAt,
+        `/video-analysis/report/${encodeURIComponent(job.id)}?lesson=${encodeURIComponent(job.booking.code)}`);
+    } else if (job.accountId === user.id) {
+      addAnalysis(kind, job.id, "FreeSki", false, job.finishedAt, `/video-analysis/report/${encodeURIComponent(job.id)}`);
+    }
   }
 
   for (const review of analysis.reviews ?? []) {

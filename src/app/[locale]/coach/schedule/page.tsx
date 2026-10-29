@@ -16,7 +16,8 @@ import {
 import { OCCUPYING_STATUSES } from "@/lib/booking/state";
 import { StatusPill } from "@/components/ui/status-pill";
 import { toLocale } from "@/i18n/routing";
-import { CalendarPlus } from "lucide-react";
+import { CalendarDays, CalendarPlus } from "lucide-react";
+import { PageHeader } from "@/components/ui/page-header";
 
 export default async function CoachSchedulePage({
   params,
@@ -56,6 +57,12 @@ export default async function CoachSchedulePage({
 
   return (
     <div className="space-y-6">
+      <PageHeader
+        icon={<CalendarDays aria-hidden />}
+        tone="lessons"
+        title={zh ? "已排课程" : "Scheduled lessons"}
+        description={zh ? "按日期查看课程、学员和授课时间，也可以订阅到手机日历。" : "Lessons by date with students and teaching times. Subscribe from your phone's calendar."}
+      />
       {profile && (
         <IcsFeedBox
           locale={loc}

@@ -1,20 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { coachingReportSchema, decodeCompactPose, poseFrameAt, turnManifestSchema,
-  type CoachingReport, type DecodedPose, type TurnManifest } from "@/lib/freeski/report-v2";
+import { useCallback, useEffect, useState } from "react";
+import { CornerUpLeft, CornerUpRight, Play, Target } from "lucide-react";
+import { coachingReportSchema, type CoachingReport } from "@/lib/freeski/report-v2";
 import { CoachingWorkspace } from "./coaching-workspace";
-import { AnalysisTeaching } from "./analysis-teaching";
+import { AnalysisTeaching, type FindingReview } from "./analysis-teaching";
 import { AnalysisKeyframes } from "./analysis-keyframes";
 import { AnalysisExplainer } from "./analysis-explainer";
-import { referenceTarget, turnLabel as numberedTurn } from "./analysis-scorecard";
-import { withoutOverallScore } from "@/lib/freeski/scorecard";
-import { referenceTimeAt,fittedGhost } from "@/lib/freeski/report-v2";
-import type { ReferenceStatus } from "@/lib/freeski/scorecard";
+import { AnalysisProgress } from "./analysis-progress";
+import { AnalysisScorecard, referenceTarget, turnLabel as numberedTurn } from "./analysis-scorecard";
+import { TurnComparisonPlayer, type TurnMeta } from "./turn-comparison-player";
+import { withoutOverallScore, type Scorecard, type Teaching } from "@/lib/freeski/scorecard";
+import { metricDelta, metricInsight, worstTurnFor } from "@/lib/freeski/metric-insight";
+import type { FreeSkiCurrentLevel } from "@/lib/freeski/actions";
 import { clientFetch } from "@/lib/client-fetch";
-
-type Playback = { manifest: TurnManifest; user: DecodedPose; reference: DecodedPose | null };
-const poseBounds = new WeakMap<DecodedPose, { minX: number; minY: number; width: number; height: number }>();
+import { cn } from "@/lib/utils";
 
 async function json(url: string, signal?: AbortSignal) {
   const response = await clientFetch(url, { cache: "no-store", signal });
@@ -22,152 +22,49 @@ async function json(url: string, signal?: AbortSignal) {
   return response.json();
 }
 
-function drawPose(canvas: HTMLCanvasElement, pose: DecodedPose, time: number, onVideo: boolean,color?:string) {
-  const context = canvas.getContext("2d");
-  if (!context) return;
-  const ratio = window.devicePixelRatio || 1;
-  canvas.width = Math.max(1, Math.round(canvas.clientWidth * ratio));
-  canvas.height = Math.max(1, Math.round(canvas.clientHeight * ratio));
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  const index = poseFrameAt(pose, time), frame = pose.frames[index];
-  const visible = (i: number) => pose.observed[index][i] && frame[i][2] >= .3;
-  let minX = 0, minY = 0, width = pose.resolution?.[0] ?? 1, height = pose.resolution?.[1] ?? 1;
-  if (!onVideo || !pose.resolution) {
-    let bounds = poseBounds.get(pose);
-    if (!bounds) {
-      let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
-      pose.frames.forEach((f, i) => f.forEach((p, j) => { if (pose.observed[i][j] && p[2] >= .3) {
-        left = Math.min(left, p[0]); top = Math.min(top, p[1]); right = Math.max(right, p[0]); bottom = Math.max(bottom, p[1]);
-      } }));
-      if (!Number.isFinite(left)) return;
-      bounds = { minX: left, minY: top, width: Math.max(1, right - left), height: Math.max(1, bottom - top) };
-      poseBounds.set(pose, bounds);
-    }
-    ({ minX, minY, width, height } = bounds);
-  }
-  const padding = onVideo ? 0 : 18 * ratio;
-  const scale = Math.min((canvas.width - 2 * padding) / width, (canvas.height - 2 * padding) / height);
-  const offsetX = (canvas.width - width * scale) / 2, offsetY = (canvas.height - height * scale) / 2;
-  const point = (i: number) => [(frame[i][0] - minX) * scale + offsetX, (frame[i][1] - minY) * scale + offsetY];
-  context.lineWidth = 2.5 * ratio; context.strokeStyle = color??(onVideo ? "#48b8ff" : "#13a878"); context.fillStyle = context.strokeStyle;
-  for (const [a, b] of pose.connections) {
-    if (!visible(a) || !visible(b)) continue;
-    const start = point(a), end = point(b);
-    context.beginPath(); context.moveTo(start[0], start[1]); context.lineTo(end[0], end[1]); context.stroke();
-  }
-  frame.forEach((_, i) => { if (visible(i)) { const p = point(i); context.beginPath(); context.arc(p[0], p[1], 3 * ratio, 0, 2 * Math.PI); context.fill(); } });
+type Reviews = { canReview: boolean; reviews: FindingReview[] };
+
+/** The one thing to work on: the primary improvement, its CSIA criterion and the turn that shows it. */
+function Headline({ teaching, card, previous, zh, onShow }: { teaching: Teaching; card: Scorecard | null; previous: Scorecard | null; zh: boolean;
+  onShow: (turnId: string | null, metric: string | null) => void }) {
+  const primary = teaching.improvements.find(item => item.priority === "primary") ?? teaching.improvements[0];
+  if (!primary) return null;
+  const text = zh ? primary.text_zh : primary.text_en;
+  // FreeSki writes the criterion in a fixed phrase; show it as its own line when present.
+  const split = text.split(/(对应 CSIA 要求：|CSIA criterion: )/);
+  const lead = split[0].trim(), criterion = split.length >= 3 ? split.slice(1).join("").trim() : null;
+  const facts = primary.fact_ids.map(id => teaching.facts.find(fact => fact.fact_id === id)).filter(Boolean);
+  const metric = facts[0]?.metric_key ?? null;
+  const turn = primary.turn_ids[0] ?? facts.find(fact => fact!.turn_id)?.turn_id ?? (card && metric ? worstTurnFor(card, metric) : null);
+  const delta = card && metric ? metricDelta(card, previous, metric) : null;
+  const strengths = teaching.strengths.length;
+  return <section className="space-y-3 rounded-2xl border border-accent/30 bg-accent-soft/60 p-4 sm:p-5" aria-label={zh ? "本次重点" : "Key point"}>
+    <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-accent"><Target className="size-4" aria-hidden />{zh ? "本次重点" : "Key point"}</p>
+    <p className="text-base font-semibold leading-relaxed">{lead}</p>
+    {criterion && <p className="text-sm text-ink-2">{criterion}</p>}
+    <div className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
+      {delta !== null && delta !== 0 && <span className={cn("rounded-full px-2 py-0.5 font-semibold", delta > 0 ? "bg-success-bg text-success" : "bg-danger-bg text-danger")}>
+        {zh ? `这项比上次${delta > 0 ? "进步" : "退步"} ${Math.abs(delta)} 分` : `${delta > 0 ? "Up" : "Down"} ${Math.abs(delta)} since last time`}</span>}
+      {strengths > 0 && <span>{zh ? `另有 ${strengths} 处做得好的地方，见下方。` : `${strengths} thing${strengths === 1 ? "" : "s"} going well, below.`}</span>}
+    </div>
+    {(turn || metric) && <button type="button" onClick={() => onShow(turn, metric)}
+      className="press inline-flex min-h-10 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-semibold text-accent-foreground">
+      <Play className="size-4" aria-hidden />{turn ? (zh ? `看${numberedTurn(turn, zh)}，高亮这个问题` : `Watch ${numberedTurn(turn, zh).toLowerCase()} with this highlighted`) : (zh ? "在播放器里高亮这个问题" : "Highlight this in the player")}</button>}
+  </section>;
 }
 
-function TurnPlayer({ base, turnId, zh, comparison }: { base: string; turnId: string; zh: boolean; comparison?: ReferenceStatus }) {
-  const [playback, setPlayback] = useState<Playback | null>(null);
-  const [error, setError] = useState(false);
-  const [videoError, setVideoError] = useState(false);
-  const [speed, setSpeed] = useState(.5);
-  const [ghost,setGhost]=useState(false);const ghostCanvas=useRef<HTMLCanvasElement>(null);
-  const [mode, setMode] = useState<"original" | "normalized">("normalized");
-  const [skeletonTime, setSkeletonTime] = useState(0), [skeletonPlaying, setSkeletonPlaying] = useState(false);
-  const video = useRef<HTMLVideoElement>(null), userCanvas = useRef<HTMLCanvasElement>(null), referenceCanvas = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const controller = new AbortController();
-    void (async () => {
-      const manifest = turnManifestSchema.parse(await json(`${base}/turns/${turnId}`, controller.signal));
-      const [user, reference] = await Promise.all([
-        json(`${base}/assets/user-pose?turn_id=${turnId}`, controller.signal),
-        manifest.referencePose ? json(`${base}/assets/reference-pose?turn_id=${turnId}`, controller.signal) : null,
-      ]);
-      if (!controller.signal.aborted) { setSkeletonTime(manifest.startMs / 1000); setPlayback({ manifest, user: decodeCompactPose(user), reference: reference ? decodeCompactPose(reference) : null }); }
-    })().catch(() => { if (!controller.signal.aborted) setError(true); });
-    return () => controller.abort();
-  }, [base, turnId]);
-
-  const redraw = useCallback(() => {
-    if (!playback) return;
-    const t = video.current?.currentTime ?? skeletonTime, { user, reference, manifest } = playback;
-    if (userCanvas.current) drawPose(userCanvas.current, user, t, true);
-    if (reference && referenceCanvas.current) {
-      const refStart = reference.times[0], refEnd = reference.times.at(-1)!;
-      const fraction = Math.max(0, Math.min(1, (t - manifest.startMs / 1000) / ((manifest.endMs - manifest.startMs) / 1000)));
-      const refTime = manifest.alignment ? referenceTimeAt(manifest.alignment,t,mode==="normalized") : refStart + fraction * (refEnd-refStart);
-      drawPose(referenceCanvas.current, reference, Math.max(refStart, Math.min(refEnd, refTime)), false);
-      if(ghost&&manifest.alignment?.ghost?.eligible&&ghostCanvas.current){
-        const fitted=fittedGhost(reference,refTime,user,t);
-        const ctx=ghostCanvas.current.getContext("2d");ctx?.clearRect(0,0,ghostCanvas.current.width,ghostCanvas.current.height);
-        if(fitted)drawPose(ghostCanvas.current,fitted,t,true,"#21d998");
-      }
-    }
-  }, [playback, mode, skeletonTime,ghost]);
-
-  useEffect(() => { redraw(); }, [redraw]);
-  useEffect(() => {
-    if (!playback || playback.manifest.background && !videoError || !skeletonPlaying) return;
-    let frame = 0, last = performance.now();
-    const tick = (now: number) => {
-      const elapsed = Math.min(.1, (now - last) / 1000) * speed; last = now;
-      setSkeletonTime(time => Math.min(playback.manifest.endMs / 1000, time + elapsed));
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick); return () => cancelAnimationFrame(frame);
-  }, [playback, skeletonPlaying, speed, videoError]);
-
-  useEffect(() => {
-    const element = video.current;
-    if (!element || !playback) return;
-    let frame = 0, disposed = false;
-    const callback = () => { if (disposed) return; redraw(); frame = element.requestVideoFrameCallback ? element.requestVideoFrameCallback(callback) : window.requestAnimationFrame(callback); };
-    callback();
-    element.addEventListener("seeked", redraw); element.addEventListener("loadeddata", redraw); window.addEventListener("resize", redraw);
-    return () => { disposed = true; if (element.cancelVideoFrameCallback) element.cancelVideoFrameCallback(frame); else window.cancelAnimationFrame(frame);
-      element.removeEventListener("seeked", redraw); element.removeEventListener("loadeddata", redraw); window.removeEventListener("resize", redraw); };
-  }, [playback, redraw]);
-  useEffect(() => { if (video.current) video.current.playbackRate = speed; }, [speed, playback]);
-
-  if (error) return <p role="status" className="text-sm text-ink-3">{zh ? "动态资源暂不可用，原分析结果仍可查看。" : "Dynamic resources are temporarily unavailable. The base report remains available."}</p>;
-  if (!playback) return <p className="text-sm text-ink-3">{zh ? "正在加载这个弯…" : "Loading this turn…"}</p>;
-  const { manifest } = playback;
-  return <div className="space-y-3">
-    <div className="flex flex-wrap items-center gap-3 text-sm">
-      <label>{zh ? "播放速度 " : "Playback "}<select value={speed} onChange={e => setSpeed(Number(e.target.value))} className="rounded border border-border bg-surface px-2 py-1">
-        <option value={.25}>0.25×</option><option value={.5}>0.5×</option><option value={1}>1×</option></select></label>
-      {playback.reference && <label>{zh ? "对比方式 " : "Comparison "}<select value={mode} onChange={e => setMode(e.target.value as typeof mode)} className="rounded border border-border bg-surface px-2 py-1">
-        <option value="normalized">{manifest.alignment?.phase_aligned.method==="reviewed_piecewise_linear"?(zh?"已审核阶段对齐":"Reviewed phase alignment"):(zh ? "整弯归一" : "Normalized whole turn")}</option><option value="original">{zh ? "原时间" : "Source time"}</option></select></label>}
-      <span className="text-ink-3">{zh ? "用户原弯用时" : "Original user turn"}: {((manifest.endMs - manifest.startMs) / 1000).toFixed(2)}s</span>
-    </div>
-    {playback.reference&&manifest.alignment?.ghost?.eligible&&<label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={ghost} onChange={e=>setGhost(e.target.checked)}/>{zh?"归一骨架叠加（仅画面示意，不代表空间标定）":"Fit reference skeleton over your video (visual only; no 3D calibration)"}</label>}
-    <div className={`grid gap-3 ${playback.reference ? "md:grid-cols-2" : ""}`}>
-      <div>
-        <p className="mb-1 text-xs text-ink-3">{zh ? "你的滑行与本人骨架" : "Your skiing and skeleton"}</p>
-        <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
-          {manifest.background && !videoError ? <video ref={video} src={`${base}/assets/background?turn_id=${turnId}`} controls playsInline preload="metadata" className="h-full w-full object-contain" onError={() => setVideoError(true)}
-            onLoadedMetadata={() => { if (video.current) { video.current.currentTime = manifest.startMs / 1000; video.current.playbackRate = speed; } }}
-            onPlay={() => { if (video.current && (video.current.currentTime >= manifest.endMs / 1000 || video.current.currentTime < manifest.startMs / 1000)) video.current.currentTime = manifest.startMs / 1000; }}
-            onTimeUpdate={() => { if (video.current) {
-              if (video.current.currentTime < manifest.startMs / 1000) video.current.currentTime = manifest.startMs / 1000;
-              if (video.current.currentTime >= manifest.endMs / 1000) { video.current.pause(); if (video.current.currentTime > manifest.endMs / 1000 + .03) video.current.currentTime = manifest.endMs / 1000; }
-            } redraw(); }} /> : null}
-          <canvas ref={userCanvas} className="pointer-events-none absolute inset-0 h-full w-full" />{ghost&&manifest.alignment?.ghost?.eligible&&<canvas ref={ghostCanvas} className="pointer-events-none absolute inset-0 h-full w-full" aria-label={zh?"已审核参考的归一骨架叠加":"Fitted reviewed reference skeleton"}/>}
-        </div>
-        {(!manifest.background || videoError) && <div className="mt-2 space-y-2 text-sm"><p className="text-xs text-ink-3">{zh ? "视频代理暂不可用，先播放动态骨架。" : "Video proxy unavailable; skeleton playback is available."}</p>
-          <button type="button" className="text-accent underline" onClick={() => { if (skeletonTime >= manifest.endMs / 1000) setSkeletonTime(manifest.startMs / 1000); setSkeletonPlaying(value => !value); }}>{skeletonPlaying ? (zh ? "暂停" : "Pause") : (zh ? "播放骨架" : "Play skeleton")}</button>
-          <input aria-label={zh ? "骨架播放位置" : "Skeleton position"} className="w-full" type="range" min={manifest.startMs / 1000} max={manifest.endMs / 1000} step={.01} value={skeletonTime} onChange={e => setSkeletonTime(Number(e.target.value))} /></div>}
-      </div>
-      {playback.reference && <div><p className="mb-1 text-xs text-ink-3">{manifest.referenceStatus==="reviewed_platform_reference"?(zh ? "参考骨架 · 平台已审核示范" : "Reference skeleton · reviewed platform example"):(zh?"参考骨架 · 尚未核实":"Reference skeleton · unverified")}</p>
-        <canvas ref={referenceCanvas} className="aspect-video w-full rounded-lg bg-surface-2" /></div>}
-    </div>
-    <p className="text-xs leading-relaxed text-ink-3">{!playback.reference ? comparison === "not_available"
-        ? (zh ? "这个弯没有匹配的标准动作，只显示你自己的动态。" : "This turn has no matching standard example; only your own movement is shown.")
-      // Auto-matched CSIA examples are drawn into keyframes and the explainer, but their poses are not published.
-      : comparison === "auto_matched_unreviewed"
-        ? (zh ? "暂无审核过的参考示范，这里只播放你自己的动态；关键帧和慢动作讲解里的绿色骨架是自动匹配的 CSIA 示范（未审核）。"
-          : "No reviewed reference is available, so only your own movement plays here; the green skeleton in the key frames and explainer is an automatically matched CSIA example (unreviewed).")
-      : (zh ? "暂无审核过的参考示范，先查看本人动态；后续参考数据会独立发布。" : "No reviewed reference is available. Your own movement remains visible.")
-      : mode === "normalized" ? (zh ? "对齐画面可能变速；阶段以独立审核的人工标注为准。不能用变速后的画面判断谁转得更快。" : "Aligned playback may be time warped. Phases require independently reviewed annotations; warped playback cannot establish which turn was faster.")
-      : (zh ? "双方按相同全局倍率播放；参考时间可能来自历史估计，暂不用于精确节奏诊断。" : "Both use the same global playback rate. Historical reference timing may be estimated and is not used for precise tempo assessment.")}</p>
-  </div>;
-}
-
-export function DynamicCoachingReport({ base, zh }: { base: string; zh: boolean }) {
-  const [open, setOpen] = useState(false), [report, setReport] = useState<CoachingReport | null>(null);
+/**
+ * The full FreeSki report in reading order: the key point, the explanation, the turn player, then
+ * the scorecard with clickable metrics. `card` is the scorecard the job settled on; `previous` a
+ * comparable earlier one for "since last time".
+ */
+export function DynamicCoachingReport({ base, zh, card = null, currentLevel = null, previous = null, defaultOpen = false }: {
+  base: string; zh: boolean; card?: Scorecard | null; currentLevel?: FreeSkiCurrentLevel | null; previous?: Scorecard | null; defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen), [report, setReport] = useState<CoachingReport | null>(null);
   const [selected, setSelected] = useState<string | null>(null), [unavailable, setUnavailable] = useState(false);
+  const [focusMetric, setFocusMetric] = useState<string | null>(null);
+  const [reviews, setReviews] = useState<Reviews>({ canReview: false, reviews: [] });
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController(); let timer: ReturnType<typeof setTimeout>; let attempts = 0;
@@ -177,26 +74,66 @@ export function DynamicCoachingReport({ base, zh }: { base: string; zh: boolean 
         if (controller.signal.aborted) return;
         setReport(value); setUnavailable(false);
         const waiting = ["pending", "running", "retry_wait"].includes(value.modelStatus) ||
-          value.teachingStatus === "pending" || value.teachingStatus === "running";
+          value.teachingStatus === "pending" || value.teachingStatus === "running" ||
+          value.explainerStatus === "pending" || value.explainerStatus === "running";
         if (waiting && attempts++ < 120) timer = setTimeout(() => void load(), 5000);
       } catch { if (!controller.signal.aborted) { setReport(null); setSelected(null); setUnavailable(true); } }
     };
     void load(); return () => { controller.abort(); clearTimeout(timer); };
   }, [base, open]);
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    json(`${base}/finding-reviews`, controller.signal).then((value: Reviews) => { if (!controller.signal.aborted) setReviews(value); }).catch(() => {});
+    return () => controller.abort();
+  }, [base, open]);
+  const review = useCallback(async (key: string, verdict: "AGREE" | "DISAGREE" | null, note: string, metricKeys: string[]) => {
+    const response = await clientFetch(`${base}/finding-reviews`, { method: verdict ? "POST" : "DELETE", headers: { "content-type": "application/json" },
+      body: JSON.stringify(verdict ? { findingKey: key, verdict, note: note || undefined, metricKeys } : { findingKey: key }) });
+    if (response.ok) setReviews(await response.json());
+  }, [base]);
+
   const model = report?.modelAssessment;
+  const scorecard = card ?? report?.scorecard ?? null;
   // The overall score is withheld on the site, so prose quoting it is hidden too.
-  const teaching = report?.teaching ? withoutOverallScore(report.teaching, report.scorecard?.overall.score ?? null) : null;
+  const teaching = report?.teaching ? withoutOverallScore(report.teaching, scorecard?.overall.score ?? null) : null;
   const turnLabel = (turnId: string) => report?.turns.some(turn => turn.turnId === turnId) ? numberedTurn(turnId, zh) : null;
+  const metaOf = (turnId: string): TurnMeta | undefined => {
+    const turn = scorecard?.turns.find(candidate => candidate.turn_id === turnId);
+    return turn && { number: Number(turnId.slice(5)) + 1, direction: turn.direction, role: turn.role, score: turn.score,
+      scored: turn.used_in_overall && turn.evidence?.status !== "insufficient" };
+  };
+  // Until a turn is picked, show the first one that counts, so the comparison is visible without hunting for it.
+  const shown = selected ?? report?.turns.find(turn => metaOf(turn.turnId)?.scored ?? true)?.turnId ?? null;
   // Keyframes and the explainer draw the examples the scorecard compared; name them the same way.
-  const target = report?.scorecard ? referenceTarget(report.scorecard) : null;
-  return <div className="border-t border-border pt-3">
-    <button type="button" className="text-sm font-semibold text-accent underline underline-offset-4" onClick={() => setOpen(value => !value)}>
-      {zh ? "FreeSki 自动评价与逐弯动态对比" : "FreeSki assessment and dynamic turn comparison"}</button>
-    {open && <div className="mt-3 space-y-4">
-      {unavailable ? <p className="text-sm text-ink-3">{zh ? "此报告暂未提供动态分析；已有技术评分和建议仍保留。" : "Dynamic analysis is not available for this report. Existing scores and advice remain available."}</p>
-        : !report ? <p className="text-sm text-ink-3">{zh ? "正在读取分析…" : "Loading analysis…"}</p> : <>
-          {report.explainerStatus && report.explainerStatus !== "unavailable" && <AnalysisExplainer base={base} zh={zh} target={target} />}
-          {teaching ? <AnalysisTeaching teaching={teaching} zh={zh} turnLabel={turnLabel} onSelectTurn={setSelected} />
+  const target = scorecard ? referenceTarget(scorecard) : null;
+  const show = (turnId: string | null, metric: string | null) => {
+    if (turnId && report?.turns.some(turn => turn.turnId === turnId)) setSelected(turnId);
+    setFocusMetric(metric);
+    document.getElementById(`turn-player-${base}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  const selectMetric = (key: string) => {
+    if (focusMetric === key) { setFocusMetric(null); return; }
+    const worst = scorecard ? worstTurnFor(scorecard, key) : null;
+    show(worst, key);
+  };
+  const scorecardBlock = scorecard && <AnalysisScorecard card={scorecard} zh={zh} currentLevel={currentLevel} previous={previous}
+    selectedMetric={focusMetric} onSelectMetric={report && report.turns.length > 0 ? selectMetric : undefined} />;
+
+  return <div className="space-y-5">
+    {!open && <button type="button" className="text-sm font-semibold text-accent underline underline-offset-4" onClick={() => setOpen(true)}>
+      {zh ? "FreeSki 自动评价与逐弯动态对比" : "FreeSki assessment and dynamic turn comparison"}</button>}
+    {open && (unavailable ? <>
+        <p className="text-sm text-ink-3">{zh ? "此报告暂未提供动态分析；已有技术评分和建议仍保留。" : "Dynamic analysis is not available for this report. Existing scores and advice remain available."}</p>
+        {scorecardBlock}
+      </> : !report ? <>
+        <p className="text-sm text-ink-3">{zh ? "正在读取分析…" : "Loading analysis…"}</p>
+        {scorecardBlock}
+      </> : <>
+        <AnalysisProgress status="SUCCEEDED" teaching={report.teachingStatus} explainer={report.explainerStatus} zh={zh} compact />
+        {teaching && <Headline teaching={teaching} card={scorecard} previous={previous} zh={zh} onShow={show} />}
+        {teaching ? <AnalysisTeaching teaching={teaching} zh={zh} turnLabel={turnLabel} onSelectTurn={turnId => show(turnId, null)}
+            reviews={reviews.reviews} canReview={reviews.canReview} onReview={review} />
           : report.teachingStatus === "pending" || report.teachingStatus === "running"
             ? <p className="text-sm text-ink-3">{zh ? "动作解释生成中，评分和动态对比已经可以查看。" : "The explanation is being written; scores and turn playback are already available."}</p>
           : <><p className="text-xs text-ink-3">{zh ? "二维数据观察 · 尚无已核实的标准参照，技术判断需教练核实" : "Image-plane observations · no verified standard comparison; technique judgments need coach review"}</p>
@@ -206,20 +143,43 @@ export function DynamicCoachingReport({ base, zh }: { base: string; zh: boolean 
             {model.dimensions.map(d => <p key={d.dimension} className="text-sm text-ink-2">{zh ? d.explanation_zh : d.explanation_en}</p>)}
             {model.findings.map(f => <div key={f.finding_id} className="rounded-lg bg-surface p-3 text-sm"><p>{zh ? f.observation_zh : f.observation_en}</p>
               {(zh ? f.hypothesis_zh : f.hypothesis_en) && <p className="mt-1 text-ink-3">{zh ? "可能原因：" : "Possible cause: "}{zh ? f.hypothesis_zh : f.hypothesis_en}</p>}
-              <button type="button" className="mt-2 text-accent underline" onClick={() => setSelected(f.turn_id)}>{zh ? "查看这个弯" : "View this turn"}</button></div>)}
+              <button type="button" className="mt-2 text-accent underline" onClick={() => show(f.turn_id, null)}>{zh ? "查看这个弯" : "View this turn"}</button></div>)}
             {model.exercises?.map(exercise => <div key={exercise.id} className="rounded-lg border border-border p-3 text-sm"><p className="font-semibold">{zh ? exercise.name_zh : exercise.name_en}</p><p className="mt-1 text-ink-2">{zh ? exercise.description_zh : exercise.description_en}</p></div>)}
             <ul className="space-y-1 text-xs text-ink-3">{model.limitations.map((l, i) => <li key={i}>{l}</li>)}</ul></div>
             : <p className="text-sm text-ink-3">{["pending", "running", "retry_wait"].includes(report.modelStatus)
               ? (zh ? "计算证据已保存，自动评价正在排队或生成；无需等待教练。" : "Evidence is saved; automated assessment is queued or generating. It does not wait for a coach.")
               : (zh ? "自动评价暂不可用，基础计算和可用动态片段仍可查看。" : "Automated assessment is unavailable; base calculations and available turns remain accessible.")}</p>}</>}
-          {report.turns.length > 0 && <div className="flex flex-wrap gap-2">{report.turns.map(turn => <button type="button" key={turn.turnId}
-            className={`rounded-full border px-3 py-1 text-sm ${selected === turn.turnId ? "border-accent bg-accent text-white" : "border-border"}`}
-            onClick={() => setSelected(value => value === turn.turnId ? null : turn.turnId)}>{numberedTurn(turn.turnId, zh)}</button>)}</div>}
-          {selected && report.turns.some(t => t.turnId === selected) && <>
-            <TurnPlayer key={`${base}:${selected}`} base={base} turnId={selected} zh={zh}
-              comparison={report.turns.find(turn => turn.turnId === selected)?.comparisonReference} />
-            <AnalysisKeyframes key={`${base}:${selected}:keyframes`} base={base} turnId={selected} zh={zh} target={target} /></>}
-        </>}
-    </div>}
-  <CoachingWorkspace base={base} zh={zh}/></div>;
+        {report.turns.length > 0 && <section id={`turn-player-${base}`} className="scroll-mt-28 space-y-3" aria-label={zh ? "逐弯动态对比" : "Turn-by-turn comparison"}>
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="text-sm font-semibold">{zh ? "逐弯动态对比" : "Turn-by-turn comparison"}</p>
+            <p className="text-xs text-ink-3">{zh ? "每个弯从换刃到下一次换刃" : "Each turn runs edge change to edge change"}</p>
+          </div>
+          <div className="scrollbar-none -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">{report.turns.map(turn => {
+            const meta = metaOf(turn.turnId), active = shown === turn.turnId;
+            const Arrow = meta?.direction === "left" ? CornerUpLeft : meta?.direction === "right" ? CornerUpRight : null;
+            return <button type="button" key={turn.turnId} aria-pressed={active} onClick={() => setSelected(turn.turnId)}
+              title={meta && !meta.scored ? (zh ? "不计分" : "Not scored") : undefined}
+              className={cn("press flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-semibold",
+                active ? "border-accent bg-accent text-accent-foreground"
+                  : meta && !meta.scored ? "border-dashed border-border-strong text-ink-3 hover:text-ink" : "border-border bg-surface text-ink-2 hover:border-border-strong hover:text-ink")}>
+              {numberedTurn(turn.turnId, zh)}
+              {Arrow && <Arrow className="size-3.5" aria-label={meta?.direction === "left" ? (zh ? "左转" : "left") : (zh ? "右转" : "right")} />}
+              {meta?.scored && meta.score !== null && <span className={cn("text-xs", active ? "text-accent-foreground/80" : "text-ink-3")} data-numeric>{Math.round(meta.score)}</span>}
+            </button>;
+          })}</div>
+          {focusMetric && scorecard && <p className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
+            <span className="rounded-full bg-surface-2 px-2 py-0.5 font-semibold">{zh ? "高亮：" : "Highlighting: "}{zh ? scorecard.metrics.find(m => m.key === focusMetric)?.label_zh : scorecard.metrics.find(m => m.key === focusMetric)?.label_en}</span>
+            {metricInsight(focusMetric) && <span>{zh ? metricInsight(focusMetric)!.zh : metricInsight(focusMetric)!.en}</span>}
+            <button type="button" className="text-accent underline" onClick={() => setFocusMetric(null)}>{zh ? "取消高亮" : "Clear"}</button>
+          </p>}
+          {shown && report.turns.some(t => t.turnId === shown) && <>
+            <TurnComparisonPlayer key={`${base}:${shown}`} base={base} turnId={shown} zh={zh} meta={metaOf(shown)} focusMetric={focusMetric}
+              comparison={report.turns.find(turn => turn.turnId === shown)?.comparisonReference} />
+            <AnalysisKeyframes key={`${base}:${shown}:keyframes`} base={base} turnId={shown} zh={zh} target={target} /></>}
+        </section>}
+        {report.explainerStatus && report.explainerStatus !== "unavailable" && <AnalysisExplainer base={base} zh={zh} target={target} />}
+        {scorecardBlock}
+      </>)}
+    <CoachingWorkspace base={base} zh={zh} />
+  </div>;
 }

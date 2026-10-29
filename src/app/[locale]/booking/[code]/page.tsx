@@ -24,7 +24,10 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { formatTorontoDate, formatTorontoTime } from "@/lib/time";
 import { toLocale } from "@/i18n/routing";
 import type { DisclosureSnapshot } from "@/lib/booking/disclosure";
+import { PageHeader, SectionHeading } from "@/components/ui/page-header";
 import {
+  ArrowLeft,
+  ClipboardList,
   Download,
   FileSignature,
   CreditCard,
@@ -83,18 +86,17 @@ export default async function BookingPage({
   });
 
   return (
-    <div className="stagger space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="font-mono text-xs font-bold tracking-widest text-ink-3">
-            {booking.code}
-          </p>
-          <h1 className="mt-1 text-3xl">
-            {zh ? booking.resort.nameZh : booking.resort.nameEn}
-          </h1>
-        </div>
-        <StatusPill status={effectiveStatus} locale={loc} className="mt-1" />
-      </div>
+    <div className="space-y-5">
+      <Link href={access.isCoach ? "/coach/bookings" : "/my/bookings"} className="inline-flex min-h-9 items-center gap-1.5 text-sm font-semibold text-ink-2 hover:text-ink">
+        <ArrowLeft className="size-4" aria-hidden />{access.isCoach ? (zh ? "返回订单" : "Back to bookings") : (zh ? "返回我的预约" : "Back to my bookings")}
+      </Link>
+      <PageHeader
+        icon={<ClipboardList aria-hidden />}
+        tone="lessons"
+        eyebrow={<span className="font-mono tracking-widest">{booking.code}</span>}
+        title={zh ? booking.resort.nameZh : booking.resort.nameEn}
+        actions={<StatusPill status={effectiveStatus} locale={loc} />}
+      />
 
       {booking.headcount === 1 && access.isCoach && booking.status === "AWAITING_WAIVER" && !booking.waiverId && booking.inviteEmail && (
         <CoachInvitationCard locale={loc} code={booking.code} recipientEmail={booking.inviteEmail} isMinor={booking.inviteIsMinor} />
@@ -368,6 +370,9 @@ export default async function BookingPage({
         />
       )}
 
+      <section id="video-analysis" className="scroll-mt-28 space-y-3">
+      <SectionHeading title={zh ? "课程视频与分析" : "Lesson videos and analysis"}
+        description={zh ? "这节课的视频、分析状态和报告。" : "This lesson's videos, analysis status and reports."} />
       <VideoAnalysisPanel
         locale={loc}
         bookingCode={booking.code}
@@ -386,6 +391,7 @@ export default async function BookingPage({
           analysisSupported: video.contentType === "video/mp4" || video.contentType === "video/quicktime",
         }))}
       />
+      </section>
 
       {snapshot && (
         <Card className="space-y-2">

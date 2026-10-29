@@ -130,6 +130,23 @@ export function formatTorontoDate(instant: Date, locale: "en" | "zh"): string {
   }).format(instant);
 }
 
+/**
+ * Month, day and time for activity lists ("10月27日 14:32", "Oct 27, 2:32 p.m."),
+ * with the year only when it is not the current one.
+ */
+export function formatTorontoShortDateTime(instant: Date, locale: "en" | "zh"): string {
+  const otherYear = utcToTorontoParts(instant).year !== utcToTorontoParts(new Date()).year;
+  return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-CA", {
+    timeZone: TZ,
+    ...(otherYear ? { year: "numeric" as const } : {}),
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: locale !== "zh",
+  }).format(instant);
+}
+
 export function formatTorontoDateTime(
   instant: Date,
   locale: "en" | "zh",

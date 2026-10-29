@@ -328,7 +328,7 @@ describe("FreeSki server bridge safety", () => {
     fetcher.mockImplementation(async (url: string) => url.includes("/api/jobs/")
       ? json({ job_id: jobId, action_name: "parallel", status: "error", broker_status: "interrupted",
         broker_job_id: "private-broker-id", preemptions: 3, reason: "private diagnostics" }) : original(url));
-    expect(await getFreeSkiAnalysisJob(jobId, "parallel")).toEqual({ status: "error", brokerStatus: "interrupted", queueReason: null, result: null });
+    expect(await getFreeSkiAnalysisJob(jobId, "parallel")).toEqual({ status: "error", brokerStatus: "interrupted", queueReason: null, progress: null, result: null });
   });
   it.each([
     { status: "queued", queue_reason: "compute_offline", expected: "compute_offline" },
@@ -341,6 +341,17 @@ describe("FreeSki server bridge safety", () => {
     fetcher.mockImplementation(async (url: string) => url.includes("/api/jobs/")
       ? json({ job_id: jobId, action_name: "parallel", status, broker_status: "queued", queue_reason }) : original(url));
     expect((await getFreeSkiAnalysisJob(jobId, "parallel")).queueReason).toBe(expected);
+  });
+  it.each([
+    { status: "running", progress: 0.42, expected: 0.42 },
+    { status: "running", progress: 7, expected: 1 },
+    { status: "running", progress: "half", expected: null },
+    { status: "queued", progress: 0.5, expected: null },
+  ])("reads a bounded progress only for a running job (%j)", async ({ status, progress, expected }) => {
+    const original = fetcher.getMockImplementation()!;
+    fetcher.mockImplementation(async (url: string) => url.includes("/api/jobs/")
+      ? json({ job_id: jobId, action_name: "parallel", status, broker_status: status, progress }) : original(url));
+    expect((await getFreeSkiAnalysisJob(jobId, "parallel")).progress).toBe(expected);
   });
   it("keeps polling a job that waits for compute until FreeSki finishes it", async () => {
     vi.stubEnv("FREESKI_POLL_INTERVAL_MS", "500");

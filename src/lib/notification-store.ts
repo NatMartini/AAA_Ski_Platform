@@ -40,7 +40,7 @@ export async function loadNotifications(user: NotificationUser, now = new Date()
     packageActions.push({ payeeCoachId: user.id, status: "PENDING_PAYMENT_REVIEW" });
   }
   const since = notificationRecentSince(now);
-  const [actionBookings, recentBookings, actionPackages, recentPackages, analysisPurchases, analysisJobs, videoReviews] = await Promise.all([
+  const [actionBookings, recentBookings, actionPackages, recentPackages, analysisPurchases, analysisJobs, videoReviews, accountJobs] = await Promise.all([
     prisma.booking.findMany({
       where: { OR: bookingActions }, select: bookingSelect,
       orderBy: { updatedAt: "desc" }, take: NOTIFICATION_LIMIT,
@@ -93,7 +93,12 @@ export async function loadNotifications(user: NotificationUser, now = new Date()
         createdAt: true, publishedAt: true, booking: { select: { code: true } } },
       orderBy: { updatedAt: "desc" }, take: NOTIFICATION_LIMIT,
     }),
+    prisma.accountAnalysisJob.findMany({
+      where: { accountId: user.id, videoId: { not: null }, status: { in: ["SUCCEEDED", "FAILED"] }, finishedAt: { gte: since } },
+      select: { id: true, status: true, finishedAt: true, accountId: true },
+      orderBy: { finishedAt: "desc" }, take: NOTIFICATION_LIMIT,
+    }),
   ]);
   return buildNotifications(user, [...actionBookings, ...recentBookings], [...actionPackages, ...recentPackages], now,
-    { purchases: analysisPurchases, jobs: analysisJobs, reviews: videoReviews });
+    { purchases: analysisPurchases, jobs: [...analysisJobs, ...accountJobs.map((job) => ({ ...job, booking: null }))], reviews: videoReviews });
 }

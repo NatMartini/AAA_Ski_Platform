@@ -6,6 +6,8 @@ import { clientFetch } from "@/lib/client-fetch";
 import { Button } from "@/components/ui/button";
 import { FieldError, Hint, Label, Textarea } from "@/components/ui/field";
 import { feedbackStatus, type CoachFeedbackView } from "@/components/booking/coach-video-feedback";
+import { PageHeader } from "@/components/ui/page-header";
+import { MessageSquareText } from "lucide-react";
 
 export function VideoReviewWorkspace({ locale, coachId }: { locale: Locale; coachId: string }) {
   const zh = locale === "zh";
@@ -42,7 +44,9 @@ export function VideoReviewWorkspace({ locale, coachId }: { locale: Locale; coac
     finally { setBusy(false); }
   }
   return <div className="space-y-5">
-    <div className="flex items-center justify-between gap-3"><h2 className="text-2xl font-extrabold">{zh ? "视频人工点评" : "Human video reviews"}</h2><Button variant="secondary" disabled={busy} onClick={() => void refresh()}>{zh ? "刷新任务" : "Refresh requests"}</Button></div>
+    <PageHeader icon={<MessageSquareText aria-hidden />} tone="video" title={zh ? "视频人工点评" : "Human video reviews"}
+      description={zh ? "学员授权给你的视频，写下人工点评。" : "Videos students shared with you for a written review."}
+      actions={<Button variant="secondary" disabled={busy} onClick={() => void refresh()}>{zh ? "刷新任务" : "Refresh requests"}</Button>} />
     <Hint>{zh ? "仅显示学员明确授权给你的任务。请观看视频、本人填写并确认发布；自动分析不会代你写入或署名。" : "Only requests explicitly assigned to you are shown. Watch the clip, write your own feedback, and confirm publication. AI never writes or publishes under your name."}</Hint>
     <FieldError>{error}</FieldError>
     {requests.length ? <ul className="flex flex-wrap gap-2">{requests.map((request) => <li key={request.id}><Button variant={selected?.id === request.id ? "primary" : "secondary"} size="sm" disabled={busy} onClick={() => void choose(request.id)}>{request.caption || request.videoId} · {feedbackStatus(request.status, zh)}</Button></li>)}</ul> : <p className="text-sm text-ink-2">{zh ? "目前没有已授权的人工点评任务。" : "There are no authorized human review requests."}</p>}

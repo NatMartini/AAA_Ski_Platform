@@ -377,8 +377,12 @@ export type FreeSkiUpstreamJob = {
   status: "queued" | "running" | "done" | "error" | "cancelled";
   brokerStatus: string | null;
   queueReason?: FreeSkiQueueReason | null;
+  /** How far a running analysis has got, 0 to 1, when FreeSki reports it. */
+  progress?: number | null;
   result: FreeSkiAnalysisResult | null;
 };
+const jobProgress = (job: Mapping): number | null => job.status === "running" && typeof job.progress === "number" &&
+  Number.isFinite(job.progress) ? Math.max(0, Math.min(1, job.progress)) : null;
 const queueReason = (job: Mapping): FreeSkiQueueReason | null => job.status === "queued" &&
   (job.queue_reason === "compute_offline" || job.queue_reason === "waiting_for_compute") ? job.queue_reason : null;
 
@@ -420,6 +424,7 @@ export async function getFreeSkiAnalysisJob(upstreamJobId: string, actionId: str
     status: job.status as FreeSkiUpstreamJob["status"],
     brokerStatus: typeof job.broker_status === "string" ? job.broker_status : null,
     queueReason: queueReason(job),
+    progress: jobProgress(job),
     result: job.status === "done" ? normalizeFreeSkiResult(job.result, selection.id) : null,
   };
 }
@@ -485,7 +490,7 @@ export async function cleanupFreeSkiJob(upstreamJobId: string): Promise<boolean>
 
 /** Only fixed integration resources, pinned to the deployment stored on the job. */
 export async function requestFreeSkiReportResource(input: { jobId: string; deploymentId: string;
-  resource: "report" | "turn" | "keyframes" | "keyframe" | "explainer" | "explainer-video" | "background" | "user-pose" | "reference-pose";
+  resource: "report" | "turn" | "keyframes" | "keyframe" | "explainer" | "explainer-video" | "background" | "user-pose" | "reference-pose" | "standard-pose";
   turnId?: string; keyframeId?: string; range?: string; signal?: AbortSignal }): Promise<Response> {
   const config = getFreeSkiConfig();
   if (!config || !config.deploymentId || config.deploymentId !== input.deploymentId) throw new FreeSkiError("analysis-unconfigured");

@@ -10,6 +10,7 @@ import { withAnalysisQueueReasons, type UpstreamAnalysisRef } from "./scheduling
 beforeEach(() => {
   vi.resetAllMocks();
   config.mockReturnValue({ deploymentId: "freeski-platform-8100" });
+  upstreamJob.mockResolvedValue({ status: "queued", brokerStatus: null, queueReason: null, progress: null, result: null });
 });
 const job = (id: string, status: string) => ({ id, status, actionId: "parallel" });
 const accepted = (upstreamJobId: string, upstreamDeploymentId: string | null = "freeski-platform-8100"): UpstreamAnalysisRef =>
@@ -32,7 +33,8 @@ describe("authorized analysis queue snapshot", () => {
       expect((await withAnalysisQueueReasons(jobs, new Map(jobs.map((row) => [row.id, accepted("a".repeat(32))]))))
         .every((job) => job.queueReason === null && job.computeWait === null)).toBe(true);
       expect(scheduler).not.toHaveBeenCalled();
-      expect(upstreamJob).not.toHaveBeenCalled();
+      // Only a running job is worth asking FreeSki about (for its progress).
+      expect(upstreamJob).toHaveBeenCalledTimes(jobs.some((row) => row.status === "RUNNING") ? 1 : 0);
     },
   );
 
@@ -42,15 +44,15 @@ describe("authorized analysis queue snapshot", () => {
   ])("does not invent a reason when the broker has no current information (%j)", async (state) => {
     scheduler.mockResolvedValue(state);
     expect(await withAnalysisQueueReasons([job("job", "QUEUED")]))
-      .toEqual([{ ...job("job", "QUEUED"), queueReason: null, computeWait: null }]);
+      .toEqual([{ ...job("job", "QUEUED"), queueReason: null, computeWait: null, progress: null }]);
   });
 
   it("keeps a reservation queued through connection failure and picks up recovery on the next read", async () => {
     scheduler.mockRejectedValueOnce(new Error("private transport details"))
       .mockResolvedValueOnce({ connected: true, runtimeState: "stopped", waitingReason: "检测到游戏：cs2.exe" });
     const jobs = [job("job", "QUEUED")];
-    expect(await withAnalysisQueueReasons(jobs)).toEqual([{ ...jobs[0], queueReason: null, computeWait: null }]);
-    expect(await withAnalysisQueueReasons(jobs)).toEqual([{ ...jobs[0], queueReason: "检测到游戏：cs2.exe", computeWait: null }]);
+    expect(await withAnalysisQueueReasons(jobs)).toEqual([{ ...jobs[0], queueReason: null, computeWait: null, progress: null }]);
+    expect(await withAnalysisQueueReasons(jobs)).toEqual([{ ...jobs[0], queueReason: "检测到游戏：cs2.exe", computeWait: null, progress: null }]);
   });
 });
 
@@ -63,8 +65,10 @@ describe("FreeSki waiting for compute", () => {
       ["elsewhere", accepted("b".repeat(32), "freeski-old")], ["running", accepted("c".repeat(32))]]);
     const enriched = await withAnalysisQueueReasons(jobs, upstream);
     expect(enriched.map((row) => row.computeWait)).toEqual(["compute_offline", null, null, null]);
-    expect(upstreamJob).toHaveBeenCalledOnce();
+    // The queued accepted job and the running accepted job are read; the unsent and foreign ones are not.
+    expect(upstreamJob).toHaveBeenCalledTimes(2);
     expect(upstreamJob).toHaveBeenCalledWith("a".repeat(32), "parallel", expect.any(AbortSignal));
+    expect(upstreamJob).toHaveBeenCalledWith("c".repeat(32), "parallel", expect.any(AbortSignal));
     expect(JSON.stringify(enriched)).not.toContain("a".repeat(32));
   });
 
@@ -74,9 +78,9 @@ describe("FreeSki waiting for compute", () => {
       .mockResolvedValueOnce({ status: "queued", brokerStatus: null, queueReason: "waiting_for_compute", result: null });
     const upstream = new Map([["job", accepted("a".repeat(32))]]);
     expect(await withAnalysisQueueReasons([job("job", "QUEUED")], upstream))
-      .toEqual([{ ...job("job", "QUEUED"), queueReason: null, computeWait: null }]);
+      .toEqual([{ ...job("job", "QUEUED"), queueReason: null, computeWait: null, progress: null }]);
     expect(await withAnalysisQueueReasons([job("job", "QUEUED")], upstream))
-      .toEqual([{ ...job("job", "QUEUED"), queueReason: null, computeWait: "waiting_for_compute" }]);
+      .toEqual([{ ...job("job", "QUEUED"), queueReason: null, computeWait: "waiting_for_compute", progress: null }]);
   });
 
   it("bounds how many upstream jobs one page view reads", async () => {
@@ -87,5 +91,19 @@ describe("FreeSki waiting for compute", () => {
     const enriched = await withAnalysisQueueReasons(jobs, upstream);
     expect(upstreamJob).toHaveBeenCalledTimes(10);
     expect(enriched.filter((row) => row.computeWait === "waiting_for_compute")).toHaveLength(10);
+  });
+});
+
+describe("running progress", () => {
+  it("reports FreeSki's progress for accepted running jobs and nothing for queued ones", async () => {
+    scheduler.mockResolvedValue({ connected: false, runtimeState: null, waitingReason: null });
+    upstreamJob.mockImplementation(async (id: string) => id === "a".repeat(32)
+      ? { status: "running", brokerStatus: "running", queueReason: null, progress: 0.42, result: null }
+      : { status: "queued", brokerStatus: null, queueReason: "waiting_for_compute", result: null });
+    const jobs = [job("running", "RUNNING"), job("waiting", "QUEUED"), job("done", "SUCCEEDED")];
+    const upstream = new Map([["running", accepted("a".repeat(32))], ["waiting", accepted("b".repeat(32))], ["done", accepted("c".repeat(32))]]);
+    const enriched = await withAnalysisQueueReasons(jobs, upstream);
+    expect(enriched.map((row) => [row.progress, row.computeWait])).toEqual([[0.42, null], [null, "waiting_for_compute"], [null, null]]);
+    expect(upstreamJob).toHaveBeenCalledTimes(2);
   });
 });

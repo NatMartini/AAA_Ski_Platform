@@ -10,6 +10,8 @@ export type AnalysisJobView = {
   queueReason?: string | null;
   /** FreeSki accepted the job and is waiting for compute; it starts by itself. */
   computeWait?: "compute_offline" | "waiting_for_compute" | null;
+  /** How far a running analysis has got, 0 to 1, when FreeSki reports it. */
+  progress?: number | null;
 };
 
 export type AnalysisVideoView = {

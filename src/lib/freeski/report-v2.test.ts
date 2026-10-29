@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coachingReportSchema, decodeCompactPose, fittedGhost,modelAssessmentSchema, poseFrameAt,referenceTimeAt,turnManifestSchema,type DecodedPose } from "./report-v2";
+import { bodyHeight, coachingReportSchema, decodeCompactPose, fittedGhost,modelAssessmentSchema, poseAt, poseFrameAt,referenceTimeAt,smoothPose,turnManifestSchema,type DecodedPose } from "./report-v2";
 
 it("maps reviewed intermediate phases without confusing warped playback with tempo",()=>{
   const manifest=turnManifestSchema.parse({version:1,turnId:"turn_0",startMs:1000,endMs:5000,background:null,userPose:"user-pose",referencePose:"reference-pose",referenceStatus:"reviewed_platform_reference",experimental:true,
@@ -134,5 +134,70 @@ describe("dynamic pose interoperability", () => {
     if (kind === "reversed") manifest.alignment.phase_aligned.user_times = [6,4];
     if (kind === "outside") manifest.alignment.phase_aligned.reference_times = [10,15];
     expect(turnManifestSchema.safeParse(manifest).success).toBe(false);
+  });
+});
+
+describe("smooth turn playback", () => {
+  // Two joints published at 30 fps, then a one-second hole before the last sample.
+  const pose: DecodedPose = { times: [0, 1 / 30, 2 / 30, 1.2],
+    frames: [[[0, 0, 1], [10, 10, 1]], [[3, 0, 1], [10, 10, .1]], [[6, 0, 1], [16, 10, 1]], [[9, 0, 1], [0, 0, 1]]],
+    observed: [[true, true], [true, true], [true, true], [true, false]], connections: [[0, 1]], resolution: [100, 100],
+    jointNames: ["left_hip", "right_hip"] };
+
+  it("moves joints linearly between published samples", () => {
+    const sample = poseAt(pose, 1 / 60);
+    expect(sample.frame[0][0]).toBeCloseTo(1.5);
+    expect(sample.observed[0]).toBe(true);
+    expect(poseAt(pose, 1.5 / 30).frame[0][0]).toBeCloseTo(4.5);
+  });
+
+  it("snaps a joint seen on one side only to the nearer sample", () => {
+    // Joint 1 is too uncertain (0.1) at the second sample.
+    expect(poseAt(pose, 0.2 / 30).frame[1]).toEqual([10, 10, 1]);
+    expect(poseAt(pose, 0.2 / 30).observed[1]).toBe(true);
+    expect(poseAt(pose, 0.8 / 30).observed[1]).toBe(false);
+  });
+
+  it("never invents motion across a long gap", () => {
+    expect(poseAt(pose, 0.5).frame).toEqual(pose.frames[2]);
+    expect(poseAt(pose, 99).frame).toEqual(pose.frames[3]);
+    expect(poseAt(pose, -1).frame).toEqual(pose.frames[0]);
+  });
+
+  it("smooths jitter without bending steady motion or reaching across gaps", () => {
+    const smooth = smoothPose(pose);
+    // Joint 0 moves steadily inside the 30 fps run, so smoothing leaves it in place there.
+    expect(smooth.frames[1][0][0]).toBeCloseTo(3);
+    // The sample after the one-second hole is not pulled toward the run before it.
+    expect(smooth.frames[3][0][0]).toBe(9);
+    // An unseen joint is left as published.
+    expect(smooth.frames[3][1]).toEqual([0, 0, 1]);
+  });
+
+  it("measures body height from shoulders to ankles", () => {
+    const standing: DecodedPose = { times: [0], frames: [[[0, 0, 1], [20, 0, 1], [0, 100, 1], [20, 100, 1]]],
+      observed: [[true, true, true, true]], connections: [], resolution: [100, 100],
+      jointNames: ["left_shoulder", "right_shoulder", "left_ankle", "right_ankle"] };
+    expect(bodyHeight(standing)).toBe(100);
+    expect(bodyHeight({ ...standing, observed: [[true, true, false, false]] })).toBeNull();
+  });
+});
+
+describe("turn manifest additions", () => {
+  const plain = { version: 1, turnId: "turn_3", startMs: 4304, endMs: 6039, background: "background", userPose: "user-pose",
+    referencePose: null, alignment: null, referenceStatus: "not_available", experimental: true };
+
+  it("reads direction, role, apex and FreeSki's synthesized standard when present", () => {
+    const manifest = turnManifestSchema.parse({ ...plain, direction: "left", role: "middle", apexMs: 5100, standardPose: "standard-pose",
+      standard: { kind: "synthesized_csia_standard", target: "level2", sourceTurns: 9, mirrored: true } });
+    expect(manifest).toMatchObject({ direction: "left", role: "middle", apexMs: 5100, standardPose: "standard-pose",
+      standard: { target: "level2", mirrored: true } });
+  });
+
+  it("still plays an older manifest, and drops a malformed addition instead of the turn", () => {
+    expect(turnManifestSchema.parse(plain).standardPose).toBeUndefined();
+    const odd = turnManifestSchema.parse({ ...plain, direction: "sideways", standardPose: "../secret", standard: { kind: "raw_clip" } });
+    expect([odd.direction, odd.standardPose, odd.standard]).toEqual([undefined, undefined, undefined]);
+    expect(odd.turnId).toBe("turn_3");
   });
 });

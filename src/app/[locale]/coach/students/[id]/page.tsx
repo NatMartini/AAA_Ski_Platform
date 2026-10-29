@@ -66,7 +66,7 @@ export default async function CoachStudentPage({
   );
 
   return (
-    <div className="stagger space-y-5">
+    <div className="space-y-5">
       <div>
         <Link
           href="/coach/students"
@@ -74,7 +74,7 @@ export default async function CoachStudentPage({
         >
           {zh ? "← 全部学员" : "← All students"}
         </Link>
-        <h2 className="mt-2 text-2xl">{user.name ?? user.email}</h2>
+        <h1 className="mt-2 text-2xl sm:text-[1.75rem]">{user.name ?? user.email}</h1>
         <p className="text-sm text-ink-2">
           {[user.email, user.wechatId && `WeChat ${user.wechatId}`, user.phone]
             .filter(Boolean)

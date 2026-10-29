@@ -20,6 +20,8 @@ import {
 import { addDaysToDateKey, toDateKey, torontoWallTimeToUtc } from "@/lib/time";
 import { toLocale } from "@/i18n/routing";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/ui/page-header";
+import { BarChart3 } from "lucide-react";
 
 /** Chart colours stop at eight; any further coaches share an "Other" slot. */
 const MAX_SERIES = 8;
@@ -103,7 +105,13 @@ export default async function CoachStatsPage({
     priceMixTotal === 0 ? "—" : `${Math.round((n / priceMixTotal) * 100)}%`;
 
   return (
-    <div className="stagger space-y-5">
+    <div className="space-y-5">
+      <PageHeader
+        icon={<BarChart3 aria-hidden />}
+        tone="admin"
+        title={zh ? "统计" : "Stats"}
+        description={zh ? "按雪季查看课时、收入和价格构成。" : "Hours, income and price mix by season."}
+      />
       <nav className="flex flex-wrap gap-2" aria-label={zh ? "雪季" : "Season"}>
         {seasons.map((s) => (
           <Link

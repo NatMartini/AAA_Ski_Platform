@@ -69,7 +69,18 @@ export const turnManifestSchema = z.object({ version: z.literal(1), turnId: z.st
   referencePose: z.literal("reference-pose").nullable(),
   alignment: z.object({ schema_version:z.literal("turn_alignment.v1").optional(),original_time: originalTime, phase_aligned: phaseMap,
     ghost:z.object({eligible:z.boolean(),reasons:z.array(z.string().max(120)).max(12)}).optional(),technique_comparison_authorized:z.literal(false).optional() }).nullable(),
-  referenceStatus: z.string().max(80), experimental: z.literal(true) }).refine(manifest => {
+  referenceStatus: z.string().max(80), experimental: z.literal(true),
+  // Contract additions for the turn player; each optional field fails closed on its own so an older
+  // or partial manifest still plays. A turn runs from one edge change to the next; apexMs sits inside it.
+  direction: z.enum(["left", "right"]).optional().catch(undefined),
+  role: z.enum(["start", "middle", "end"]).optional().catch(undefined),
+  apexMs: z.number().finite().nonnegative().optional().catch(undefined),
+  // A standard skeleton FreeSki synthesizes from its CSIA references for this turn: same turn direction,
+  // the skier's height and hips, and this turn's timing, in the user pose's time base and pixels.
+  standardPose: z.literal("standard-pose").nullable().optional().catch(undefined),
+  standard: z.object({ kind: z.literal("synthesized_csia_standard"), target: z.string().max(40),
+    sourceTurns: z.number().int().min(1).max(10000), mirrored: z.boolean() }).nullable().optional().catch(undefined),
+}).refine(manifest => {
     if (manifest.endMs <= manifest.startMs) return false;
     if (!manifest.alignment) return manifest.referencePose === null;
     const { original_time: original, phase_aligned: phase } = manifest.alignment;
@@ -135,6 +146,61 @@ export function poseFrameAt(pose: DecodedPose, time: number): number {
   let low = 0, high = pose.times.length - 1;
   while (low < high) { const middle = Math.ceil((low + high) / 2); if (pose.times[middle] <= time) low = middle; else high = middle - 1; }
   return low;
+}
+
+export type PoseSample = { frame: number[][]; observed: boolean[] };
+const seen = (pose: DecodedPose, index: number, joint: number) => pose.observed[index][joint] && pose.frames[index][joint][2] >= .3;
+
+/**
+ * The pose at any instant, for display: joints move linearly between the two surrounding samples,
+ * so playback stays smooth whatever rate the pose was published at. Never bridges a gap longer
+ * than `maxGap`; a joint seen on one side only snaps to the nearer sample.
+ */
+export function poseAt(pose: DecodedPose, time: number, maxGap = .25): PoseSample {
+  const i = poseFrameAt(pose, time), j = Math.min(i + 1, pose.times.length - 1);
+  const t0 = pose.times[i], t1 = pose.times[j];
+  if (j === i || time <= t0 || t1 - t0 > maxGap) return { frame: pose.frames[i], observed: pose.frames[i].map((_, k) => seen(pose, i, k)) };
+  const alpha = Math.min(1, (time - t0) / (t1 - t0));
+  const frame: number[][] = [], observed: boolean[] = [];
+  pose.frames[i].forEach((a, k) => {
+    const b = pose.frames[j][k], okA = seen(pose, i, k), okB = seen(pose, j, k);
+    if (okA && okB) { frame.push([a[0] + (b[0] - a[0]) * alpha, a[1] + (b[1] - a[1]) * alpha, Math.min(a[2], b[2])]); observed.push(true); }
+    else { frame.push(alpha < .5 ? a : b); observed.push(alpha < .5 ? okA : okB); }
+  });
+  return { frame, observed };
+}
+
+/** Display-only, zero-phase smoothing: a short centred weighted average of each joint's observed samples. */
+export function smoothPose(pose: DecodedPose, radius = 2, maxGap = .25): DecodedPose {
+  const frames = pose.frames.map((frame, i) => frame.map((point, k) => {
+    if (!seen(pose, i, k)) return point;
+    let x = 0, y = 0, total = 0;
+    for (let d = -radius; d <= radius; d++) {
+      const j = i + d;
+      if (j < 0 || j >= pose.frames.length || Math.abs(pose.times[j] - pose.times[i]) > maxGap || !seen(pose, j, k)) continue;
+      const weight = radius + 1 - Math.abs(d);
+      x += pose.frames[j][k][0] * weight; y += pose.frames[j][k][1] * weight; total += weight;
+    }
+    return [x / total, y / total, point[2]];
+  }));
+  return { ...pose, frames };
+}
+
+/** Midpoint of two named joints in one sample, or null when either is unseen. */
+export function jointCenter(pose: DecodedPose, sample: PoseSample, left: string, right: string): [number, number] | null {
+  const a = pose.jointNames.indexOf(left), b = pose.jointNames.indexOf(right);
+  if (a < 0 || b < 0 || !sample.observed[a] || !sample.observed[b]) return null;
+  return [(sample.frame[a][0] + sample.frame[b][0]) / 2, (sample.frame[a][1] + sample.frame[b][1]) / 2];
+}
+
+/** Median shoulder-to-ankle height over a pose, the stable scale for drawing it at a fixed size. */
+export function bodyHeight(pose: DecodedPose): number | null {
+  const heights = pose.frames.flatMap((frame, i) => {
+    const sample = { frame, observed: frame.map((_, k) => seen(pose, i, k)) };
+    const shoulders = jointCenter(pose, sample, "left_shoulder", "right_shoulder"), ankles = jointCenter(pose, sample, "left_ankle", "right_ankle");
+    return shoulders && ankles ? [Math.hypot(shoulders[0] - ankles[0], shoulders[1] - ankles[1])] : [];
+  }).sort((a, b) => a - b);
+  return heights.length ? heights[Math.floor(heights.length / 2)] || null : null;
 }
 
 /** Display-only hip/torso fit. Explicit joint names are required; never guess indexing. */

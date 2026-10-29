@@ -1,10 +1,11 @@
-import { createElement } from "react";
+import { createElement, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { VideoAnalysisPanel } from "./video-analysis-panel";
 import type { VideoAnalysisView } from "./video-analysis-types";
 
-vi.mock("@/i18n/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("@/i18n/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }),
+  Link: (props: ComponentProps<"a">) => createElement("a", props) }));
 
 const initialView: VideoAnalysisView = {
   ok: true,
@@ -52,7 +53,7 @@ describe("unified lesson video analysis panel", () => {
     expect(html).not.toContain("Choose parallel-turn analysis");
     expect(html).not.toContain("Improvement · Available");
     expect(html).toContain('value="certification:level1:demonstration_parallel"');
-    expect(buttonNamed(html, "Analyze this video")?.split(">")[0]).toContain('disabled=""');
+    expect(buttonNamed(html, "Start analysis")?.split(">")[0]).toContain('disabled=""');
   });
   it("requires an analyzable clip and service availability before choosing the beginner shortcut", () => {
     const noVideo = render({ ...initialView, videos: [] });
@@ -71,9 +72,11 @@ describe("unified lesson video analysis panel", () => {
     expect(html).toContain(`<optgroup label="${locale === "zh" ? "CSIA 2 级" : "CSIA Level 2"}">`);
     expect(html).toContain('value="certification:level1:demonstration_parallel"');
     expect(html).toContain('value="certification:level2:demonstration_parallel"');
-    // Choosing a path/level is explicit, even when open actions exist.
+    // Choosing a path/level is explicit, even when open actions exist: the clip's
+    // button opens the dialog, whose Start button waits for a chosen action.
     expect(html).toContain('<option value="" selected="">');
-    expect(buttonNamed(html, locale === "zh" ? "分析这个视频" : "Analyze this video")?.split(">")[0]).toContain('disabled=""');
+    expect(buttonNamed(html, locale === "zh" ? "分析这个视频" : "Analyze this video")?.split(">")[0]).not.toContain('disabled=""');
+    expect(buttonNamed(html, locale === "zh" ? "开始分析" : "Start analysis")?.split(">")[0]).toContain('disabled=""');
   });
   it.each(["zh", "en"] as const)("shows closed actions without allowing their selection in %s", (locale) => {
     const html = render({ ...initialView, actions: [initialView.actions[0],
@@ -160,9 +163,10 @@ describe("unified lesson video analysis panel", () => {
     const job = (id: string, actionId: string) => ({ id, videoId: "v1", status: "QUEUED" as const, createdAt: "2026-10-06T20:00:00Z",
       finishedAt: null, errorCode: null, result: null, actionId });
     const html = render({ ...initialView, jobs: [job("j1", "improvement:level2:parallel"), job("j2", "improvement:none:parallel"), job("j3", "parallel")] }, { locale });
-    expect(html).toContain(locale === "zh" ? "平行式 · 目前 CSIA 2 级 ·" : "Parallel turns · Currently CSIA Level 2 ·");
-    expect(html).toContain(locale === "zh" ? "平行式 · 还没考 CSIA 级别 ·" : "Parallel turns · No CSIA level yet ·");
-    expect(html).toContain(locale === "zh" ? "<span>平行式 ·</span>" : "<span>Parallel turns ·</span>");
+    expect(html).toContain(`data-job-label="true">${locale === "zh" ? "平行式 · 目前 CSIA 2 级" : "Parallel turns · Currently CSIA Level 2"}<`);
+    expect(html).toContain(`data-job-label="true">${locale === "zh" ? "平行式 · 还没考 CSIA 级别" : "Parallel turns · No CSIA level yet"}<`);
+    expect(html).toContain(`data-job-label="true">${locale === "zh" ? "平行式" : "Parallel turns"}<`);
+    expect(html).toContain(locale === "zh" ? "全部分析记录（3）" : "All analyses (3)");
   });
   it("asks for the current level only after an improvement action is chosen", () => {
     expect(render()).not.toContain("Your current CSIA level");
@@ -232,5 +236,57 @@ describe("unified lesson video analysis panel", () => {
     expect(own).toContain("Reject payment");
     expect(own).not.toContain("I paid by WeChat; notify coach");
     expect(render(view, { isCustomer: false, isOwnCoach: false, canUpload: false })).not.toContain("WeChat receipt checked; confirm");
+  });
+});
+
+describe("video library", () => {
+  afterEach(() => vi.useRealTimers());
+  const finished = { id: "j1", videoId: "v1", actionId: "improvement:level1:parallel", status: "SUCCEEDED" as const,
+    createdAt: "2026-10-27T18:01:00Z", finishedAt: "2026-10-27T18:05:00Z", errorCode: null,
+    result: { gradingStatus: "unavailable", gradingReason: null, score: null, scoreKind: null, coachingZh: [], coachingEn: [] } };
+  const clip = { ...initialView.videos[0], uploadedAt: "2026-10-27T18:00:00Z" };
+
+  it.each(["zh", "en"] as const)("shows when a clip was uploaded, submitted and finished in %s", (locale) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-28T12:00:00Z"));
+    const html = render({ ...initialView, videos: [clip], jobs: [finished] }, { locale });
+    if (locale === "zh") {
+      expect(html).toMatch(/上传 · <time[^>]*>10月27日 14:00<\/time>/);
+      expect(html).toMatch(/提交分析 · <time[^>]*>10月27日 14:01<\/time>/);
+      expect(html).toMatch(/分析完成 · <time[^>]*>10月27日 14:05<\/time>/);
+      expect(html).toContain("用时 4 分钟");
+    } else {
+      expect(html).toMatch(/Uploaded · <time[^>]*>Oct 27, 2:00 p\.m\.<\/time>/);
+      expect(html).toMatch(/Analysis finished · <time[^>]*>Oct 27, 2:05 p\.m\.<\/time>/);
+    }
+    expect(html).toContain('href="/video-analysis/report/j1?lesson=test"');
+  });
+
+  it("names the year only for a clip from another year", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2027-01-05T12:00:00Z"));
+    expect(render({ ...initialView, videos: [clip], jobs: [finished] }, { locale: "zh" })).toContain("2026年10月27日 14:00");
+  });
+
+  it("counts clips by where their newest analysis stands", () => {
+    const fresh = { ...clip, id: "v2", caption: "Fresh clip", uploadedAt: "2026-10-28T10:00:00Z" };
+    const html = render({ ...initialView, videos: [clip, fresh], jobs: [finished] });
+    const count = (label: string) => html.match(new RegExp(`${label}<span[^>]*>(\\d+)<`))?.[1];
+    expect([count("All"), count("Not analyzed"), count("In progress"), count("Done"), count("Not graded")]).toEqual(["2", "1", "0", "1", "0"]);
+    // Newest upload first.
+    expect(html.indexOf("Fresh clip")).toBeLessThan(html.indexOf("Lesson clip"));
+  });
+
+  it("links a personal report without a lesson and keeps reports of deleted clips reachable", () => {
+    const orphan = { ...finished, id: "j0", videoId: null };
+    const html = render({ ...initialView, accountId: "student", videos: [clip], jobs: [finished, orphan] }, { accountId: "student" });
+    expect(html).toContain('href="/video-analysis/report/j1"');
+    expect(html).toContain("Analyses of deleted videos (1)");
+    expect(html).toContain('href="/video-analysis/report/j0"');
+  });
+
+  it("offers an upload dialog only to people who may upload", () => {
+    expect(render()).toContain("Choose a video and upload");
+    expect(render(initialView, { isCustomer: false, isOwnCoach: false, canUpload: false })).not.toContain("Choose a video and upload");
   });
 });

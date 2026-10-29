@@ -150,3 +150,20 @@ it("refuses an explainer video above the 24 MiB budget", async () => {
     "Content-Length": String(24 * 1024 * 1024 + 1) } }));
   await expect(readDynamicReport(input(["assets", "explainer"]))).rejects.toMatchObject({ status: 502, code: "media-budget-exceeded" });
 });
+it("proxies FreeSki's synthesized standard skeleton like any published pose, stripping extra metadata", async () => {
+  const xy = Buffer.alloc(16); [8, 16, 24, 32].forEach((n, i) => xy.writeInt32LE(n, i * 4));
+  const times = Buffer.alloc(8); times.writeDoubleLE(4.3, 0);
+  mocks.request.mockResolvedValue(Response.json({ schema_version: "compact_pose.v1", frame_count: 1, joint_count: 2,
+    coordinate_space: "analysis_pixels", coordinate_step: .125, joint_names: ["left_hip", "right_hip"], connections: [[0, 1]],
+    resolution: [640, 360], layout: { xy: "int32-le/frame/joint/xy", confidence: "uint8/frame/joint", timestamps: "float64-le/seconds",
+      observed: "uint8/frame/joint/0_missing_1_observed", missing: "observed==0" },
+    xy_b64: xy.toString("base64"), confidence_b64: Buffer.from([255, 255]).toString("base64"),
+    observed_b64: Buffer.from([1, 1]).toString("base64"), timestamps_b64: times.toString("base64"),
+    source_clips: ["private/reference.mp4"] }));
+  const response = await readDynamicReport({ ...input(["assets", "standard-pose"]),
+    request: new Request("http://localhost/api/report?turn_id=turn_2") });
+  expect(mocks.request).toHaveBeenLastCalledWith(expect.objectContaining({ resource: "standard-pose", turnId: "turn_2" }));
+  const body = await response.json();
+  expect(body.frame_count).toBe(1);
+  expect(body).not.toHaveProperty("source_clips");
+});

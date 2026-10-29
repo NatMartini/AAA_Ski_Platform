@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { citedTeaching, explainerSchema, keyframesSchema, scorecardSchema, scorecardUsable, teachingSchema, turnNumber,
+import { citedTeaching, explainerSchema, isCurrentMedia, keyframesSchema, scorecardSchema, scorecardUsable, teachingSchema, turnNumber,
   withoutOverallScore } from "./scorecard";
 import { sampleExplainer, sampleKeyframes, sampleScorecard, sampleTeaching } from "./scorecard.fixtures";
 
@@ -203,6 +203,14 @@ describe("explainer contract", () => {
   it("accepts a pending manifest without media fields but not an incomplete ready one", () => {
     expect(explainerSchema.safeParse({ schema_version: "freeski_explainer.v1", status: "pending" }).success).toBe(true);
     expect(explainerSchema.safeParse({ schema_version: "freeski_explainer.v1", status: "ready" }).success).toBe(false);
+  });
+  it("shows only media drawn the corrected way (v2), while still reading v1", () => {
+    const v1 = explainerSchema.parse(sampleExplainer);
+    const v2 = explainerSchema.parse({ ...clone(sampleExplainer), schema_version: "freeski_explainer.v2" });
+    expect([isCurrentMedia(v1), isCurrentMedia(v2)]).toEqual([false, true]);
+    expect(isCurrentMedia(keyframesSchema.parse({ ...clone(sampleKeyframes), schema_version: "freeski_keyframes.v2" }))).toBe(true);
+    expect(isCurrentMedia(keyframesSchema.parse(sampleKeyframes))).toBe(false);
+    expect(explainerSchema.safeParse({ ...clone(sampleExplainer), schema_version: "freeski_explainer.v3" }).success).toBe(false);
   });
   it("rejects segments that run past the video or have no length", () => {
     const late = clone(sampleExplainer);

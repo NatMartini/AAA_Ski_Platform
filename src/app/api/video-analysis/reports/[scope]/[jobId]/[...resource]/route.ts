@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 import { requireUser } from "@/lib/auth/require-user";
 import { DynamicReportError, readDynamicReport } from "@/lib/video-analysis/dynamic-report";
 import {handleCoachingWorkspace} from "@/lib/video-analysis/coaching-workspace";
+import { handleFindingReviews } from "@/lib/video-analysis/finding-reviews";
 import {RequestBodyError} from "@/lib/request-body";
 
 export const runtime = "nodejs";
@@ -15,7 +16,9 @@ async function handle(request: Request, context: { params: Promise<{ scope: stri
   try {
     return await (["report","turns","assets","explainer"].includes(params.resource[0]) && request.method === "GET"
       ? readDynamicReport({ ...params, user: auth.user, request })
-      : handleCoachingWorkspace({ ...params, user: auth.user, request }));
+      : params.resource[0] === "finding-reviews"
+        ? handleFindingReviews({ ...params, user: auth.user, request })
+        : handleCoachingWorkspace({ ...params, user: auth.user, request }));
   } catch (error) {
     if (error instanceof DynamicReportError) return NextResponse.json({ error: error.code }, { status: error.status, headers: { "Cache-Control": "private, no-store" } });
     if (error instanceof ZodError) return NextResponse.json({ error: "invalid-provider-response" }, { status: 502, headers: { "Cache-Control": "private, no-store" } });

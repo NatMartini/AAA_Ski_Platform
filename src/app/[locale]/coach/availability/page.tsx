@@ -5,6 +5,8 @@ import { AvailabilityManager } from "@/components/coach/availability-manager";
 import { toLocale } from "@/i18n/routing";
 import { dbDateToDateKey } from "@/lib/time";
 import { OCCUPYING_STATUSES } from "@/lib/booking/state";
+import { PageHeader } from "@/components/ui/page-header";
+import { CalendarClock } from "lucide-react";
 
 export default async function CoachAvailabilityPage({
   params,
@@ -34,6 +36,13 @@ export default async function CoachAvailabilityPage({
   ]);
 
   return (
+    <>
+    <PageHeader
+      icon={<CalendarClock aria-hidden />}
+      tone="lessons"
+      title={locale === "zh" ? "可约时间" : "Availability"}
+      description={locale === "zh" ? "设置每天在哪个雪场、几点到几点可以接课。" : "Set which resort you are at each day and the hours you can teach."}
+    />
     <AvailabilityManager
       locale={toLocale(locale)}
       resorts={resorts}
@@ -50,5 +59,6 @@ export default async function CoachAvailabilityPage({
         bookingCount: d.bookings.length,
       }))}
     />
+    </>
   );
 }

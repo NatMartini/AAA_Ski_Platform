@@ -24,7 +24,7 @@
   "home": {
     "signedOutTitle": "AAA的双板滑雪约课平台",
     "signedOutBody": "本站仅供已联系过教练的学员使用。请用 Google 账号登录后预定课程。",
-    "signedInTitle": "欢迎回来,{name}",
+    "signedInTitle": "欢迎回来，{name}",
     "startBooking": "开始预定",
     "viewBookings": "查看我的预定",
     "coachArea": "进入教练后台"

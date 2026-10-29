@@ -84,7 +84,7 @@ export default async function LocaleLayout({
         <NextIntlClientProvider>
           <DevBanner user={user} />
           <SiteHeader user={user} locale={locale} />
-          <main key={`${user?.id ?? "anonymous"}:${user?.role ?? "anonymous"}`} className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 sm:py-9">
+          <main key={`${user?.id ?? "anonymous"}:${user?.role ?? "anonymous"}`} className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-6 sm:px-6 sm:pt-8 lg:px-8 lg:pb-12">
             {children}
           </main>
           <SiteFooter />

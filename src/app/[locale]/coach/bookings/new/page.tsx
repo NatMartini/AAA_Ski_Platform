@@ -9,6 +9,8 @@ import { bookingHorizon } from "@/lib/season";
 import { MAX_SUPPORTED_HEADCOUNT } from "@/lib/booking/group";
 import { offeredRates } from "@/lib/rates";
 import { parseCustomSkills } from "@/lib/custom-skills";
+import { PageHeader } from "@/components/ui/page-header";
+import { UserRoundPlus } from "lucide-react";
 
 export default async function CoachNewBookingPage({
   params,
@@ -34,6 +36,13 @@ export default async function CoachNewBookingPage({
   const bookable = days.filter((day) => day.startOptions.length > 0);
 
   return (
+    <>
+    <PageHeader
+      icon={<UserRoundPlus aria-hidden />}
+      tone="lessons"
+      title={locale === "zh" ? "代学员建课" : "Book for a student"}
+      description={locale === "zh" ? "为学员安排你执教的课程，并生成由学员或监护人签署的协议链接。" : "Arrange one of your lessons for a student and create a waiver link for them or their guardian."}
+    />
     <CoachBookingForm
       locale={toLocale(locale)}
       minHours={profile?.minHours ?? 2}
@@ -59,5 +68,6 @@ export default async function CoachNewBookingPage({
         })),
       }))}
     />
+    </>
   );
 }

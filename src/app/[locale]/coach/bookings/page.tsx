@@ -7,6 +7,8 @@ import { BookingRow } from "@/components/booking/booking-row";
 import { toLocale } from "@/i18n/routing";
 import { TERMINAL_STATUSES } from "@/lib/booking/state";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/ui/page-header";
+import { ClipboardList } from "lucide-react";
 
 export default async function CoachBookingsPage({
   params,
@@ -64,7 +66,13 @@ export default async function CoachBookingsPage({
   };
 
   return (
-    <div className="stagger space-y-6">
+    <div className="space-y-6">
+      <PageHeader
+        icon={<ClipboardList aria-hidden />}
+        tone="lessons"
+        title={zh ? "订单" : "Bookings"}
+        description={zh ? "学员预约、协议和付款状态。" : "Student bookings with waiver and payment status."}
+      />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-2" role="group" aria-label={t("bookings")}>
           {(

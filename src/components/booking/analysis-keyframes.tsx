@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { keyframesSchema, type Keyframes } from "@/lib/freeski/scorecard";
+import { isCurrentMedia, keyframesSchema, type Keyframes } from "@/lib/freeski/scorecard";
 import { clientFetch } from "@/lib/client-fetch";
 import { referenceNote, type ReferenceTarget } from "./analysis-scorecard";
 
@@ -24,7 +24,8 @@ export function AnalysisKeyframes({ base, turnId, zh, target = null }: { base: s
     void load();
     return () => { controller.abort(); clearTimeout(timer); };
   }, [base, turnId]);
-  if (!manifest || manifest.status === "unavailable") return null;
+  // v1 key frames draw a raw reference clip that may turn the other way; they are not shown.
+  if (!manifest || manifest.status === "unavailable" || !isCurrentMedia(manifest)) return null;
   if (manifest.status === "pending") return <p className="text-xs text-ink-3">{zh ? "关键帧图片生成中…" : "Generating key frames…"}</p>;
   if (!manifest.items.length) return null;
   const note = referenceNote(manifest.items.flatMap(item => item.reference_status ?? []), zh, target);

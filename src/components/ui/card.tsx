@@ -12,11 +12,8 @@ export function Card({
   return (
     <div
       className={cn(
-        // The inset shadow is a hairline highlight along the top edge — the way
-        // light catches a lip of snow. It is the whole reason cards read as
-        // lit rather than flat, and it is theme-aware via --frost-edge.
-        "frosted rounded-2xl border border-border bg-surface p-5 shadow-[var(--shadow)] sm:p-6",
-        interactive && "lift hover:border-accent/40",
+        "rounded-2xl border border-border bg-surface p-5 shadow-[var(--shadow-sm)] sm:p-6",
+        interactive && "lift hover:border-border-strong",
         className,
       )}
       {...props}
@@ -30,7 +27,7 @@ export function CardTitle({
 }: React.HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h2
-      className={cn("text-base font-extrabold tracking-tight", className)}
+      className={cn("text-base font-bold", className)}
       {...props}
     />
   );

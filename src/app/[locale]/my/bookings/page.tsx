@@ -1,8 +1,11 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
-import { redirect } from "@/i18n/navigation";
+import { Link, redirect } from "@/i18n/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUserPage } from "@/lib/auth/require-user";
-import { Card, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader, SectionHeading } from "@/components/ui/page-header";
+import { CalendarPlus, ClipboardList } from "lucide-react";
 import { BookingRow } from "@/components/booking/booking-row";
 import { toLocale } from "@/i18n/routing";
 import { TERMINAL_STATUSES } from "@/lib/booking/state";
@@ -39,24 +42,26 @@ export default async function MyBookingsPage({
   const past = bookings.filter((b) => !upcoming.includes(b));
 
   return (
-    <div className="stagger space-y-6">
-      <h1 className="text-3xl">
-        {t("myBookings")}
-      </h1>
+    <div className="space-y-6">
+      <PageHeader
+        icon={<ClipboardList aria-hidden />}
+        tone="lessons"
+        title={t("myBookings")}
+        description={zh ? "订单状态、签署协议与付款进度。点开一节课查看详情、课程视频和分析。" : "Booking status, waivers and payment progress. Open a lesson for details, its videos and analysis."}
+        actions={<Button asChild><Link href="/book"><CalendarPlus aria-hidden />{zh ? "预约新课程" : "Book a lesson"}</Link></Button>}
+      />
 
       {bookings.length === 0 && (
-        <Card>
-          <CardDescription>
-            {zh ? "还没有任何预定。" : "No bookings yet."}
-          </CardDescription>
-        </Card>
+        <EmptyState
+          icon={<ClipboardList aria-hidden />}
+          title={zh ? "还没有任何预定。" : "No bookings yet."}
+          action={<Button asChild variant="secondary"><Link href="/book">{zh ? "预约课程" : "Book a lesson"}</Link></Button>}
+        />
       )}
 
       {upcoming.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-ink-3">
-            {zh ? "进行中" : "Active"}
-          </h2>
+        <section className="space-y-3">
+          <SectionHeading title={`${zh ? "进行中" : "Active"} · ${upcoming.length}`} />
           <div className="space-y-2">
             {upcoming.map((b) => (
               <BookingRow
@@ -83,10 +88,8 @@ export default async function MyBookingsPage({
       )}
 
       {past.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-ink-3">
-            {zh ? "历史" : "Past"}
-          </h2>
+        <section className="space-y-3">
+          <SectionHeading title={`${zh ? "历史" : "Past"} · ${past.length}`} />
           <div className="space-y-2">
             {past.map((b) => (
               <BookingRow

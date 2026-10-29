@@ -1,8 +1,11 @@
-import { getTranslations, setRequestLocale } from "next-intl/server";
-import { Link } from "@/i18n/navigation";
+import { setRequestLocale } from "next-intl/server";
 import { requireCoachPage } from "@/lib/auth/require-user";
-import { CoachNav } from "@/components/coach/coach-nav";
 
+/**
+ * Coach pages are grouped into sections in the site header (see
+ * lib/navigation), so this layout only guards access; each page has its own
+ * title.
+ */
 export default async function CoachLayout({
   children,
   params,
@@ -14,21 +17,5 @@ export default async function CoachLayout({
   // of this area is not advertised.
   await requireCoachPage({ locale, callbackPath: `/${locale}/coach` });
 
-  const t = await getTranslations("coach");
-
-  return (
-    <div className="stagger space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-3xl">{t("title")}</h1>
-        <Link
-          href="/coach/bookings/new"
-          className="press rounded-xl bg-accent px-5 py-2.5 text-sm font-bold text-accent-foreground shadow-[var(--shadow-sm)] hover:bg-accent-strong"
-        >
-          {t("newBooking")}
-        </Link>
-      </div>
-      <CoachNav />
-      {children}
-    </div>
-  );
+  return <div className="space-y-6">{children}</div>;
 }

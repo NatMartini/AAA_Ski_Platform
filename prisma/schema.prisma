@@ -71,6 +71,7 @@ model User {
   createdAccountAnalyses    AccountAnalysisJob[] @relation("AccountAnalysisCreator")
   videoReviewRequests       CoachVideoReviewRequest[] @relation("VideoReviewOwner")
   assignedVideoReviews      CoachVideoReviewRequest[] @relation("VideoReviewCoach")
+  findingReviews        AnalysisFindingReview[] @relation("FindingReviewCoach")
   bookings                  Booking[]               @relation("BookingAccount")
   coachDays                 CoachDay[]
   coachBooking              Booking[]               @relation("BookingCoach")
@@ -736,6 +737,34 @@ enum CoachVideoReviewStatus {
   IN_REVIEW
   PUBLISHED
   CANCELLED
+}
+
+enum FindingVerdict {
+  AGREE
+  DISAGREE
+}
+
+/// A coach's verdict on one sentence of FreeSki's teaching text. Keyed by the finding's
+/// own text (see lib/video-analysis/finding-key), so a rewritten finding starts unreviewed.
+/// These verdicts are the labelled set FreeSki calibrates its comparison against.
+model AnalysisFindingReview {
+  id          String         @id @default(cuid())
+  scope       CoachVideoReviewScope
+  jobId       String
+  findingKey  String
+  coachId     String
+  verdict     FindingVerdict
+  note        String?        @db.VarChar(500)
+  actionId    String
+  metricKeys  String[]       @default([])
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  coach User @relation("FindingReviewCoach", fields: [coachId], references: [id], onDelete: Restrict)
+
+  @@unique([scope, jobId, findingKey, coachId])
+  @@index([coachId, updatedAt])
+  @@index([scope, jobId])
 }
 
 enum CoachVideoReviewScope {

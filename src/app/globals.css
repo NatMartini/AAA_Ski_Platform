@@ -1,11 +1,12 @@
 @import "tailwindcss";
 
 /*
- * Design system — ported from the approved visual design.
+ * Design system.
  *
- * The palette, type scale, radii and shadows below are taken from that design
- * rather than invented here, so the running app and the mockups stay in step.
- * Two rules worth keeping in mind when editing:
+ * A calm, neutral canvas with one confident blue accent. Every feature area
+ * also has its own category colour (booking, lessons, video, students,
+ * admin) so the navigation, home tiles and section headers tell the user
+ * where they are at a glance. Two rules worth keeping in mind when editing:
  *
  *  1. Colours are CSS variables, never hard-coded hex in components. Both
  *     themes are defined here and everything downstream reads the variable, so
@@ -16,24 +17,9 @@
  */
 
 @theme {
-  /* Ice-blue ramp, kept for the odd accent that needs a specific step. */
-  --color-ice-50: #f6f9fc;
-  --color-ice-100: #eef3f8;
-  --color-ice-200: #e8f0f7;
-  --color-ice-300: #c7dcee;
-  --color-ice-400: #8fbfe0;
-  --color-ice-500: #659fc8;
-  --color-ice-600: #2a5479;
-  --color-ice-700: #1f3f5c;
-  --color-ice-800: #172c3d;
-  --color-ice-900: #12202e;
-  --color-ice-950: #0e1620;
-
-  /* Space Grotesk sets the tone — cut terminals and a slightly condensed
-     frame read colder and more technical than a rounded grotesque, which
-     is the register a ski school wants. Manrope carries body copy, Noto
-     Sans SC carries Chinese. All three are loaded via next/font in the
-     layout, which sets these variables. */
+  /* Space Grotesk carries headings and the wordmark, Manrope body copy and
+     Noto Sans SC Chinese. All three are loaded via next/font in the layout,
+     which sets these variables. */
   --font-display:
     var(--font-grotesk), var(--font-noto-sc), ui-sans-serif, system-ui,
     -apple-system, "Segoe UI", sans-serif;
@@ -43,82 +29,92 @@
     sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
-  /* Radii — the design uses a 8/12/16 progression plus pills. */
   --radius-md: 10px;
   --radius-lg: 12px;
   --radius-xl: 16px;
 }
 
 :root {
-  --bg: #edf4fa;
+  --bg: #f3f5f8;
   --surface: #ffffff;
-  --surface-2: #e8f0f8;
-  --surface-3: #f4f9fd;
+  --surface-2: #eef2f6;
+  --surface-3: #f7f9fb;
 
-  --ink: #0f1e2b;
-  --ink-2: #42596f;
-  /* The design's #8496a8 measured 2.72:1 on our surfaces — below the 4.5:1
-     WCAG AA floor for normal text, and this token is used for footer links and
-     eyebrow labels. Darkened until it clears AA on every surface with a little
-     margin (4.91 on --bg, 5.48 on --surface) while still reading as muted. */
-  --ink-3: #566a7e;
-  /* Original design value, for genuinely decorative marks only (never text). */
-  --ink-3-decorative: #8496a8;
+  --ink: #0f1b2d;
+  --ink-2: #46566b;
+  /* Muted text still clears WCAG AA: 4.8:1 on --bg, 5.3:1 on --surface. */
+  --ink-3: #5e6d80;
+  /* Decorative marks only (never text). */
+  --ink-3-decorative: #94a3b8;
 
-  --border: #d7e4f0;
-  --border-strong: #bed2e4;
+  --border: #e2e8ef;
+  --border-strong: #cdd6e1;
 
-  --accent: #0d5f8f;
-  --accent-strong: #08496e;
-  --accent-soft: #dcecf9;
+  --accent: #1a5fd0;
+  --accent-strong: #144aa6;
+  --accent-soft: #e7effc;
   --accent-ink: #ffffff;
 
-  --amber: #a4670c;
-  --amber-bg: #fdf4e4;
-  --amber-border: #f0dcae;
+  --amber: #a15c07;
+  --amber-bg: #fdf5e7;
+  --amber-border: #f3ddb3;
 
-  --success: #1c7a4f;
-  --success-bg: #e6f4ec;
+  --success: #18794e;
+  --success-bg: #e7f5ee;
 
-  --danger: #b3261e;
-  --danger-bg: #fbecea;
-  --danger-border: #f0c9c5;
+  --danger: #c0322a;
+  --danger-bg: #fdeeec;
+  --danger-border: #f5cdc9;
 
-  /* Backdrop wash and the highlight that catches the top edge of a card. */
-  --frost-bloom: rgba(255, 255, 255, 0.85);
-  --frost-top: rgba(255, 255, 255, 0.6);
-  --frost-edge: rgba(255, 255, 255, 0.9);
-  --landscape-opacity: 0.7;
-  --hero-landscape-opacity: 0.65;
+  /* Category colours: icon tiles, nav markers and section accents. */
+  --cat-book: #1a5fd0;
+  --cat-book-soft: #e7effc;
+  --cat-lessons: #0b7a6e;
+  --cat-lessons-soft: #e2f4f1;
+  --cat-video: #6941c6;
+  --cat-video-soft: #f1ebfd;
+  --cat-people: #b45309;
+  --cat-people-soft: #fdf1e3;
+  --cat-admin: #475467;
+  --cat-admin-soft: #eef1f5;
 
-  --shadow-sm: 0 1px 2px rgba(18, 32, 46, 0.06);
+  /* Home banner: a deep glacier gradient with white type. */
+  --hero-from: #0f3d8c;
+  --hero-to: #1a5fd0;
+  --hero-ink: #ffffff;
+
+  /* Kept for components that still opt into a lit top edge. */
+  --frost-edge: rgba(255, 255, 255, 0);
+
+  --shadow-sm: 0 1px 2px rgba(15, 27, 45, 0.05);
   --shadow:
-    0 1px 2px rgba(18, 32, 46, 0.03), 0 12px 32px -18px rgba(29, 65, 96, 0.2);
+    0 1px 2px rgba(15, 27, 45, 0.04), 0 10px 28px -14px rgba(15, 27, 45, 0.16);
+  --shadow-lg:
+    0 2px 4px rgba(15, 27, 45, 0.04), 0 24px 48px -16px rgba(15, 27, 45, 0.24);
 
   /* Status pills. Each state gets a background, border and foreground so the
      pill reads clearly in both themes without per-component overrides. */
-  --pill-hold-bg: #eef3f8;
-  --pill-hold-br: #d3dfea;
-  --pill-hold-fg: #4a5f74;
-  --pill-waiver-bg: #fdf4e4;
-  --pill-waiver-br: #f0dcae;
-  --pill-waiver-fg: #a4670c;
-  --pill-payment-bg: #e8f0f7;
-  --pill-payment-br: #c7dcee;
-  --pill-payment-fg: #2a5479;
-  --pill-checking-bg: #efeafb;
-  --pill-checking-br: #dccff3;
-  --pill-checking-fg: #6a4bab;
-  --pill-confirmed-bg: #e6f4ec;
-  --pill-confirmed-br: #bfe3cf;
-  --pill-confirmed-fg: #1c7a4f;
-  --pill-cancelled-bg: #fbecea;
-  --pill-cancelled-br: #f0c9c5;
-  --pill-cancelled-fg: #b3261e;
+  --pill-hold-bg: #eef2f6;
+  --pill-hold-br: #d5dde7;
+  --pill-hold-fg: #46566b;
+  --pill-waiver-bg: #fdf5e7;
+  --pill-waiver-br: #f3ddb3;
+  --pill-waiver-fg: #a15c07;
+  --pill-payment-bg: #e7effc;
+  --pill-payment-br: #c6d8f7;
+  --pill-payment-fg: #144aa6;
+  --pill-checking-bg: #f1ebfd;
+  --pill-checking-br: #dccff7;
+  --pill-checking-fg: #6941c6;
+  --pill-confirmed-bg: #e7f5ee;
+  --pill-confirmed-br: #bde3cf;
+  --pill-confirmed-fg: #18794e;
+  --pill-cancelled-bg: #fdeeec;
+  --pill-cancelled-br: #f5cdc9;
+  --pill-cancelled-fg: #c0322a;
 
   /* Chart series, one per coach, assigned in a fixed order and never cycled.
-     Validated for colour-vision deficiency against --surface in each theme;
-     slots 3-5 sit under 3:1 on white, so every chart also has a table view. */
+     Slots 3-5 sit under 3:1 on white, so every chart also has a table view. */
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
@@ -127,72 +123,80 @@
   --series-6: #008300;
   --series-7: #4a3aa7;
   --series-8: #e34948;
-  --chart-grid: #e3ebf2;
+  --chart-grid: #e3e9f0;
 }
 
 /* Follow the OS unless the user has made an explicit choice. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0a131c;
-    --surface: #132030;
-    --surface-2: #182739;
-    --surface-3: #0e1926;
+    --bg: #0b111b;
+    --surface: #121a27;
+    --surface-2: #182234;
+    --surface-3: #0f1622;
 
-    --ink: #e9f1f8;
-    --ink-2: #9db3c8;
-    /* Design value #6f8398 was 4.16:1 on --surface; lightened to clear AA on
-       every surface with margin (6.15 on --bg, 5.50 on --surface). */
-    --ink-3: #8699ae;
-    --ink-3-decorative: #6f8398;
+    --ink: #e8eef6;
+    --ink-2: #a7b4c6;
+    --ink-3: #8a98ad;
+    --ink-3-decorative: #5b6b82;
 
-    --border: #23364c;
-    --border-strong: #354b66;
+    --border: #233044;
+    --border-strong: #334560;
 
-    --accent: #6bb6e2;
-    --accent-strong: #8ecbf0;
-    --accent-soft: #13293c;
-    --accent-ink: #05121e;
+    --accent: #6ea8ff;
+    --accent-strong: #93bfff;
+    --accent-soft: #16243b;
+    --accent-ink: #06121f;
 
-    --amber: #e2b467;
-    --amber-bg: #282013;
-    --amber-border: #48391f;
+    --amber: #e8b45f;
+    --amber-bg: #2a2112;
+    --amber-border: #4a3a1e;
 
-    --success: #7fd0a6;
-    --success-bg: #132419;
+    --success: #74d1a2;
+    --success-bg: #11251a;
 
-    --danger: #e79790;
-    --danger-bg: #2e1918;
-    --danger-border: #57302c;
+    --danger: #f0958d;
+    --danger-bg: #2f1817;
+    --danger-border: #5a2f2b;
 
-    /* Moonlight rather than daylight: a cold blue bloom, and a much fainter
-       edge highlight so cards still look lit from above without glowing. */
-    --frost-bloom: rgba(64, 122, 168, 0.16);
-    --frost-top: rgba(28, 60, 92, 0.22);
-    --frost-edge: rgba(255, 255, 255, 0.06);
-    --landscape-opacity: 0.13;
-    --hero-landscape-opacity: 0.13;
+    --cat-book: #6ea8ff;
+    --cat-book-soft: #16243b;
+    --cat-lessons: #5fd0c0;
+    --cat-lessons-soft: #0f2a27;
+    --cat-video: #b199f7;
+    --cat-video-soft: #221a38;
+    --cat-people: #f0b465;
+    --cat-people-soft: #2b2112;
+    --cat-admin: #a7b4c6;
+    --cat-admin-soft: #1b2433;
+
+    --hero-from: #0d2a5c;
+    --hero-to: #18407f;
+    --hero-ink: #f4f8ff;
+
+    --frost-edge: rgba(255, 255, 255, 0);
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 34px -14px rgba(0, 0, 0, 0.6);
+    --shadow-lg: 0 2px 4px rgba(0, 0, 0, 0.5), 0 24px 48px -16px rgba(0, 0, 0, 0.7);
 
-    --pill-hold-bg: #1b2837;
-    --pill-hold-br: #33475f;
-    --pill-hold-fg: #9db0c4;
-    --pill-waiver-bg: #282013;
-    --pill-waiver-br: #48391f;
-    --pill-waiver-fg: #e2b467;
-    --pill-payment-bg: #172c3d;
-    --pill-payment-br: #2b4863;
-    --pill-payment-fg: #8fbfe0;
-    --pill-checking-bg: #211b31;
-    --pill-checking-br: #3d3357;
-    --pill-checking-fg: #b7a2e8;
-    --pill-confirmed-bg: #132419;
-    --pill-confirmed-br: #265039;
-    --pill-confirmed-fg: #7fd0a6;
-    --pill-cancelled-bg: #2e1918;
-    --pill-cancelled-br: #57302c;
-    --pill-cancelled-fg: #e79790;
+    --pill-hold-bg: #1b2433;
+    --pill-hold-br: #334560;
+    --pill-hold-fg: #a7b4c6;
+    --pill-waiver-bg: #2a2112;
+    --pill-waiver-br: #4a3a1e;
+    --pill-waiver-fg: #e8b45f;
+    --pill-payment-bg: #16243b;
+    --pill-payment-br: #2a4266;
+    --pill-payment-fg: #93bfff;
+    --pill-checking-bg: #221a38;
+    --pill-checking-br: #3d3360;
+    --pill-checking-fg: #b199f7;
+    --pill-confirmed-bg: #11251a;
+    --pill-confirmed-br: #24513a;
+    --pill-confirmed-fg: #74d1a2;
+    --pill-cancelled-bg: #2f1817;
+    --pill-cancelled-br: #5a2f2b;
+    --pill-cancelled-fg: #f0958d;
 
     --series-1: #3987e5;
     --series-2: #d95926;
@@ -202,68 +206,80 @@
     --series-6: #008300;
     --series-7: #9085e9;
     --series-8: #e66767;
-    --chart-grid: #22344a;
+    --chart-grid: #22314a;
   }
 }
 
 /* Explicit dark choice — wins over the OS preference above. */
 :root[data-theme="dark"] {
-  --bg: #0a131c;
-  --surface: #132030;
-  --surface-2: #182739;
-  --surface-3: #0e1926;
+  --bg: #0b111b;
+  --surface: #121a27;
+  --surface-2: #182234;
+  --surface-3: #0f1622;
 
-  --ink: #e9f1f8;
-  --ink-2: #9db3c8;
-  --ink-3: #8699ae;
-  --ink-3-decorative: #6f8398;
+  --ink: #e8eef6;
+  --ink-2: #a7b4c6;
+  --ink-3: #8a98ad;
+  --ink-3-decorative: #5b6b82;
 
-  --border: #23364c;
-  --border-strong: #354b66;
+  --border: #233044;
+  --border-strong: #334560;
 
-  --accent: #6bb6e2;
-  --accent-strong: #8ecbf0;
-  --accent-soft: #13293c;
-  --accent-ink: #05121e;
+  --accent: #6ea8ff;
+  --accent-strong: #93bfff;
+  --accent-soft: #16243b;
+  --accent-ink: #06121f;
 
-  --amber: #e2b467;
-  --amber-bg: #282013;
-  --amber-border: #48391f;
+  --amber: #e8b45f;
+  --amber-bg: #2a2112;
+  --amber-border: #4a3a1e;
 
-  --success: #7fd0a6;
-  --success-bg: #132419;
+  --success: #74d1a2;
+  --success-bg: #11251a;
 
-  --danger: #e79790;
-  --danger-bg: #2e1918;
-  --danger-border: #57302c;
+  --danger: #f0958d;
+  --danger-bg: #2f1817;
+  --danger-border: #5a2f2b;
 
-  --frost-bloom: rgba(64, 122, 168, 0.16);
-  --frost-top: rgba(28, 60, 92, 0.22);
-  --frost-edge: rgba(255, 255, 255, 0.06);
-  --landscape-opacity: 0.13;
-  --hero-landscape-opacity: 0.13;
+  --cat-book: #6ea8ff;
+  --cat-book-soft: #16243b;
+  --cat-lessons: #5fd0c0;
+  --cat-lessons-soft: #0f2a27;
+  --cat-video: #b199f7;
+  --cat-video-soft: #221a38;
+  --cat-people: #f0b465;
+  --cat-people-soft: #2b2112;
+  --cat-admin: #a7b4c6;
+  --cat-admin-soft: #1b2433;
+
+  --hero-from: #0d2a5c;
+  --hero-to: #18407f;
+  --hero-ink: #f4f8ff;
+
+  --frost-edge: rgba(255, 255, 255, 0);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 34px -14px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 2px 4px rgba(0, 0, 0, 0.5), 0 24px 48px -16px rgba(0, 0, 0, 0.7);
 
-  --pill-hold-bg: #1b2837;
-  --pill-hold-br: #33475f;
-  --pill-hold-fg: #9db0c4;
-  --pill-waiver-bg: #282013;
-  --pill-waiver-br: #48391f;
-  --pill-waiver-fg: #e2b467;
-  --pill-payment-bg: #172c3d;
-  --pill-payment-br: #2b4863;
-  --pill-payment-fg: #8fbfe0;
-  --pill-checking-bg: #211b31;
-  --pill-checking-br: #3d3357;
-  --pill-checking-fg: #b7a2e8;
-  --pill-confirmed-bg: #132419;
-  --pill-confirmed-br: #265039;
-  --pill-confirmed-fg: #7fd0a6;
-  --pill-cancelled-bg: #2e1918;
-  --pill-cancelled-br: #57302c;
-  --pill-cancelled-fg: #e79790;
+  --pill-hold-bg: #1b2433;
+  --pill-hold-br: #334560;
+  --pill-hold-fg: #a7b4c6;
+  --pill-waiver-bg: #2a2112;
+  --pill-waiver-br: #4a3a1e;
+  --pill-waiver-fg: #e8b45f;
+  --pill-payment-bg: #16243b;
+  --pill-payment-br: #2a4266;
+  --pill-payment-fg: #93bfff;
+  --pill-checking-bg: #221a38;
+  --pill-checking-br: #3d3360;
+  --pill-checking-fg: #b199f7;
+  --pill-confirmed-bg: #11251a;
+  --pill-confirmed-br: #24513a;
+  --pill-confirmed-fg: #74d1a2;
+  --pill-cancelled-bg: #2f1817;
+  --pill-cancelled-br: #5a2f2b;
+  --pill-cancelled-fg: #f0958d;
 
   --series-1: #3987e5;
   --series-2: #d95926;
@@ -273,7 +289,7 @@
   --series-6: #008300;
   --series-7: #9085e9;
   --series-8: #e66767;
-  --chart-grid: #22344a;
+  --chart-grid: #22314a;
 }
 
 /* Expose the variables to Tailwind so `bg-surface`, `text-ink-2` etc. work. */
@@ -302,6 +318,16 @@
   --color-danger: var(--danger);
   --color-danger-bg: var(--danger-bg);
   --color-danger-border: var(--danger-border);
+  --color-cat-book: var(--cat-book);
+  --color-cat-book-soft: var(--cat-book-soft);
+  --color-cat-lessons: var(--cat-lessons);
+  --color-cat-lessons-soft: var(--cat-lessons-soft);
+  --color-cat-video: var(--cat-video);
+  --color-cat-video-soft: var(--cat-video-soft);
+  --color-cat-people: var(--cat-people);
+  --color-cat-people-soft: var(--cat-people-soft);
+  --color-cat-admin: var(--cat-admin);
+  --color-cat-admin-soft: var(--cat-admin-soft);
 }
 
 html {
@@ -317,82 +343,57 @@ html {
 }
 
 body {
-  position: relative;
-  isolation: isolate;
   background: var(--bg);
-  /* A soft wash keeps the decorative mountain backdrop below the content. */
-  background-image:
-    radial-gradient(
-      70rem 32rem at 50% -14rem,
-      var(--frost-bloom) 0%,
-      transparent 70%
-    ),
-    linear-gradient(180deg, var(--frost-top) 0%, transparent 30rem);
-  background-attachment: fixed;
-  background-repeat: no-repeat;
   color: var(--ink);
   font-family: var(--font-sans);
-  /* 15px base: the design's body size, comfortable for Chinese and Latin. */
+  /* 15px base: comfortable for Chinese and Latin. */
   font-size: 15px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
 
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background: url("/images/alpine-background.svg") center 4rem / max(100%, 90rem) auto no-repeat;
-  opacity: var(--landscape-opacity);
-}
-
-.home-hero {
+/*
+ * Home banner. A deep blue gradient with a quiet mountain silhouette along
+ * the bottom edge; the artwork is inline SVG drawn in currentColor, so it
+ * follows the theme with no extra asset.
+ */
+.hero-banner {
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 1.75rem;
-  background: linear-gradient(115deg, var(--surface) 15%, var(--surface-3) 100%);
-  box-shadow: inset 0 1px 0 var(--frost-edge), var(--shadow);
+  border-radius: 1.5rem;
+  background: linear-gradient(120deg, var(--hero-from) 0%, var(--hero-to) 100%);
+  color: var(--hero-ink);
+  box-shadow: var(--shadow);
 }
 
-.home-hero::before {
-  content: "";
+.hero-banner > .hero-art {
   position: absolute;
-  inset: 0;
+  inset: auto 0 0 0;
   z-index: -1;
+  width: 100%;
+  height: 70%;
+  color: #ffffff;
   pointer-events: none;
-  background: url("/images/alpine-background.svg") right 35% / 52rem auto no-repeat;
-  opacity: var(--hero-landscape-opacity);
-}
-
-.home-action {
-  min-height: 15rem;
 }
 
 @layer base {
-  /* Headings are tight and heavy; the design leans on weight, not size.
-     Sora's wide apertures need slightly more negative tracking than Manrope
-     to read as one word at display sizes. */
+  /* Headings are tight and heavy; the design leans on weight, not size. */
   h1,
   h2,
   h3,
   h4 {
     font-family: var(--font-display);
-    font-weight: 800;
-    letter-spacing: -0.025em;
-    line-height: 1.15;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
   }
 
-  /* Chinese has no 800 in Noto Sans SC below 900, and -0.025em tracking
-     collapses CJK glyphs into each other. Undo both when the page is zh. */
+  /* Negative tracking collapses CJK glyphs into each other. */
   :lang(zh) h1,
   :lang(zh) h2,
   :lang(zh) h3,
   :lang(zh) h4 {
-    font-weight: 700;
     letter-spacing: 0;
   }
 
@@ -429,7 +430,7 @@ body::before {
 @keyframes fade-up {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -479,11 +480,11 @@ body::before {
 /* Content entrance. `.animate-fade-up` on a container plus `.stagger` on it
    walks the children in one after another. */
 .animate-fade-up {
-  animation: fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: fade-up 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .animate-fade-in {
-  animation: fade-in 0.3s ease both;
+  animation: fade-in 0.25s ease both;
 }
 
 .animate-pop {
@@ -491,16 +492,12 @@ body::before {
 }
 
 .stagger > * {
-  animation: fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: fade-up 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
-.stagger > *:nth-child(1) { animation-delay: 0.02s; }
-.stagger > *:nth-child(2) { animation-delay: 0.07s; }
-.stagger > *:nth-child(3) { animation-delay: 0.12s; }
-.stagger > *:nth-child(4) { animation-delay: 0.17s; }
-.stagger > *:nth-child(5) { animation-delay: 0.22s; }
-.stagger > *:nth-child(6) { animation-delay: 0.27s; }
-.stagger > *:nth-child(7) { animation-delay: 0.32s; }
-.stagger > *:nth-child(8) { animation-delay: 0.37s; }
+.stagger > *:nth-child(2) { animation-delay: 0.03s; }
+.stagger > *:nth-child(3) { animation-delay: 0.06s; }
+.stagger > *:nth-child(4) { animation-delay: 0.09s; }
+.stagger > *:nth-child(n + 5) { animation-delay: 0.12s; }
 
 /* Attention cue for the hold countdown when it gets short. */
 .animate-pulse-ring {
@@ -528,6 +525,7 @@ body::before {
 }
 .lift:hover {
   transform: translateY(-2px);
+  box-shadow: var(--shadow);
 }
 .lift:active {
   transform: translateY(0);
@@ -551,12 +549,20 @@ body::before {
   cursor: crosshair;
 }
 
-@media print {
-  body::before,
-  .home-hero::before {
-    display: none;
-  }
+/* Horizontal tab strips scroll on phones without a visible scrollbar. */
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
 
+/* Native dialogs: dimmed backdrop, centred panel. */
+dialog.app-dialog::backdrop {
+  background: rgba(8, 15, 28, 0.5);
+}
+
+@media print {
   .no-print {
     display: none !important;
   }
@@ -588,16 +594,7 @@ body::before {
   font-family: var(--font-display);
 }
 
-/*
- * Frosted edge.
- *
- * A one-pixel inset highlight along the top of a raised surface. Applied via a
- * class rather than to every card selector so the header and other raised
- * chrome can opt in, and so a card that deliberately sits flat can leave it
- * off.
- */
+/* Raised surfaces. Kept as a class so existing callers keep their shadow. */
 .frosted {
-  box-shadow:
-    inset 0 1px 0 0 var(--frost-edge),
-    var(--shadow);
+  box-shadow: var(--shadow-sm);
 }

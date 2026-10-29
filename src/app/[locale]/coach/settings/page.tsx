@@ -5,6 +5,8 @@ import { CoachSettingsForm } from "@/components/coach/coach-settings-form";
 import { toLocale } from "@/i18n/routing";
 import { parseCustomSkills } from "@/lib/custom-skills";
 import { VideoAnalysisSettings } from "@/components/coach/video-analysis-settings";
+import { PageHeader } from "@/components/ui/page-header";
+import { Settings2 } from "lucide-react";
 
 export default async function CoachSettingsPage({
   params,
@@ -27,7 +29,14 @@ export default async function CoachSettingsPage({
   }
 
   return (
-    <div className="space-y-5"><CoachSettingsForm
+    <div className="space-y-5">
+    <PageHeader
+      icon={<Settings2 aria-hidden />}
+      tone="admin"
+      title={locale === "zh" ? "设置" : "Settings"}
+      description={locale === "zh" ? "个人资料、教学范围、价格、收款方式和取消政策。" : "Profile, teaching scope, prices, payment methods and cancellation policy."}
+    />
+    <CoachSettingsForm
       locale={toLocale(locale)}
       coachId={user.id}
       initial={{

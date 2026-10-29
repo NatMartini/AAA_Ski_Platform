@@ -163,8 +163,11 @@ export function citesEstimated(teaching: Teaching, factIds: string[]): boolean {
 export const referenceStatusSchema = z.enum(["reviewed_platform_reference", "auto_matched_unreviewed", "not_available"]);
 export type ReferenceStatus = z.infer<typeof referenceStatusSchema>;
 
+// v1 media draw a raw reference clip, often turning the other way, over turns cut apex to apex.
+// v2 (FreeSki's fix) cuts turns at edge changes and draws its synthesized same-direction standard.
+// The site parses both and shows only v2; see isCurrentMedia.
 export const keyframesSchema = z.object({
-  schema_version: z.literal("freeski_keyframes.v1"), turn_id: turnId,
+  schema_version: z.enum(["freeski_keyframes.v1", "freeski_keyframes.v2"]), turn_id: turnId,
   status: z.enum(["pending", "ready", "unavailable"]),
   items: z.array(z.object({ keyframe_id: keyframeId, phase, time_sec: seconds,
     reference_time_sec: seconds.nullable(),
@@ -183,7 +186,7 @@ const explainerSegment = z.object({
 }).refine(segment => segment.end_sec > segment.start_sec, "Empty explainer segment");
 
 export const explainerSchema = z.object({
-  schema_version: z.literal("freeski_explainer.v1"), status: addonStatusSchema, experimental: z.literal(true).optional(),
+  schema_version: z.enum(["freeski_explainer.v1", "freeski_explainer.v2"]), status: addonStatusSchema, experimental: z.literal(true).optional(),
   width: z.number().int().min(1).max(4096).optional(), height: z.number().int().min(1).max(4096).optional(),
   fps: z.number().finite().positive().max(120).optional(), duration_sec: seconds.max(600).optional(),
   bytes: z.number().int().positive().optional(),
@@ -194,6 +197,11 @@ export const explainerSchema = z.object({
   explainer.duration_sec !== undefined && explainer.segments !== undefined &&
   explainer.segments.every(segment => segment.end_sec <= explainer.duration_sec! + .05), "Incomplete ready explainer");
 export type Explainer = z.infer<typeof explainerSchema>;
+
+/** Only media drawn the v2 way (edge-change turns, synthesized same-direction standard) are shown. */
+export function isCurrentMedia(media: { schema_version: string }): boolean {
+  return media.schema_version.endsWith(".v2");
+}
 
 export const KEYFRAME_ID = /^kf_[a-f0-9]{32}$/;
 export const MAX_KEYFRAME_BYTES = 400 * 1024;

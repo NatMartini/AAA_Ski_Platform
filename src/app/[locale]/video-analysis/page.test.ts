@@ -41,7 +41,8 @@ describe("FreeSki analysis landing page", () => {
     expect(html).toContain(locale === "zh" ? "来自 Kevin 的个人项目" : "From Kevin’s personal project");
     expect(html).toContain('data-testid="analysis-remaining">3<');
     expect(html).toContain('href="/video-analysis?lesson=COURSE#workspace"');
-    expect(html).toContain(locale === "zh" ? "视频分析工作台" : "Video analysis workspace");
+    expect(html).toContain(locale === "zh" ? "视频库" : "Video library");
+    expect(html).toContain(locale === "zh" ? "显示每个视频的上传、提交和完成时间" : "when each video was uploaded, submitted and finished");
     expect(html).toContain(locale === "zh" ? "2 小时课 · 1v3" : "2-hour lesson · 1-to-3");
     expect(html).not.toContain("× 3");
     expect(mocks.overview).toHaveBeenCalledWith(user);

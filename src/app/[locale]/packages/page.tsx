@@ -13,7 +13,8 @@ import { lessonTypeLabel } from "@/lib/lesson-types";
 import { formatMoneyShort } from "@/lib/pricing";
 import { formatTorontoDate, toDateKey } from "@/lib/time";
 import { toLocale } from "@/i18n/routing";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Package } from "lucide-react";
+import { PageHeader } from "@/components/ui/page-header";
 
 export default async function PackagesPage({
   params,
@@ -45,8 +46,12 @@ export default async function PackagesPage({
   const now = new Date();
 
   return (
-    <div className="stagger space-y-6">
-      <h1 className="text-3xl">{zh ? "课时包" : "Lesson packages"}</h1>
+    <div className="space-y-6">
+      <PageHeader
+        icon={<Package aria-hidden />}
+        title={zh ? "课时包" : "Lesson packages"}
+        description={zh ? "早鸟课时包，以及你已经买过的课时包。" : "Early-bird packages and the ones you have bought."}
+      />
 
       {sale.offers.length === 0 ? (
         <Card>
