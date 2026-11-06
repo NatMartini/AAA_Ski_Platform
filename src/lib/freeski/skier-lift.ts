@@ -1,6 +1,6 @@
 import { bodyHeight, type DecodedPose } from "./report-v2";
 import { skiMark } from "./skier-rig";
-import { cameraAxes, motionPointsAt, phaseAt, smoothedFootVectors, standardHeight, type FittedView, type StandardMotion, type TurnTiming } from "./standard-motion";
+import { cameraAxes, phaseAt, smoothedFootVectors, standardHeight, turnPointsAt, type FittedView, type StandardMotion, type TurnTiming } from "./standard-motion";
 
 /**
  * A filmed skier lifted out of the picture, so the same 3D person can stand in for them, for display only.
@@ -95,7 +95,7 @@ export function liftUserPose(user: DecodedPose, motion: StandardMotion, view: Fi
   if (samples.length < 2) return null;
   const times = samples.map(i => user.times[i]);
   const phases = times.map(time => phaseAt(time, timing, motion));
-  const priors = phases.map(phase => motionPointsAt(motion, phase, view.mirrored));
+  const priors = phases.map(phase => turnPointsAt(motion, phase, view.mirrored));
   const byHeight = standardHeight(motion, phases, view.mirrored, axes) / height;
   const ratios = SCALE_BONES.flatMap(([a, b]) => {
     const i = user.jointNames.indexOf(a), j = user.jointNames.indexOf(b), ka = motion.index[a] * 3, kb = motion.index[b] * 3;

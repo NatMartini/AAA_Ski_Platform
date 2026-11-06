@@ -7,7 +7,7 @@ import { bodyHeight, decodeCompactPose, jointCenter, poseAt, poseFrameAt, refere
 import type { ReferenceStatus } from "@/lib/freeski/scorecard";
 import { retryWhileStarting } from "@/lib/freeski/startup-retry";
 import { metricInsight } from "@/lib/freeski/metric-insight";
-import { bumpField, cameraAxes, decodeStandardMotion, fitView, motionMarks, motionPointsAt, phaseAt, skiLine, smoothedFootVectors, snowLevelAt, standardPoseForTurn, viewName,
+import { bumpField, cameraAxes, decodeStandardMotion, fitView, motionMarks, motionPointsAt, phaseAt, skiLine, smoothedFootVectors, snowLevelAt, standardPoseForTurn, turnPoint, viewName,
   type FittedView, type StandardMotion, type StandardMotionId, type StandardPose, type TurnTiming } from "@/lib/freeski/standard-motion";
 import { liftedAt, liftedMarks, liftUserPose, type LiftedPose } from "@/lib/freeski/skier-lift";
 import { Link } from "@/i18n/navigation";
@@ -208,24 +208,37 @@ function drawHipTrail(context: CanvasRenderingContext2D, pose: DecodedPose, from
   context.setLineDash([]);
 }
 
+/** Where object-contain puts a picture of this resolution in a box, in the box's pixels. */
+function containBox(resolution: readonly [number, number] | null | undefined, width: number, height: number) {
+  const [w, h] = resolution ?? [width, height];
+  const scale = Math.min(width / w, height / h);
+  return { left: (width - w * scale) / 2, top: (height - h * scale) / 2, width: w * scale, height: h * scale, scale };
+}
+type Picture = ReturnType<typeof containBox>;
+
 /**
  * Pose pixels onto a canvas laid over an object-contain video of the same aspect ratio, through the
  * follow camera: the video is scaled by `camera.zoom` and shifted so (camera.x, camera.y), a point
- * in unzoomed canvas fractions, sits at the centre.
+ * in fractions of the picture, sits at the centre.
  */
 function videoMapper(canvas: HTMLCanvasElement, pose: DecodedPose, camera: Camera): Mapper {
-  const [width, height] = pose.resolution ?? [canvas.width, canvas.height];
-  const scale = Math.min(canvas.width / width, canvas.height / height);
-  const left = (canvas.width - width * scale) / 2, top = (canvas.height - height * scale) / 2;
-  const { tx, ty } = cameraShift(camera, canvas.width, canvas.height);
-  return (point) => [tx + (left + point[0] * scale) * camera.zoom, ty + (top + point[1] * scale) * camera.zoom];
+  const picture = containBox(pose.resolution, canvas.width, canvas.height);
+  const { tx, ty } = cameraShift(camera, canvas.width, canvas.height, picture);
+  return (point) => [tx + (picture.left + point[0] * picture.scale) * camera.zoom, ty + (picture.top + point[1] * picture.scale) * camera.zoom];
 }
 
-/** Translation that centres the camera point, clamped so the zoomed video always covers the frame. */
-function cameraShift(camera: Camera, width: number, height: number) {
-  const tx = Math.min(0, Math.max(width - width * camera.zoom, width / 2 - camera.x * width * camera.zoom));
-  const ty = Math.min(0, Math.max(height - height * camera.zoom, height / 2 - camera.y * height * camera.zoom));
-  return { tx, ty };
+/**
+ * Translation that puts the camera point at the centre, clamped to the picture rather than the video
+ * element around it: a picture that covers the frame keeps covering it, and one narrower or shorter than
+ * the frame (a phone held upright) stays wholly in view instead of sliding its black bars over the frame.
+ */
+function cameraShift(camera: Camera, width: number, height: number, picture: Picture) {
+  const axis = (frame: number, offset: number, extent: number, at: number) => {
+    const want = frame / 2 - (offset + at * extent) * camera.zoom;
+    const near = -offset * camera.zoom, far = frame - (offset + extent) * camera.zoom;
+    return extent * camera.zoom >= frame ? Math.min(near, Math.max(far, want)) : Math.max(near, Math.min(far, want));
+  };
+  return { tx: axis(width, picture.left, picture.width, camera.x), ty: axis(height, picture.top, picture.height, camera.y) };
 }
 
 /** Hips pinned at a place on the stage at a fixed body size, so only posture changes are visible. */
@@ -251,15 +264,18 @@ function subjectBox(sample: PoseSample): { cx: number; cy: number; height: numbe
   return Number.isFinite(top) && bottom > top ? { cx: (left + right) / 2, cy: (top + bottom) / 2, height: bottom - top } : null;
 }
 
-/** One zoom for the whole turn, from the skier's median height, so the picture never pumps. */
-function followZoom(pose: DecodedPose, start: number, end: number): number {
+/**
+ * One zoom for the whole turn, from the skier's median height as a share of the picture's, so the picture
+ * never pumps. The share is kept to zoom an upright phone picture further, as long as the skier still fits.
+ */
+function followZoom(pose: DecodedPose, start: number, end: number): { zoomTarget: number; skier: number } {
   const heights = pose.times.flatMap((time, i) => {
     if (time < start || time > end) return [];
     const box = subjectBox({ frame: pose.frames[i], observed: pose.frames[i].map((p, k) => pose.observed[i][k] && p[2] >= .3) });
     return box ? [box.height / (pose.resolution?.[1] ?? 1)] : [];
   }).sort((a, b) => a - b);
   const median = heights.length ? heights[Math.floor(heights.length / 2)] : 0;
-  return median > 0 ? Math.max(1, Math.min(3, 0.6 / median)) : 1;
+  return { zoomTarget: median > 0 ? Math.max(1, Math.min(3, 0.6 / median)) : 1, skier: median };
 }
 
 type Camera = { x: number; y: number; zoom: number };
@@ -311,7 +327,7 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
   const clock = useRef({ time: 0, wall: 0, rate: 0 });
   // The media time of the frame on screen, and the smoothed follow camera.
   const presented = useRef(0);
-  const camera = useRef<Camera & { zoomTarget: number; snap: boolean }>({ x: .5, y: .5, zoom: 1, zoomTarget: 1, snap: true });
+  const camera = useRef<Camera & { zoomTarget: number; skier: number; snap: boolean }>({ x: .5, y: .5, zoom: 1, zoomTarget: 1, skier: 0, snap: true });
   // The 3D stage needs this turn's poses in 3D. A standard FreeSki supplied as a skeleton only has no 3D to show, so that stays flat.
   const wantsScene = Boolean(data?.lift && (data.motion || (!data.standard && !data.reviewed)));
   const stageMode = wantsScene ? sceneMode : "flat";
@@ -330,9 +346,11 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
       ]);
       if (controller.signal.aborted) return;
       const userPose = smoothPose(decodeCompactPose(user));
-      const timing = { start: manifest.startMs / 1000, end: manifest.endMs / 1000, apex: manifest.apexMs === undefined ? null : manifest.apexMs / 1000, role: manifest.role ?? metaRole };
+      const bounds = { start: manifest.startMs / 1000, end: manifest.endMs / 1000, apex: manifest.apexMs === undefined ? null : manifest.apexMs / 1000, role: manifest.role ?? metaRole };
       const motion = rawMotion ? decodeStandardMotion(rawMotion) : null;
-      const view = motion ? fitView(motion, userPose, timing) : null;
+      const view = motion ? fitView(motion, userPose, bounds) : null;
+      // FreeSki's window may run from one turn's deepest lean to the next; the fit found where the student changed edges.
+      const timing = view?.edge !== null && view?.edge !== undefined ? { ...bounds, edge: view.edge } : bounds;
       const generated = motionId && motion && view ? standardPoseForTurn(motion, userPose, timing, view) : null;
       const lift = motion && view ? liftUserPose(userPose, motion, view, timing) : null;
       // Without a generated standard, whatever FreeSki offers for this turn.
@@ -355,7 +373,7 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
   const start = data ? data.manifest.startMs / 1000 : 0, end = data ? data.manifest.endMs / 1000 : 0;
   const hasVideo = Boolean(data?.manifest.background) && !videoError;
   useEffect(() => {
-    if (data) camera.current = { ...camera.current, zoomTarget: followZoom(data.user, start, end), snap: true };
+    if (data) camera.current = { ...camera.current, ...followZoom(data.user, start, end), snap: true };
   }, [data, start, end]);
 
   const now = useCallback((wall = performance.now()) => {
@@ -410,12 +428,17 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
     const userRibbons: Ribbon[] = liftedMarks(lift, time, student.snowAt).map(points => ({ points, alpha: .75 }));
     let standardPoints: Float64Array | null = null, snowAt: [number, number] = [0, 0], standardRibbons: Ribbon[] = [];
     if (motion) {
-      const phase = phaseAt(time, timing, motion);
-      standardPoints = motionPointsAt(motion, phase, view.mirrored);
+      const at = turnPoint(phaseAt(time, timing, motion), view.mirrored);
+      standardPoints = motionPointsAt(motion, at.phase, at.mirrored);
       const hips = hipsOf(standardPoints, motion.index);
-      snowAt = [hips[0], hips[1]];
+      // Before the edge change the standard is still in the turn before, whose slope coordinates end where this turn's begin.
+      const shift = at.mirrored === view.mirrored ? [0, 0] : (() => {
+        const end = hipsOf(motionPointsAt(motion, 1, at.mirrored), motion.index), next = hipsOf(motionPointsAt(motion, 0, view.mirrored), motion.index);
+        return [next[0] - end[0], next[1] - end[1]];
+      })();
+      snowAt = [hips[0] + shift[0], hips[1] + shift[1]];
       for (let k = 0; k < motion.pointCount; k++) { standardPoints[k * 3] -= hips[0]; standardPoints[k * 3 + 1] -= hips[1]; }
-      standardRibbons = phase > 0 ? motionMarks(motion, phase, view.mirrored).map(mark => ({ points: mark.map(([x, y, half]) => [x - hips[0], y - hips[1], half]), alpha: .75 })) : [];
+      standardRibbons = at.phase > 0 ? motionMarks(motion, at.phase, at.mirrored).map(mark => ({ points: mark.map(([x, y, half]) => [x - hips[0], y - hips[1], half]), alpha: .75 })) : [];
     }
     const together = settings.current.layout === "overlay" || !standardPoints;
     const shots: Shot[] = [];
@@ -433,7 +456,8 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
       world.standard.setAlpha(1);
       const hipZ = hipsOf(standardPoints, motion.index)[2], bumps = bumpField(motion);
       shots.push({ ...base, rect: { x: 0, y: 0, width: .5, height: 1 }, focus: aimAt(userHips[2]), snowAt: student.snowAt, figures: [world.user], groomed: !bumps, bumps, ribbons: userRibbons });
-      shots.push({ ...base, rect: { x: .5, y: 0, width: .5, height: 1 }, focus: aimAt(hipZ), snowAt, figures: [world.standard], groomed: !bumps, bumps, snowLevel: snowLevelAt(motion, phaseAt(time, timing, motion)), ribbons: standardRibbons });
+      shots.push({ ...base, rect: { x: .5, y: 0, width: .5, height: 1 }, focus: aimAt(hipZ), snowAt, figures: [world.standard], groomed: !bumps, bumps,
+        snowLevel: snowLevelAt(motion, turnPoint(phaseAt(time, timing, motion), view.mirrored).phase), ribbons: standardRibbons });
     }
     world.stage.render(shots);
 
@@ -558,8 +582,12 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
   // Follow camera: centres the skier's (smoothed) box at one zoom for the turn; eases instead of jumping.
   const moveCamera = useCallback((time: number, dt: number) => {
     const element = videoRef.current, canvas = overlayRef.current, view = camera.current;
-    if (!element || !canvas || !data) return;
-    const zoom = settings.current.follow ? view.zoomTarget : 1;
+    if (!element || !canvas || !data || !canvas.clientWidth || !canvas.clientHeight) return;
+    const picture = containBox(data.user.resolution, canvas.clientWidth, canvas.clientHeight);
+    // A picture narrower than the frame (a phone held upright) is zoomed until it fills the frame, as long as the skier still fits.
+    const cover = Math.min(4, Math.max(canvas.clientWidth / picture.width, canvas.clientHeight / picture.height));
+    const fits = view.skier > 0 ? .85 * canvas.clientHeight / (view.skier * picture.height) : 1;
+    const zoom = settings.current.follow ? Math.max(view.zoomTarget, Math.min(cover, fits)) : 1;
     const box = subjectBox(poseAt(data.user, time));
     const [width, height] = data.user.resolution ?? [1, 1];
     const target = settings.current.follow && box ? { x: box.cx / width, y: box.cy / height } : { x: .5, y: .5 };
@@ -568,7 +596,7 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
     view.y += (target.y - view.y) * ease;
     view.zoom += (zoom - view.zoom) * (view.snap ? 1 : 1 - Math.exp(-dt / 0.25));
     view.snap = false;
-    const { tx, ty } = cameraShift(view, canvas.clientWidth, canvas.clientHeight);
+    const { tx, ty } = cameraShift(view, canvas.clientWidth, canvas.clientHeight, picture);
     element.style.transform = `translate(${tx}px, ${ty}px) scale(${view.zoom})`;
   }, [data]);
 
@@ -686,6 +714,9 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
   const role = manifest.role ?? meta?.role;
   const apex = manifest.apexMs !== undefined && manifest.apexMs > manifest.startMs && manifest.apexMs < manifest.endMs
     ? (manifest.apexMs - manifest.startMs) / (manifest.endMs - manifest.startMs) : null;
+  // Where the student changed edges, when FreeSki's window does not start there (it can run lean to lean).
+  const edge = data.timing.edge !== null && data.timing.edge !== undefined && data.timing.edge > start && data.timing.edge < end
+    ? (data.timing.edge - start) / (end - start) : null;
   const generated = data.standard && isGenerated(data.standard) ? data.standard : null;
   const viewLabel = generated && { front: zh ? "正面" : "the front", rear: zh ? "背面" : "behind", side: zh ? "侧面" : "the side" }[viewName(generated.camera.azimuth)];
   const comparisonLabel = generated && data.motion
@@ -737,14 +768,20 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
         onKeyDown={(event) => { if (event.key === "ArrowLeft") { event.preventDefault(); step(-1); } if (event.key === "ArrowRight") { event.preventDefault(); step(1); } }}>
         <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-border-strong/70" />
         <div ref={fillRef} className="absolute left-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-accent" style={{ width: "0%" }} />
-        {apex !== null && <div className="absolute top-1/2 h-3 w-0.5 -translate-y-1/2 bg-ink-3" style={{ left: `${apex * 100}%` }} />}
+        {apex !== null && edge === null && <div className="absolute top-1/2 h-3 w-0.5 -translate-y-1/2 bg-ink-3" style={{ left: `${apex * 100}%` }} />}
+        {edge !== null && <div className="absolute top-1/2 h-3 w-0.5 -translate-y-1/2 bg-ink-3" style={{ left: `${edge * 100}%` }} />}
         <div ref={headRef} className="absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface bg-accent shadow-[var(--shadow-sm)]" style={{ left: "0%" }} />
       </div>
-      <div className="flex justify-between text-[11px] font-medium text-ink-3">
-        <span>{zh ? "换刃（入弯）" : "Edge change in"}</span>
-        {apex !== null && <span>{zh ? "弯顶" : "Apex"}</span>}
-        <span>{zh ? "换刃（出弯）" : "Edge change out"}</span>
-      </div>
+      {edge !== null ? <div className="relative h-4 text-[11px] font-medium text-ink-3">
+          <span className="absolute left-0">{zh ? "上一个弯" : "Previous turn"}</span>
+          <span className="absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${Math.min(80, Math.max(20, edge * 100))}%` }}>{zh ? "换刃" : "Edge change"}</span>
+          <span className="absolute right-0">{zh ? "这个弯" : "This turn"}</span>
+        </div>
+        : <div className="flex justify-between text-[11px] font-medium text-ink-3">
+          <span>{zh ? "换刃（入弯）" : "Edge change in"}</span>
+          {apex !== null && <span>{zh ? "弯顶" : "Apex"}</span>}
+          <span>{zh ? "换刃（出弯）" : "Edge change out"}</span>
+        </div>}
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={toggle} aria-label={playing ? (zh ? "暂停" : "Pause") : (zh ? "播放" : "Play")}
           className="press flex size-10 items-center justify-center rounded-full bg-accent text-accent-foreground">

@@ -211,7 +211,7 @@ export function CoachingReportView({ base, zh, report, card, currentLevel = null
     {player && <section id={ids.player} className="scroll-mt-28 space-y-3" aria-label={zh ? "看问题：逐弯动态对比" : "Watch the turn: turn-by-turn comparison"}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold">{zh ? "看问题" : "Watch the turn"}{shown ? ` · ${numberedTurn(shown, zh)}` : ""}</h3>
-        <p className="text-xs text-ink-3">{zh ? "每个弯从换刃到下一次换刃，宽度按用时" : "Each turn runs edge change to edge change; widths follow its duration"}</p>
+        <p className="text-xs text-ink-3">{zh ? "按 FreeSki 的分段，宽度按用时" : "As FreeSki split the run; widths follow each turn's duration"}</p>
       </div>
       <TurnStrip turns={report.turns} card={card} zh={zh} selected={shown} focus={focus.turnId} onSelect={setPicked} />
       {focused && <p className="flex flex-wrap items-center gap-2 text-xs text-ink-2">

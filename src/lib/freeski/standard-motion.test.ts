@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { bodyHeight, jointCenter, poseAt, type DecodedPose } from "./report-v2";
 import { bumpField, cameraAxes, decodeStandardMotion, fitView, motionBones, motionMarks, motionPointsAt, phaseAt, projectPoint, skiLine, SKI_PER_FOOT, smoothedFootVectors, snowLevelAt,
-  standardMotionId, standardPoseForTurn, STANDARD_MOTION_GROUPS, STANDARD_MOTION_IDS, viewName, type StandardMotion, type StandardMotionId, type ViewCamera } from "./standard-motion";
+  standardMotionId, standardPoseForTurn, STANDARD_MOTION_GROUPS, STANDARD_MOTION_IDS, turnPoint, viewName, type StandardMotion, type StandardMotionId, type ViewCamera } from "./standard-motion";
 
 const folder = join(process.cwd(), "public", "standard-motions");
 const raw = (id: string) => JSON.parse(readFileSync(join(folder, `${id}.json`), "utf8"));
@@ -220,6 +220,31 @@ describe("matching the student's camera", () => {
     expect(view!.mirrored).toBe(mirrored);
     expect(near(view!.camera.azimuth, azimuth)).toBeLessThan(25);
     expect(view!.error).toBeLessThan(.01);
+  });
+
+  it.each([["short_turn-l2", .3, false], ["short_turn-l2", .5, true], ["demonstration_parallel-l3", .4, false]] as const)(
+    "finds %s's edge change at %s of a window that runs from one turn's deepest lean to the next", (id, share, mirrored) => {
+      const motion = load(id), duration = motion.motion.durationSec, camera = { azimuth: 190, elevation: 8, slope: motion.motion.pitchDeg };
+      // Filmed as two runs of the standard joined at the edge change: the end of the turn before, then this turn.
+      const before = filmed(motion, camera, !mirrored, 10 - (1 - share) * duration, duration);
+      const after = filmed(motion, camera, mirrored, 10 + share * duration, duration);
+      const edge = 10 + share * duration, start = 10, end = 10 + duration;
+      const keep = (pose: DecodedPose, from: number, to: number) => pose.times.flatMap((time, i) => time >= from && time < to ? [i] : []);
+      const a = keep(before, start, edge), b = keep(after, edge, end + .001);
+      const user: DecodedPose = { ...after, times: [...a.map(i => before.times[i]), ...b.map(i => after.times[i])],
+        frames: [...a.map(i => before.frames[i]), ...b.map(i => after.frames[i])], observed: [...a.map(i => before.observed[i]), ...b.map(i => after.observed[i])] };
+      const view = fitView(motion, user, { start, end, role: "middle" })!;
+      expect(view.mirrored).toBe(mirrored);
+      expect(Math.abs((view.edge! - edge) / duration)).toBeLessThan(.08);
+      // Before the edge change the standard is in the turn before, the other way round.
+      expect(turnPoint(phaseAt(start + .02, { start, end, edge: view.edge }, motion), view.mirrored).mirrored).toBe(!mirrored);
+      expect(turnPoint(phaseAt(end - .02, { start, end, edge: view.edge }, motion), view.mirrored).mirrored).toBe(mirrored);
+    });
+
+  it("keeps a window that does run edge change to edge change", () => {
+    const motion = load("short_turn-l2");
+    const user = filmed(motion, { azimuth: 190, elevation: 8, slope: motion.motion.pitchDeg }, true);
+    expect(fitView(motion, user, { start: 10, end: 10 + motion.motion.durationSec, role: "middle" })!.edge ?? null).toBeNull();
   });
 
   it("shows the standard at the student's hips and height, on the student's clock", () => {

@@ -147,18 +147,29 @@ export function projectPoint(points: ArrayLike<number>, k: number, axes: CameraA
   return [x * axes.right[0] + y * axes.right[1] + z * axes.right[2], -(x * axes.up[0] + y * axes.up[1] + z * axes.up[2])];
 }
 
-export type TurnTiming = { start: number; end: number; apex?: number | null; role?: "start" | "middle" | "end" };
+export type TurnTiming = { start: number; end: number; apex?: number | null; role?: "start" | "middle" | "end";
+  /**
+   * When the student changed edges into this turn, if not at the window's start: FreeSki's windows can run
+   * from one turn's deepest lean to the next, with the edge change inside. Found by `fitView`.
+   */
+  edge?: number | null };
+
+/** A moment of the standard: a phase of one turn, and whether that turn is the mirrored (left) one. */
+export type TurnPoint = { phase: number; mirrored: boolean };
 
 /**
- * Where in the standard's turn a moment of the student's turn falls. A whole turn maps edge change to
- * edge change, apex to apex. A start or end part has one real edge change, so it runs at the standard's
- * own pace from that end.
+ * Where in the standard a moment of the student's turn falls, as a phase of this turn: from 0 at its edge
+ * change to 1 at the next, and below 0 while the student is still finishing the turn before. A whole turn
+ * maps edge change to edge change, apex to apex; with an `edge` inside the window it runs one window per
+ * turn from there. A start or end part has one real edge change, so it runs at the standard's own pace
+ * from that end.
  */
 export function phaseAt(time: number, timing: TurnTiming, motion: Pick<StandardMotion, "motion">): number {
-  const { start, end, apex, role } = timing;
+  const { start, end, apex, role, edge } = timing;
   const pace = motion.motion.durationSec;
   if (role === "start") return Math.max(0, Math.min(1, 1 - (end - time) / pace));
   if (role === "end") return Math.max(0, Math.min(1, (time - start) / pace));
+  if (edge !== null && edge !== undefined && edge !== start) return Math.max(-1, Math.min(1, (time - edge) / Math.max(1e-6, end - start)));
   const middle = motion.motion.apexPhase;
   if (apex !== null && apex !== undefined && apex > start && apex < end) {
     return time <= apex ? Math.max(0, (time - start) / (apex - start) * middle) : Math.min(1, middle + (time - apex) / (end - apex) * (1 - middle));
@@ -166,15 +177,26 @@ export function phaseAt(time: number, timing: TurnTiming, motion: Pick<StandardM
   return Math.max(0, Math.min(1, (time - start) / Math.max(1e-6, end - start)));
 }
 
+/** The standard at a phase from `phaseAt`: before this turn's edge change it is the turn before, the other way round. */
+export const turnPoint = (phase: number, mirrored: boolean): TurnPoint => phase < 0 ? { phase: phase + 1, mirrored: !mirrored } : { phase, mirrored };
+
+/** All points at a phase from `phaseAt`, for a turn that is `mirrored`. */
+export const turnPointsAt = (motion: StandardMotion, phase: number, mirrored: boolean) => {
+  const at = turnPoint(phase, mirrored);
+  return motionPointsAt(motion, at.phase, at.mirrored);
+};
+
 const FIT_JOINTS = ["left_shoulder", "right_shoulder", "left_hip", "right_hip", "left_knee", "right_knee", "left_ankle", "right_ankle", "left_wrist", "right_wrist"];
 const FIT_SAMPLES = 16;
 
-export type FittedView = { camera: ViewCamera; mirrored: boolean; error: number };
+export type FittedView = { camera: ViewCamera; mirrored: boolean; error: number;
+  /** The student's edge change into this turn when it is inside the window; `mirrored` is the turn after it. */
+  edge?: number | null };
 
-/** Median shoulder-to-ankle height in the picture, in metres, under this camera. */
+/** Median shoulder-to-ankle height in the picture, in metres, under this camera, over phases from `phaseAt`. */
 export function standardHeight(motion: StandardMotion, phases: number[], mirrored: boolean, axes: CameraAxes) {
   const heights = phases.map(phase => {
-    const points = motionPointsAt(motion, phase, mirrored);
+    const points = turnPointsAt(motion, phase, mirrored);
     const a = projectPoint(points, motion.index.left_shoulder, axes), b = projectPoint(points, motion.index.right_shoulder, axes);
     const c = projectPoint(points, motion.index.left_ankle, axes), d = projectPoint(points, motion.index.right_ankle, axes);
     return Math.hypot((a[0] + b[0] - c[0] - d[0]) / 2, (a[1] + b[1] - c[1] - d[1]) / 2);
@@ -182,29 +204,35 @@ export function standardHeight(motion: StandardMotion, phases: number[], mirrore
   return heights[Math.floor(heights.length / 2)] || 1;
 }
 
+// Where a whole turn's edge change is tried inside its window, in steps of the window; one there has to fit this
+// much better than the window's start to be taken, so a window that does run edge change to edge change stays put.
+const EDGE_STEPS = 10;
+const EDGE_GAIN = .8;
+
 /**
- * The camera and turn direction under which the standard looks most like what was filmed, by trying
- * them: the joint labels tell front from behind, the lean tells the direction.
+ * The camera, turn direction and edge change under which the standard looks most like what was filmed, by
+ * trying them: the joint labels tell front from behind, the lean tells the direction and when the student
+ * passed upright between two turns.
  */
 export function fitView(motion: StandardMotion, user: DecodedPose, timing: TurnTiming): FittedView | null {
   const height = bodyHeight(user);
   if (!height) return null;
-  const times = Array.from({ length: FIT_SAMPLES }, (_, i) => timing.start + (i + .5) / FIT_SAMPLES * (timing.end - timing.start));
+  const span = timing.end - timing.start;
+  const times = Array.from({ length: FIT_SAMPLES }, (_, i) => timing.start + (i + .5) / FIT_SAMPLES * span);
   const joints = FIT_JOINTS.map(name => ({ user: user.jointNames.indexOf(name), standard: motion.index[name] })).filter(j => j.user >= 0);
   const seen = times.flatMap(time => {
     const sample = poseAt(user, time);
     const hip = jointCenter(user, sample, "left_hip", "right_hip");
     if (!hip) return [];
-    return [{ phase: phaseAt(time, timing, motion), offsets: joints.map(j => sample.observed[j.user]
+    return [{ time, offsets: joints.map(j => sample.observed[j.user]
       ? [(sample.frame[j.user][0] - hip[0]) / height, (sample.frame[j.user][1] - hip[1]) / height] : null) }];
   });
   if (seen.length < 4) return null;
-  const phases = seen.map(row => row.phase);
-  const tryView = (camera: ViewCamera, mirrored: boolean) => {
+  const tryView = (camera: ViewCamera, mirrored: boolean, phases: number[]) => {
     const axes = cameraAxes(camera), scale = standardHeight(motion, phases, mirrored, axes);
     let total = 0, count = 0;
-    for (const row of seen) {
-      const points = motionPointsAt(motion, row.phase, mirrored);
+    seen.forEach((row, r) => {
+      const points = turnPointsAt(motion, phases[r], mirrored);
       const a = projectPoint(points, motion.index.left_hip, axes), b = projectPoint(points, motion.index.right_hip, axes);
       const hx = (a[0] + b[0]) / 2, hy = (a[1] + b[1]) / 2;
       joints.forEach((joint, j) => {
@@ -214,20 +242,33 @@ export function fitView(motion: StandardMotion, user: DecodedPose, timing: TurnT
         total += ((p[0] - hx) / scale - offset[0]) ** 2 + ((p[1] - hy) / scale - offset[1]) ** 2;
         count++;
       });
-    }
+    });
     return count ? total / count : Infinity;
   };
-  let best: FittedView | null = null;
-  const consider = (azimuth: number, elevation: number, mirrored: boolean) => {
-    const camera = { azimuth: (azimuth + 360) % 360, elevation, slope: motion.motion.pitchDeg };
-    const error = tryView(camera, mirrored);
-    if (!best || error < best.error) best = { camera, mirrored, error };
+  const search = (edge: number | null): FittedView | null => {
+    const phases = seen.map(row => phaseAt(row.time, { ...timing, edge }, motion));
+    let best: FittedView | null = null;
+    const consider = (azimuth: number, elevation: number, mirrored: boolean) => {
+      const camera = { azimuth: (azimuth + 360) % 360, elevation, slope: motion.motion.pitchDeg };
+      const error = tryView(camera, mirrored, phases);
+      if (!best || error < best.error) best = { camera, mirrored, error, edge };
+    };
+    for (const mirrored of [false, true]) for (let azimuth = 0; azimuth < 360; azimuth += 15) for (const elevation of [4, 14, 26]) consider(azimuth, elevation, mirrored);
+    const coarse = best as FittedView | null;
+    if (!coarse) return null;
+    for (let step = -10; step <= 10; step += 5) for (const change of [-4, 0, 4]) consider(coarse.camera.azimuth + step, Math.max(0, coarse.camera.elevation + change), coarse.mirrored);
+    return best;
   };
-  for (const mirrored of [false, true]) for (let azimuth = 0; azimuth < 360; azimuth += 15) for (const elevation of [4, 14, 26]) consider(azimuth, elevation, mirrored);
-  const coarse = best as FittedView | null;
-  if (!coarse) return null;
-  for (let step = -10; step <= 10; step += 5) for (const change of [-4, 0, 4]) consider(coarse.camera.azimuth + step, Math.max(0, coarse.camera.elevation + change), coarse.mirrored);
-  return best;
+  const whole = search(null);
+  // A start or end part has its one edge change at a known end; only a whole turn's can be inside.
+  if (!whole || timing.role === "start" || timing.role === "end" || !(span > 0)) return whole;
+  const better = (a: FittedView | null, b: FittedView | null) => !b || a && a.error <= b.error ? a : b;
+  let inside: FittedView | null = null;
+  for (let k = 1; k < EDGE_STEPS; k++) inside = better(search(timing.start + k / EDGE_STEPS * span), inside);
+  if (!inside) return whole;
+  let best: FittedView = inside;
+  for (const shift of [-.5, .5]) best = better(search(inside.edge! + shift / EDGE_STEPS * span), best)!;
+  return best.error < whole.error * EDGE_GAIN ? best : whole;
 }
 
 export type ViewName = "front" | "rear" | "side";
@@ -269,7 +310,7 @@ export function standardPoseForTurn(motion: StandardMotion, user: DecodedPose, t
   const depth = (points: Float64Array, k: number) => points[k * 3] * axes.forward[0] + points[k * 3 + 1] * axes.forward[1] + points[k * 3 + 2] * axes.forward[2];
   times.forEach((time, i) => {
     hip = jointCenter(user, poseAt(user, time), "left_hip", "right_hip") ?? hip ?? firstHip;
-    const points = motionPointsAt(motion, phases[i], view.mirrored);
+    const points = turnPointsAt(motion, phases[i], view.mirrored);
     const a = projectPoint(points, leftHip, axes), b = projectPoint(points, rightHip, axes);
     const hx = (a[0] + b[0]) / 2, hy = (a[1] + b[1]) / 2;
     frames.push(motion.points.map((_, k) => {
