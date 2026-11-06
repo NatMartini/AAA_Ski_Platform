@@ -78,6 +78,24 @@ describe("dynamic pose interoperability", () => {
     expect(coachingReportSchema.safeParse({ ...raw, jobId: "../private" }).success).toBe(false);
     expect(coachingReportSchema.safeParse({ ...raw, turns: [{ ...raw.turns[0], startMs: "invalid" }] }).success).toBe(false);
   });
+  it("keeps the explanation's thinking levels and drops a malformed list without hiding the report", () => {
+    const levels = [{ level: "none", status: "ready" }, { level: "low", status: "unavailable" }, { level: "medium", status: "failed" },
+      { level: "xhigh", status: "pending" }];
+    const raw = { version: 2, deploymentId: "test-instance", jobId: "a".repeat(32), measurementStatus: "ready", modelStatus: "unavailable",
+      modelAssessment: null, modelError: null, referenceAvailability: {}, evidenceId: null, turns: [],
+      teachingStatus: "ready", teachingLevels: levels };
+    const parsed = coachingReportSchema.parse(raw);
+    expect(parsed.teachingLevels).toEqual(levels);
+    // The site parses the report again in the browser, so what the server passes on must parse the same way.
+    expect(coachingReportSchema.parse(JSON.parse(JSON.stringify(parsed))).teachingLevels).toEqual(levels);
+    for (const teachingLevels of [[{ level: "none", status: "thinking" }], [{ level: "high", status: "ready" }], ["none"], { none: "ready" }]) {
+      const parsed = coachingReportSchema.parse({ ...raw, teachingLevels });
+      expect(parsed.teachingLevels).toBeUndefined();
+      expect(parsed.teachingStatus).toBe("ready");
+    }
+    // Reports from before the field existed still parse, with no level list to offer.
+    expect(coachingReportSchema.parse({ ...raw, teachingLevels: undefined }).teachingLevels).toBeUndefined();
+  });
   it("keeps which standard skeleton the keyframes drew, separately from the turn player's reference", () => {
     const raw = { version: 2, deploymentId: "test-instance", jobId: "a".repeat(32), measurementStatus: "ready", modelStatus: "ready",
       modelAssessment: null, modelError: null, referenceAvailability: {}, evidenceId: null,

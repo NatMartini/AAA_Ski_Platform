@@ -157,7 +157,7 @@ describe("account FreeSki grant wallet", () => {
     const disabled = [action("parallel", false), action("bumps", false)];
     mocks.catalog.mockResolvedValue(disabled);
     expect(await getAccountVideoAnalysisState(customer)).toMatchObject({ actions: disabled, canAnalyze: false,
-      quota: { remaining: 3 } });
+      quota: { remaining: 6 } });
     await expect(run()).rejects.toMatchObject({ reason: "unsupported-action" });
     expect(mocks.jobCreate).not.toHaveBeenCalled();
     expect(jobs).toHaveLength(0);
@@ -174,7 +174,7 @@ describe("account FreeSki grant wallet", () => {
   it("keeps grants visible and spending disabled while the catalog is unavailable", async () => {
     mocks.catalog.mockRejectedValue(new Error("private catalog path"));
     const state = await getAccountVideoAnalysisState(customer);
-    expect(state).toMatchObject({ actions: [], canAnalyze: false, quota: { remaining: 3 } });
+    expect(state).toMatchObject({ actions: [], canAnalyze: false, quota: { remaining: 6 } });
     expect(JSON.stringify(state)).not.toContain("private catalog path");
     await expect(run()).rejects.toMatchObject({ reason: "service-unavailable" });
     expect(mocks.jobCreate).not.toHaveBeenCalled();
@@ -232,7 +232,7 @@ describe("account FreeSki grant wallet", () => {
     grants.push(grant({ id: "others-grant", accountId: "other", quantity: 50 }));
     jobs.push(job({ leaseToken: "lease-secret", upstreamJobId: "upstream-secret" }), job({ id: "others-job", accountId: "other" }));
     const state = await getAccountVideoAnalysisState(customer);
-    expect(state).toMatchObject({ accountId: "customer", quota: { grantTotal: 3, reserved: 1, remaining: 2 }, canAnalyze: true, canUpload: true });
+    expect(state).toMatchObject({ accountId: "customer", quota: { freeTotal: 3, grantTotal: 3, reserved: 1, remaining: 5 }, canAnalyze: true, canUpload: true });
     expect(state.videos.map((video) => video.id)).toEqual(["video"]);
     expect(state.grants).toHaveLength(1);
     for (const secret of ["lease-secret", "upstream-secret", "private/", "others-job", "customer@example.com"])
@@ -245,16 +245,24 @@ describe("account FreeSki grant wallet", () => {
     jobs.push(job({ upstreamJobId: "a".repeat(32), upstreamDeploymentId: "freeski-platform-8100" }));
     const state = await getAccountVideoAnalysisState(customer);
     expect(state.jobs[0]).toMatchObject({ status: "QUEUED", computeWait: "waiting_for_compute" });
-    expect(state.quota).toMatchObject({ reserved: 1, remaining: 2 });
+    expect(state.quota).toMatchObject({ reserved: 1, remaining: 5 });
     expect(JSON.stringify(state)).not.toContain("a".repeat(32));
     expect(state).not.toHaveProperty("upstream");
   });
 
-  it("does not authorize generic video storage without an issued grant", async () => {
+  it("gives a student three free analyses before any grant, and no more", async () => {
     grants = [];
-    expect(await getAccountVideoAnalysisState(customer)).toMatchObject({ canUpload: false, canAnalyze: false, quota: { grantTotal: 0, remaining: 0 } });
-    await expect(run()).rejects.toMatchObject({ reason: "quota-exhausted" });
-    expect(jobs).toHaveLength(0);
+    expect(await getAccountVideoAnalysisState(customer)).toMatchObject({ canUpload: true, canAnalyze: true,
+      quota: { freeTotal: 3, grantTotal: 0, remaining: 3 } });
+    for (const key of ["a", "b", "c"]) await run(key);
+    await expect(run("d")).rejects.toMatchObject({ reason: "quota-exhausted" });
+    expect(jobs).toHaveLength(3);
+  });
+
+  it("gives other accounts no free analyses, so storage still needs an issued grant", async () => {
+    grants = [];
+    expect(await getAccountVideoAnalysisState(coach)).toMatchObject({ canUpload: false, canAnalyze: false,
+      quota: { freeTotal: 0, grantTotal: 0, remaining: 0 } });
   });
 
   it("enriches only the authenticated wallet with one real scheduler reason", async () => {
@@ -264,7 +272,7 @@ describe("account FreeSki grant wallet", () => {
     const state = await getAccountVideoAnalysisState(customer);
     expect(state.jobs.map((row) => ({ id: row.id, queueReason: row.queueReason })))
       .toEqual([{ id: "job", queueReason: reason }, { id: "done", queueReason: null }]);
-    expect(state.quota).toMatchObject({ reserved: 1, used: 1, remaining: 1 });
+    expect(state.quota).toMatchObject({ reserved: 1, used: 1, remaining: 4 });
     expect(mocks.scheduler).toHaveBeenCalledOnce();
     expect(JSON.stringify(state)).not.toContain("other-job");
   });
@@ -274,16 +282,16 @@ describe("account FreeSki grant wallet", () => {
     mocks.scheduler.mockRejectedValue(new Error("private transport detail"));
     const state = await getAccountVideoAnalysisState(customer);
     expect(state.jobs[0]).toMatchObject({ status: "QUEUED", queueReason: null });
-    expect(state.quota).toMatchObject({ reserved: 1, remaining: 2 });
+    expect(state.quota).toMatchObject({ reserved: 1, remaining: 5 });
     expect(JSON.stringify(state)).not.toContain("private transport detail");
     expect(jobs[0].refundedAt).toBeNull();
   });
 
-  it("bounds ten concurrent requests to exactly the three granted credits", async () => {
+  it("bounds ten concurrent requests to exactly the three free and three granted credits", async () => {
     const results = await Promise.allSettled(Array.from({ length: 10 }, (_, i) => run(`request-${i}`)));
-    expect(results.filter((row) => row.status === "fulfilled")).toHaveLength(3);
-    expect(results.filter((row) => row.status === "rejected")).toHaveLength(7);
-    expect((await getAccountVideoAnalysisState(customer)).quota).toMatchObject({ reserved: 3, remaining: 0 });
+    expect(results.filter((row) => row.status === "fulfilled")).toHaveLength(6);
+    expect(results.filter((row) => row.status === "rejected")).toHaveLength(4);
+    expect((await getAccountVideoAnalysisState(customer)).quota).toMatchObject({ reserved: 6, remaining: 0 });
   });
 
   it("reuses identical analysis requests and rejects conflicting retries without spending", async () => {
@@ -328,7 +336,7 @@ describe("account FreeSki grant wallet", () => {
 
   it("leaves quota visible when FreeSki is unhealthy while disabling submission", async () => {
     mocks.available.mockResolvedValue({ configured: true, available: false });
-    expect(await getAccountVideoAnalysisState(customer)).toMatchObject({ quota: { remaining: 3 }, canAnalyze: false, canUpload: true });
+    expect(await getAccountVideoAnalysisState(customer)).toMatchObject({ quota: { remaining: 6 }, canAnalyze: false, canUpload: true });
   });
 
   it("requires a current existing non-disabled account under its row lock", async () => {
@@ -423,7 +431,7 @@ describe("account reservations, leases and refunds", () => {
     videos = [];
     jobs[0].videoId = null;
     jobs[0].result = null;
-    expect((await getAccountVideoAnalysisState(customer)).quota).toMatchObject({ used: 1, remaining: 2 });
+    expect((await getAccountVideoAnalysisState(customer)).quota).toMatchObject({ used: 1, remaining: 5 });
   });
 
   it.each(["failure", "ungradable", "invalid-score"])("refunds a %s outcome exactly once", async (condition) => {
@@ -436,7 +444,7 @@ describe("account reservations, leases and refunds", () => {
     expect(await settleAccountAnalysisJob(claimed.id, claimed.leaseToken, outcome)).toBe(false);
     expect(jobs[0]).toMatchObject({ status: "FAILED", refundedAt: now });
     expect(JSON.stringify(jobs[0])).not.toContain("secret-provider-error");
-    expect((await getAccountVideoAnalysisState(customer)).quota).toMatchObject({ used: 0, reserved: 0, remaining: 3 });
+    expect((await getAccountVideoAnalysisState(customer)).quota).toMatchObject({ used: 0, reserved: 0, remaining: 6 });
   });
 
   it("refunds a definitively unsubmitted closed action exactly once", async () => {
@@ -448,7 +456,7 @@ describe("account reservations, leases and refunds", () => {
     expect(settlements.filter(Boolean)).toHaveLength(1);
     expect(jobs[0]).toMatchObject({ status: "FAILED", refundedAt: now,
       errorCode: "UNSUPPORTED_ACTION", upstreamJobId: null });
-    expect((await getAccountVideoAnalysisState(customer)).quota).toMatchObject({ used: 0, reserved: 0, remaining: 3 });
+    expect((await getAccountVideoAnalysisState(customer)).quota).toMatchObject({ used: 0, reserved: 0, remaining: 6 });
   });
 
   it.each(["attached-upstream", "changed-action"])("does not refund closed-action evidence after a concurrent %s write", async (change) => {
@@ -463,7 +471,7 @@ describe("account reservations, leases and refunds", () => {
     expect(await settleAccountAnalysisJob("job", "lease", { ok: false, errorCode: "UNSUPPORTED_ACTION",
       expectedUnsubmittedActionId: "carving" })).toBe(false);
     expect(jobs[0]).toMatchObject({ status: "RUNNING", refundedAt: null, errorCode: null });
-    expect((await getAccountVideoAnalysisState(customer)).quota).toMatchObject({ reserved: 1, remaining: 2 });
+    expect((await getAccountVideoAnalysisState(customer)).quota).toMatchObject({ reserved: 1, remaining: 5 });
   });
 
   it.each(["queued", "lease", "hard-deadline"])("retains an expired %s reservation without refunding", async (condition) => {
@@ -474,7 +482,7 @@ describe("account reservations, leases and refunds", () => {
     expect(await recoverExpiredAccountAnalysisJobs()).toBe(0);
     expect(await settleAccountAnalysisJob("job", "old", { ok: true, result })).toBe(false);
     expect(jobs[0]).toMatchObject({ status: "QUEUED", refundedAt: null, errorCode: null });
-    expect((await getAccountVideoAnalysisState(customer)).quota).toMatchObject({ reserved: 1, remaining: 2 });
+    expect((await getAccountVideoAnalysisState(customer)).quota).toMatchObject({ reserved: 1, remaining: 5 });
     expect(await claimAccountAnalysisJob()).toMatchObject({ id: "job" });
   });
 
@@ -498,6 +506,7 @@ describe("account reservations, leases and refunds", () => {
   });
 
   it("does not mint credits from an inconsistent terminal ledger", () => {
-    expect(accountAnalysisQuota([grant({ quantity: 1 })], [job({ status: "FAILED" })])).toMatchObject({ remaining: 0, used: 0, reserved: 0 });
+    expect(accountAnalysisQuota([grant({ quantity: 1 })], [job({ status: "FAILED" })], 0)).toMatchObject({ remaining: 0, used: 0, reserved: 0 });
+    expect(accountAnalysisQuota([grant({ quantity: 1 })], [job({ status: "FAILED" })], 3)).toMatchObject({ remaining: 3, used: 0, reserved: 0 });
   });
 });

@@ -40,8 +40,8 @@ export default async function VideoAnalysisPage({ params, searchParams }: PagePr
         tone="video"
         eyebrow={<>FreeSki · {zh ? "来自 Kevin 的个人项目" : "From Kevin’s personal project"}</>}
         title={zh ? "视频分析" : "Video analysis"}
-        description={zh ? "上传滑雪视频，FreeSki 对比 CSIA 示范给出评分卡、动作讲解和练习建议。每节 2 小时课赠送 3 次分析，3 小时课赠送 5 次；1v1、1v2、1v3 都使用同一节课的次数。"
-          : "Upload a skiing video and FreeSki compares it with CSIA demonstrations for a scorecard, movement explanation and drills. Each two-hour lesson includes 3 analyses; each three-hour lesson includes 5. The same allowance applies to 1-to-1, 1-to-2 and 1-to-3 lessons."}
+        description={zh ? "上传滑雪视频，FreeSki 对比 CSIA 示范给出评分卡、动作讲解和练习建议。学员账号注册即送 3 次分析；每节 2 小时课另送 3 次，3 小时课另送 5 次，1v1、1v2、1v3 都使用同一节课的次数。"
+          : "Upload a skiing video and FreeSki compares it with CSIA demonstrations for a scorecard, movement explanation and drills. Every student account starts with 3 free analyses; each two-hour lesson adds 3 and each three-hour lesson adds 5, shared by 1-to-1, 1-to-2 and 1-to-3 lessons."}
         actions={<>
           {coachView && <Button asChild variant="secondary"><Link href="/coach/video-analysis"><Gift aria-hidden />{zh ? "给学员发放 FreeSki 次数" : "Issue FreeSki credits to a student"}</Link></Button>}
           <AnalysisOverviewRefresh locale={loc} />
@@ -60,14 +60,15 @@ export default async function VideoAnalysisPage({ params, searchParams }: PagePr
         <div className="rounded-2xl border border-border bg-surface p-4 shadow-[var(--shadow-sm)]">
           <p className="text-xs font-semibold text-ink-3">{zh ? "次数来源" : "Where credits come from"}</p>
           <dl className="mt-2 space-y-1 text-sm" data-numeric>
+            <Source label={zh ? "注册赠送" : "With your account"} value={account.quota.freeTotal} />
             <Source label={zh ? "教练发放" : "Coach-issued"} value={account.quota.grantTotal ?? 0} />
-            <Source label={zh ? "已解锁免费" : "Free unlocked"} value={totals.freeTotal} />
+            <Source label={zh ? "课程赠送" : "From lessons"} value={totals.freeTotal} />
             <Source label={zh ? "已购买" : "Purchased"} value={totals.paidTotal} />
           </dl>
         </div>
         <p className="text-xs leading-relaxed text-ink-3 sm:col-span-4">
-          {zh ? "教练发放即时到账，无需课程订单。课程免费次数在完课后解锁；额外次数经教练确认收款后到账。分析失败或无法评分会返还次数。"
-            : "Coach-issued credits are available immediately without a lesson booking. Lesson credits unlock after completion; purchased credits unlock after receipt confirmation. Failed or ungradable analyses return their credit."}
+          {zh ? "注册赠送和教练发放的次数即时可用，无需课程订单。课程免费次数在完课后解锁；额外次数经教练确认收款后到账。分析失败或无法评分会返还次数。"
+            : "Account and coach-issued credits are available immediately without a lesson booking. Lesson credits unlock after completion; purchased credits unlock after receipt confirmation. Failed or ungradable analyses return their credit."}
         </p>
       </section>
 

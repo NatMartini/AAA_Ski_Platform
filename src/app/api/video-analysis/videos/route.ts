@@ -5,20 +5,24 @@ import { rateLimitOrRespond } from "@/lib/rate-limit";
 import { buildKey, deleteObject, KEY_PREFIX, writeObject } from "@/lib/storage";
 import { checkVideo, MAX_VIDEO_BYTES, VideoRejected } from "@/lib/upload/video";
 import { readLimitedFormData, requestBodyErrorResponse } from "@/lib/request-body";
-import { lockedAccount } from "@/lib/video-analysis/account-service";
+import { accountFreeAnalyses, lockedAccount } from "@/lib/video-analysis/account-service";
 import { AnalysisDomainError } from "@/lib/video-analysis/quota";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Personal clips use the signed-in account; granting coaches cannot read them. */
+/**
+ * Personal clips use the signed-in account; granting coaches cannot read them. Students start with
+ * free analyses, so they may store clips at once; anyone else needs a coach's grant first.
+ */
 export async function POST(req: Request) {
   const limited = rateLimitOrRespond(req, "upload", "account-analysis-video");
   if (limited) return limited;
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
   const accountId = auth.user.id;
-  if (!await prisma.accountAnalysisGrant.count({ where: { accountId } })) {
+  const free = accountFreeAnalyses(auth.user) > 0;
+  if (!free && !await prisma.accountAnalysisGrant.count({ where: { accountId } })) {
     return NextResponse.json({ error: "quota-not-granted" }, { status: 409 });
   }
   let stagedKey: string | undefined;
@@ -36,7 +40,7 @@ export async function POST(req: Request) {
     stagedKey = buildKey(KEY_PREFIX.accountVideo(accountId), checked.extension);
     const written = await writeObject(stagedKey, bytes);
     const video = await lockedAccount(accountId, async tx => {
-      if (!await tx.accountAnalysisGrant.count({ where: { accountId } })) throw new AnalysisDomainError("quota-not-granted");
+      if (!free && !await tx.accountAnalysisGrant.count({ where: { accountId } })) throw new AnalysisDomainError("quota-not-granted");
       if (await tx.accountAnalysisVideo.count({ where: { accountId } }) >= 100) throw new AnalysisDomainError("too-many");
       return tx.accountAnalysisVideo.create({ data: { accountId, uploadedById: accountId,
         storageKey: written.key, contentType: checked.contentType, bytes: written.bytes,

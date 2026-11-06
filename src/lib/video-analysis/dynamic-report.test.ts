@@ -34,6 +34,24 @@ it("rejects a report from another instance and strips no credentials into errors
     measurementStatus: "ready", modelStatus: "pending", modelAssessment: null, modelError: null, referenceAvailability: {}, turns: [], evidenceId: null }));
   await expect(readDynamicReport(input(["report"]))).rejects.toMatchObject({ status: 502, code: "invalid-provider-identity" });
 });
+it("passes only a known thinking level, and only for the report", async () => {
+  mocks.request.mockImplementation(async () => Response.json({ version: 2, deploymentId: "integration-instance", jobId: upstream,
+    measurementStatus: "ready", modelStatus: "unavailable", modelAssessment: null, modelError: null, referenceAvailability: {}, turns: [],
+    evidenceId: null, teachingStatus: "running", teaching: null,
+    teachingLevels: [{ level: "none", status: "ready" }, { level: "high", status: "ready" }, { level: "xhigh", status: "running" }] }));
+  const read = (url: string, resource = ["report"]) => readDynamicReport({ ...input(resource), request: new Request(url) });
+  const report = await (await read("http://localhost/api/report?thinking=xhigh")).json();
+  expect(mocks.request).toHaveBeenLastCalledWith(expect.objectContaining({ resource: "report", thinking: "xhigh" }));
+  // A level list with a key outside the four fails closed rather than offering it.
+  expect(report).toMatchObject({ teachingStatus: "running", teaching: null });
+  expect(report.teachingLevels).toBeUndefined();
+  await read("http://localhost/api/report");
+  expect(mocks.request).toHaveBeenLastCalledWith(expect.objectContaining({ thinking: undefined }));
+  const calls = mocks.request.mock.calls.length;
+  await expect(read("http://localhost/api/report?thinking=high")).rejects.toMatchObject({ status: 404 });
+  await expect(read("http://localhost/api/report?thinking=none", ["turns", "turn_0"])).rejects.toMatchObject({ status: 404 });
+  expect(mocks.request).toHaveBeenCalledTimes(calls);
+});
 it("rechecks local permissions after waiting for the provider", async () => {
   mocks.account.mockResolvedValueOnce(row).mockResolvedValueOnce(null);
   mocks.request.mockResolvedValue(Response.json({}));

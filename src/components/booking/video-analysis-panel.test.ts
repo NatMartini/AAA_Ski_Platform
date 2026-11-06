@@ -104,9 +104,9 @@ describe("unified lesson video analysis panel", () => {
     expect(html).toContain("The FreeSki action catalog is temporarily unavailable");
   });
   it("uses standalone grants without a fake lesson, course price or payment actions", () => {
-    const html = render({ ...initialView, accountId: "student", quota: { ...initialView.quota, freeTotal: 0, grantTotal: 5, remaining: 4 },
+    const html = render({ ...initialView, accountId: "student", quota: { ...initialView.quota, freeTotal: 3, grantTotal: 5, remaining: 7 },
       videos: [{ ...initialView.videos[0], url: "/api/video-analysis/videos/v1" }] }, { accountId: "student", bookedHours: 0 });
-    expect(html).toContain("My FreeSki video analysis"); expect(html).toContain("5 credits issued by coaches");
+    expect(html).toContain("My FreeSki video analysis"); expect(html).toContain("3 free with your account · 5 issued by coaches");
     expect(html).toContain("Upload skiing video"); expect(html).toContain("visible only to you");
     expect(html).not.toContain("shared free analyses"); expect(html).not.toContain("Extra analysis credits");
     expect(html).not.toContain("Create WeChat payment order");

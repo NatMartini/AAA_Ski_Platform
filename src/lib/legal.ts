@@ -21,8 +21,8 @@ export type LegalContent = {
 
 export type LegalDocId = "terms" | "privacy" | "accessibility";
 
-const UPDATED_EN = "Draft — pending legal review. Last updated 8 October 2026.";
-const UPDATED_ZH = "草稿 —— 尚待法律审阅。最后更新:2026 年 10 月 8 日。";
+const UPDATED_EN = "Draft — pending legal review. Last updated 6 November 2026.";
+const UPDATED_ZH = "草稿 —— 尚待法律审阅。最后更新:2026 年 11 月 6 日。";
 
 export const LEGAL_DOCS: Record<
   LegalDocId,
@@ -59,7 +59,7 @@ export const LEGAL_DOCS: Record<
         {
           heading: "Lesson video analysis",
           paragraphs: [
-            "FreeSki Video Ski Analysis is Kevin’s personal project. After your instructor confirms a lesson as completed, each two-hour booking includes three free analyses and each three-hour booking includes five. The allowance belongs to that lesson and is shared by 1-to-1, 1-to-2 or 1-to-3 bookings, rather than multiplied by the number of students. Uploading or watching a clip does not use an analysis credit.",
+            "FreeSki Video Ski Analysis is Kevin’s personal project. Every student account includes three free analyses of its own clips. After your instructor confirms a lesson as completed, each two-hour booking includes three free analyses and each three-hour booking includes five. The allowance belongs to that lesson and is shared by 1-to-1, 1-to-2 or 1-to-3 bookings, rather than multiplied by the number of students. Uploading or watching a clip does not use an analysis credit.",
             "Extra credits are priced by your instructor and paid to that instructor. The price and quantity are fixed when you order them; credits become available only after the instructor confirms receipt. Failed or unusable analyses return their credit. Deleting a successful analysis does not restore its credit.",
             "Automated feedback supports teaching and the instructor's review. Scores may be unavailable when a clip or movement cannot be graded; the service does not issue instructor certification assessments.",
           ],
@@ -124,7 +124,7 @@ export const LEGAL_DOCS: Record<
         {
           heading: "课程视频分析",
           paragraphs: [
-            "FreeSki 视频滑雪分析平台来自 Kevin 的个人项目。教练确认课程完成后，每节 2 小时课赠送 3 次免费分析，每节 3 小时课赠送 5 次。1v1、1v2、1v3 均共用该节课的次数，不按学员人数倍增。上传或观看视频不消耗分析次数。",
+            "FreeSki 视频滑雪分析平台来自 Kevin 的个人项目。每个学员账号注册即送 3 次个人视频分析。教练确认课程完成后，每节 2 小时课赠送 3 次免费分析，每节 3 小时课赠送 5 次。1v1、1v2、1v3 均共用该节课的次数，不按学员人数倍增。上传或观看视频不消耗分析次数。",
             "额外次数由教练定价，款项直接支付给该课教练；购买时固定价格和数量，教练确认到账后才可使用。分析失败或视频无法分析时返还次数；删除成功的分析不返还已使用次数。",
             "自动反馈供教学与教练复核使用。视频或动作无法评分时可能不提供分数；本服务不作教练资格认证评估。",
           ],

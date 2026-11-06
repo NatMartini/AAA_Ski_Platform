@@ -2,7 +2,8 @@ import type { ActiveUser } from "../auth/require-user";
 import { prisma } from "../prisma";
 import { requestFreeSkiReportResource, readFreeSkiReportJson, FreeSkiError } from "../freeski/adapter";
 import { coachingReportSchema, decodeCompactPose, turnManifestSchema } from "../freeski/report-v2";
-import { explainerSchema, KEYFRAME_ID, keyframesSchema, MAX_EXPLAINER_BYTES, MAX_KEYFRAME_BYTES } from "../freeski/scorecard";
+import { explainerSchema, KEYFRAME_ID, keyframesSchema, MAX_EXPLAINER_BYTES, MAX_KEYFRAME_BYTES, thinkingLevelSchema,
+  type ThinkingLevel } from "../freeski/scorecard";
 
 export class DynamicReportError extends Error {
   constructor(readonly status: number, readonly code: string) { super(code); }
@@ -34,6 +35,7 @@ export async function readDynamicReport(input: { scope: string; jobId: string; r
   const resource = input.resource;
   const query = new URL(input.request.url).searchParams;
   const turnId = query.get("turn_id") ?? undefined, keyframeId = query.get("keyframe_id") ?? undefined;
+  const thinking = query.get("thinking") ?? undefined;
   const turnPath = resource[0] === "turns" && /^turn_\d{1,5}$/.test(resource[1] ?? "");
   const kind = resource.length === 1 && resource[0] === "report" ? "report"
     : resource.length === 2 && turnPath ? "turn"
@@ -44,6 +46,7 @@ export async function readDynamicReport(input: { scope: string; jobId: string; r
     : resource.length === 2 && resource[0] === "assets" && ["background", "user-pose", "reference-pose", "standard-pose"].includes(resource[1])
       ? resource[1] as "background" | "user-pose" | "reference-pose" | "standard-pose" : null;
   if (!kind || turnId && !/^turn_\d{1,5}$/.test(turnId)) throw new DynamicReportError(404, "not-found");
+  if (thinking !== undefined && (kind !== "report" || !thinkingLevelSchema.safeParse(thinking).success)) throw new DynamicReportError(404, "not-found");
   const video = kind === "background" || kind === "explainer-video";
   let response: Response;
   try {
@@ -52,7 +55,7 @@ export async function readDynamicReport(input: { scope: string; jobId: string; r
         : kind === "keyframe" || kind === "explainer" || kind === "explainer-video" ? undefined : turnId,
       keyframeId: kind === "keyframe" ? keyframeId : undefined,
       range: video ? input.request.headers.get("range") ?? undefined : undefined,
-      signal: input.request.signal });
+      thinking: thinking as ThinkingLevel | undefined, signal: input.request.signal });
   } catch (error) {
     if (error instanceof FreeSkiError) throw new DynamicReportError(503, "dynamic-report-unavailable");
     throw error;

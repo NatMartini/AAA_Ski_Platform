@@ -17,7 +17,7 @@ export function AnalysisSourceSelector({ locale, value, accountRemaining, course
       const source = event.target.value;
       router.replace(source === "account" ? "/video-analysis?source=account#workspace" : `/video-analysis?lesson=${encodeURIComponent(source)}#workspace`, { scroll: false });
     }}>
-      <option value="account">{zh ? `我的视频 · 教练发放次数 · 可用 ${accountRemaining} 次` : `My videos · Coach-issued credits · ${accountRemaining} available`}</option>
+      <option value="account">{zh ? `我的视频 · 注册赠送和教练发放 · 可用 ${accountRemaining} 次` : `My videos · Account and coach-issued credits · ${accountRemaining} available`}</option>
       {courses.map(course => <option key={course.code} value={course.code}>{zh ? "课程视频" : "Lesson videos"} · {course.label} · {zh ? `可用 ${course.remaining} 次` : `${course.remaining} available`}</option>)}
     </Select>
     <Hint>{zh ? "我的视频使用账号次数；课程视频使用该课程的共享次数。上传、分析和报告都在下面的视频库里。" : "My videos use your account credits; lesson videos use that lesson's shared credits. Upload, analyse and open reports in the library below."}</Hint>

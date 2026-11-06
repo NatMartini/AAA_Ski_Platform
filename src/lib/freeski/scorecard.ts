@@ -102,12 +102,22 @@ const improvement = strength.extend({ turn_ids: z.array(turnId).max(10), keyfram
 const drill = z.object({ drill_id: metricKey, name_zh: prose(150), name_en: prose(200),
   why_zh: prose(600), why_en: prose(600), fact_ids: citations });
 
+/**
+ * How long the model thinks before writing the explanation, chosen by the reader per report (owner's
+ * decision, 2026-11-06). FreeSki writes it into its ModelCtrl request; without one it does not think.
+ */
+export const THINKING_LEVELS = ["none", "low", "medium", "xhigh"] as const;
+export const thinkingLevelSchema = z.enum(THINKING_LEVELS);
+export type ThinkingLevel = z.infer<typeof thinkingLevelSchema>;
+export const DEFAULT_THINKING: ThinkingLevel = "none";
+
 export const teachingSchema = z.object({
   schema_version: z.literal("freeski_teaching.v1"), experimental: z.literal(true), mode: z.literal("reference_comparison"),
   facts: z.array(fact).max(40), summary_zh: prose(800), summary_en: prose(800),
   strengths: z.array(strength).max(4), improvements: z.array(improvement).max(4), drills: z.array(drill).max(3),
   limitations_zh: z.array(prose(600)).max(8), limitations_en: z.array(prose(600)).max(8),
-  model: z.object({ model: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_. -]{0,199}$/).nullable(), project: identifier, prompt_version: identifier }),
+  model: z.object({ model: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_. -]{0,199}$/).nullable(), project: identifier, prompt_version: identifier,
+    thinking_level: thinkingLevelSchema.optional().catch(undefined) }),
 });
 export type Teaching = z.infer<typeof teachingSchema>;
 /** Lifecycle shared by the asynchronous teaching and explainer addons. */

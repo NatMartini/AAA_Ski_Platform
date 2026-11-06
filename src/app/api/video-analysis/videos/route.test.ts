@@ -10,7 +10,8 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/auth/require-user", () => ({ requireUser: mocks.user }));
 vi.mock("@/lib/prisma", () => ({ prisma: { accountAnalysisGrant: { count: mocks.grantCount } } }));
-vi.mock("@/lib/video-analysis/account-service", () => ({ lockedAccount: mocks.lock }));
+vi.mock("@/lib/video-analysis/account-service", () => ({ lockedAccount: mocks.lock,
+  accountFreeAnalyses: (user: { role: string }) => user.role === "CUSTOMER" ? 3 : 0 }));
 vi.mock("@/lib/request-body", async (original) => {
   const actual = await original<typeof import("@/lib/request-body")>();
   return { ...actual, readLimitedFormData: vi.fn(actual.readLimitedFormData) };
@@ -62,7 +63,8 @@ describe("private account FreeSki upload boundary", () => {
     expect(mocks.write).not.toHaveBeenCalled();
   });
 
-  it("requires issued credits before reading any multipart body", async () => {
+  it("requires issued credits from an account without free analyses before reading any multipart body", async () => {
+    mocks.user.mockResolvedValue({ ok: true, user: { id: "student", role: "COACH" } });
     mocks.grantCount.mockResolvedValue(0);
     const response = await POST(upload());
     expect(response.status).toBe(409);
@@ -70,6 +72,15 @@ describe("private account FreeSki upload boundary", () => {
     expect(readLimitedFormData).not.toHaveBeenCalled();
     expect(mocks.write).not.toHaveBeenCalled();
     expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it("lets a student with only the free analyses store a clip", async () => {
+    mocks.grantCount.mockResolvedValue(0);
+    mocks.lockedGrantCount.mockResolvedValue(0);
+    const response = await POST(upload());
+    expect(response.status).toBe(201);
+    expect(mocks.grantCount).not.toHaveBeenCalled();
+    expect(mocks.create).toHaveBeenCalledOnce();
   });
 
   it("does not write an old account's pending upload after the login changes", async () => {

@@ -4,7 +4,7 @@ import { isFreeSkiActionId, normalizeFreeSkiCatalog, parseFreeSkiActionId,
 import { getFreeSkiConfig, type FreeSkiConfig } from "./config";
 import type { FreeSkiAnalysisResult, FreeSkiErrorCode, FreeSkiGradingReason } from "./types";
 import { ResumableUploadError, submitResumableVideo } from "./resumable-upload";
-import { KEYFRAME_ID, scorecardSchema } from "./scorecard";
+import { KEYFRAME_ID, scorecardSchema, thinkingLevelSchema, type ThinkingLevel } from "./scorecard";
 import { wakeFreeSkiProvider } from "./wake";
 
 export class FreeSkiError extends Error {
@@ -488,10 +488,13 @@ export async function cleanupFreeSkiJob(upstreamJobId: string): Promise<boolean>
   }
 }
 
-/** Only fixed integration resources, pinned to the deployment stored on the job. */
+/**
+ * Only fixed integration resources, pinned to the deployment stored on the job. `thinking` asks the
+ * report for the explanation at that level; a deployment that does not list the feature never sees it.
+ */
 export async function requestFreeSkiReportResource(input: { jobId: string; deploymentId: string;
   resource: "report" | "turn" | "keyframes" | "keyframe" | "explainer" | "explainer-video" | "background" | "user-pose" | "reference-pose" | "standard-pose";
-  turnId?: string; keyframeId?: string; range?: string; signal?: AbortSignal }): Promise<Response> {
+  turnId?: string; keyframeId?: string; range?: string; thinking?: ThinkingLevel; signal?: AbortSignal }): Promise<Response> {
   const config = getFreeSkiConfig();
   if (!config || !config.deploymentId || config.deploymentId !== input.deploymentId) throw new FreeSkiError("analysis-unconfigured");
   if (!JOB_ID.test(input.jobId) || input.turnId && !/^turn_\d{1,5}$/.test(input.turnId) ||
@@ -505,7 +508,9 @@ export async function requestFreeSkiReportResource(input: { jobId: string; deplo
       (input.resource === "keyframes" || input.resource === "keyframe") && features.keyframes !== true ||
       (input.resource === "explainer" || input.resource === "explainer-video") && features.explainer !== true) throw new FreeSkiError("analysis-unavailable");
   const root = `/api/integrations/v2/analyses/${input.jobId}`;
-  const endpoint = input.resource === "report" ? `${root}/report` : input.resource === "turn"
+  const thinking = input.resource === "report" && input.thinking && features.thinking === true && thinkingLevelSchema.safeParse(input.thinking).success
+    ? `?thinking=${input.thinking}` : "";
+  const endpoint = input.resource === "report" ? `${root}/report${thinking}` : input.resource === "turn"
     ? `${root}/turns/${input.turnId}` : input.resource === "keyframes" ? `${root}/turns/${input.turnId}/keyframes`
     : input.resource === "keyframe" ? `${root}/assets/keyframe?keyframe_id=${input.keyframeId}`
     : input.resource === "explainer" ? `${root}/explainer` : input.resource === "explainer-video" ? `${root}/assets/explainer`

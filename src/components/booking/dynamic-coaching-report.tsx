@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CornerUpLeft, CornerUpRight, Play, Target } from "lucide-react";
 import { coachingReportSchema, type CoachingReport } from "@/lib/freeski/report-v2";
+import { ThinkingLevelPicker } from "./thinking-level-picker";
 import { CoachingWorkspace } from "./coaching-workspace";
 import { AnalysisTeaching, type FindingReview } from "./analysis-teaching";
 import { AnalysisKeyframes } from "./analysis-keyframes";
@@ -10,7 +11,7 @@ import { AnalysisExplainer } from "./analysis-explainer";
 import { AnalysisProgress } from "./analysis-progress";
 import { AnalysisScorecard, referenceTarget, turnLabel as numberedTurn } from "./analysis-scorecard";
 import { TurnComparisonPlayer, type TurnMeta } from "./turn-comparison-player";
-import { withoutOverallScore, type Scorecard, type Teaching } from "@/lib/freeski/scorecard";
+import { DEFAULT_THINKING, THINKING_LEVELS, withoutOverallScore, type Scorecard, type Teaching, type ThinkingLevel } from "@/lib/freeski/scorecard";
 import { standardMotionId } from "@/lib/freeski/standard-motion";
 import { metricDelta, metricInsight, worstTurnFor } from "@/lib/freeski/metric-insight";
 import type { FreeSkiCurrentLevel } from "@/lib/freeski/actions";
@@ -66,22 +67,39 @@ export function DynamicCoachingReport({ base, zh, card = null, currentLevel = nu
   const [selected, setSelected] = useState<string | null>(null), [unavailable, setUnavailable] = useState(false);
   const [focusMetric, setFocusMetric] = useState<string | null>(null);
   const [reviews, setReviews] = useState<Reviews>({ canReview: false, reviews: [] });
+  // The thinking level asked for, and the explanation on screen with its level: that one stays while
+  // another level is being written. `chosen` is set once the depth is the reader's, not the default.
+  const [thinking, setThinking] = useState<ThinkingLevel>(DEFAULT_THINKING);
+  const [written, setWritten] = useState<{ teaching: NonNullable<CoachingReport["teaching"]>; level: ThinkingLevel } | null>(null);
+  const chosen = useRef(false);
   useEffect(() => {
     if (!open) return;
-    const controller = new AbortController(); let timer: ReturnType<typeof setTimeout>; let attempts = 0;
+    const controller = new AbortController(); let timer: ReturnType<typeof setTimeout>; let polls = 0;
+    const started = Date.now();
     const load = async () => {
       try {
-        const value = coachingReportSchema.parse(await json(`${base}/report`, controller.signal));
+        // Asking for a level starts writing it, so only a level other than the default is named.
+        const query = thinking === DEFAULT_THINKING ? "" : `?thinking=${thinking}`;
+        const value = coachingReportSchema.parse(await json(`${base}/report${query}`, controller.signal));
         if (controller.signal.aborted) return;
         setReport(value); setUnavailable(false);
-        const waiting = ["pending", "running", "retry_wait"].includes(value.modelStatus) ||
+        if (value.teaching) setWritten({ teaching: value.teaching, level: thinking });
+        // Opened afresh, show the deepest explanation already written; never start one unasked.
+        const ready = value.teachingLevels?.filter(item => item.status === "ready").map(item => item.level) ?? [];
+        const deepest = THINKING_LEVELS.filter(level => ready.includes(level)).pop();
+        if (!chosen.current && deepest && THINKING_LEVELS.indexOf(deepest) > THINKING_LEVELS.indexOf(thinking)) {
+          chosen.current = true; setThinking(deepest); return;
+        }
+        // The old observation text belongs to jobs without a scorecard; a scorecard job does not wait for it.
+        const waiting = !value.scorecard && ["pending", "running", "retry_wait"].includes(value.modelStatus) ||
           value.teachingStatus === "pending" || value.teachingStatus === "running" ||
           value.explainerStatus === "pending" || value.explainerStatus === "running";
-        if (waiting && attempts++ < 120) timer = setTimeout(() => void load(), 5000);
+        // A deep explanation can queue behind others and think for fifteen minutes, twice if its first answer is rejected.
+        if (waiting && Date.now() - started < 45 * 60_000) timer = setTimeout(() => void load(), polls++ < 24 ? 5000 : 10_000);
       } catch { if (!controller.signal.aborted) { setReport(null); setSelected(null); setUnavailable(true); } }
     };
     void load(); return () => { controller.abort(); clearTimeout(timer); };
-  }, [base, open]);
+  }, [base, open, thinking]);
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
@@ -97,7 +115,7 @@ export function DynamicCoachingReport({ base, zh, card = null, currentLevel = nu
   const model = report?.modelAssessment;
   const scorecard = card ?? report?.scorecard ?? null;
   // The overall score is withheld on the site, so prose quoting it is hidden too.
-  const teaching = report?.teaching ? withoutOverallScore(report.teaching, scorecard?.overall.score ?? null) : null;
+  const teaching = written ? withoutOverallScore(written.teaching, scorecard?.overall.score ?? null) : null;
   const turnLabel = (turnId: string) => report?.turns.some(turn => turn.turnId === turnId) ? numberedTurn(turnId, zh) : null;
   const metaOf = (turnId: string): TurnMeta | undefined => {
     const turn = scorecard?.turns.find(candidate => candidate.turn_id === turnId);
@@ -131,12 +149,17 @@ export function DynamicCoachingReport({ base, zh, card = null, currentLevel = nu
         <p className="text-sm text-ink-3">{zh ? "正在读取分析…" : "Loading analysis…"}</p>
         {scorecardBlock}
       </> : <>
-        <AnalysisProgress status="SUCCEEDED" teaching={report.teachingStatus} explainer={report.explainerStatus} zh={zh} compact />
+        {/* A deeper level being written is the picker's to report; the progress line counts the one on screen. */}
+        <AnalysisProgress status="SUCCEEDED" teaching={written ? "ready" : report.teachingStatus} explainer={report.explainerStatus} zh={zh} compact />
+        {report.teachingLevels && scorecard && <ThinkingLevelPicker value={thinking} shown={written?.level ?? null}
+          levels={Object.fromEntries(report.teachingLevels.map(item => [item.level, item.status]))}
+          zh={zh} onChange={level => { chosen.current = true; setThinking(level); }} />}
         {teaching && <Headline teaching={teaching} card={scorecard} previous={previous} zh={zh} onShow={show} />}
         {teaching ? <AnalysisTeaching teaching={teaching} zh={zh} turnLabel={turnLabel} onSelectTurn={turnId => show(turnId, null)}
             reviews={reviews.reviews} canReview={reviews.canReview} onReview={review} />
           : report.teachingStatus === "pending" || report.teachingStatus === "running"
             ? <p className="text-sm text-ink-3">{zh ? "动作解释生成中，评分和动态对比已经可以查看。" : "The explanation is being written; scores and turn playback are already available."}</p>
+          : scorecard ? <p className="text-sm text-ink-3">{zh ? "这次的动作解释没有生成，评分和逐弯对比仍可查看。" : "The explanation was not generated this time; scores and turn playback remain available."}</p>
           : <><p className="text-xs text-ink-3">{zh ? "二维数据观察 · 尚无已核实的标准参照，技术判断需教练核实" : "Image-plane observations · no verified standard comparison; technique judgments need coach review"}</p>
           {model ? <div className="space-y-3">
             {model.model_provenance?.model && <p className="break-all text-xs text-ink-3">{zh ? "协助选取观察的模型：" : "Model assisting evidence selection: "}{model.model_provenance.model}</p>}

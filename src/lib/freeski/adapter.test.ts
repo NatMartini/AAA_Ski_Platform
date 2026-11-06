@@ -529,6 +529,26 @@ describe("FreeSki server bridge safety", () => {
       expect.stringMatching(new RegExp(`/analyses/${jobId}/assets/explainer$`))]);
     expect(new Headers((calls[1][1] as RequestInit).headers).get("Range")).toBe("bytes=0-99");
   });
+  it("asks for the explanation's thinking level only from a deployment that lists the feature", async () => {
+    vi.stubEnv("FREESKI_DEPLOYMENT_ID", "integration-instance");
+    const original = fetcher.getMockImplementation()!;
+    let features: Record<string, boolean> = { report: true };
+    fetcher.mockImplementation(async url => url.endsWith("/health") ? json({ ...bridge, deploymentId: "integration-instance" })
+      : url.endsWith("/api/integrations/v2/capabilities") ? json({ apiVersion: 2, deploymentId: "integration-instance",
+        profile: "platform-integration", features })
+      : url.includes("/api/integrations/v2/analyses/") ? new Response("ok") : original(url));
+    await requestFreeSkiReportResource({ jobId, deploymentId: "integration-instance", resource: "report", thinking: "xhigh" });
+    features = { report: true, thinking: true };
+    await requestFreeSkiReportResource({ jobId, deploymentId: "integration-instance", resource: "report", thinking: "xhigh" });
+    await requestFreeSkiReportResource({ jobId, deploymentId: "integration-instance", resource: "turn", turnId: "turn_1", thinking: "low" });
+    await requestFreeSkiReportResource({ jobId, deploymentId: "integration-instance", resource: "report",
+      thinking: "../../admin" as unknown as "none" });
+    const urls = fetcher.mock.calls.map(([url]) => String(url)).filter(url => url.includes("/analyses/"));
+    expect(urls).toEqual([expect.stringMatching(new RegExp(`/analyses/${jobId}/report$`)),
+      expect.stringMatching(new RegExp(`/analyses/${jobId}/report\\?thinking=xhigh$`)),
+      expect.stringMatching(new RegExp(`/analyses/${jobId}/turns/turn_1$`)),
+      expect.stringMatching(new RegExp(`/analyses/${jobId}/report$`))]);
+  });
   it("honors cancellation and only cleans validated upstream IDs", async () => {
     const controller = new AbortController();
     controller.abort();

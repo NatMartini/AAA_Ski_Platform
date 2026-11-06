@@ -196,6 +196,30 @@ AAA 结算：TECH 已评分，或 `scorecard.overall.score` 不为 `null` 且 `q
 `explainerStatus`（同一组取值，见 §5）。旧的 `modelAssessment`（observation_only）保留给旧任务。
 没有评分卡的旧任务：`scorecard: null`，两个状态都是 `unavailable`。
 
+思考深度（社长 2026-11-06 定，与 FreeSki 会话约定）：
+- 读报告时带 `?thinking=none|low|medium|xhigh`，不带时为 `none`。
+- FreeSki 写进发给 ModelCtrl 的请求：`none` 是 `chat_template_kwargs: {"enable_thinking": false}`，其余是
+  `{"reasoning_effort": …}`。
+- 每档的讲解各写一次、分开保存。
+  - `teaching` 和 `teachingStatus` 是所请求档位的；所请求的档位还没写好时，`teaching` 为 `null`。
+  - `teachingLevels` 是数组，按 `none`→`xhigh` 排序，包含本次请求的档，例如
+    `[{"level": "none", "status": "ready"}, {"level": "xhigh", "status": "pending"}]`。
+  - `teaching.model.thinking_level` 是实际用的档位。
+  - 讲解提示词升级后，旧版本写的其他档不再列出，再请求时重新生成。
+- 带上某一档就会开始写那一档，所以网站只在读者选了 `none` 以外的档时才带 `thinking`。
+- 部署的 `capabilities.features.thinking` 为 `true` 时，AAA 才转发 `thinking`；FreeSki 对不合法的值返回 400，AAA 也先校验。
+- 网站在讲解上方给四档选择，默认 `none`，深档旁标“限时免费”。
+  - 档位名字是社长定的：“快！回答我 / 看看算了 / 认真一点 / 当个事办”，依次对应 `none` / `low` / `medium` / `xhigh`。
+  - 第五档“神请引导我”对应云端模型，打算做成付费功能，现在不提供。
+  - FreeSki 已放弃的档位：`failed` 显示“没写成”，`unavailable` 显示“暂时没有”并不能点。这两种 FreeSki 都不会自动重试。
+  - 打开报告时显示已写好的最深一档，不替读者开始新的一档。
+  - 同一份报告一次只写一档；新的一档写好前，继续显示原来那一档。
+- 深档最坏约 20 分钟：排队最多 4 分钟，回答最多 15 分钟，回答不合格再问一次时翻倍。网站最多轮询 45 分钟。
+- 讲解视频不随档位变。
+- 讲解从不扣次数，四档都不收费。
+- 有评分卡的任务，FreeSki 返回 `modelStatus: "unavailable"`、`modelError: "superseded-by-teaching"`，不再做“观察选择”；
+  网站也不再显示或等待 `modelAssessment`，讲解没写成时只提示“没有生成”。
+
 ```json
 {
   "schema_version": "freeski_teaching.v1",
