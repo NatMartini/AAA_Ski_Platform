@@ -1,10 +1,11 @@
+import { ChevronRight } from "lucide-react";
 import { turnNumber, type ReferenceStatus, type Scorecard } from "@/lib/freeski/scorecard";
 import type { FreeSkiCurrentLevel } from "@/lib/freeski/actions";
-import { metricConfidence, metricDelta, metricInsight, perTurnScores, worstTurnFor } from "@/lib/freeski/metric-insight";
+import { metricConfidence, metricDelta, metricInsight, metricStanding, perTurnScores, worstTurnFor, type MetricStanding } from "@/lib/freeski/metric-insight";
 
 type Metric = Scorecard["metrics"][number];
 
-const QUALITY: Record<Scorecard["quality"], [string, string, string]> = {
+export const QUALITY: Record<Scorecard["quality"], [string, string, string]> = {
   valid: ["数据完整", "Complete data", "border-border bg-success-bg text-success"],
   approximate: ["数据有限", "Limited data", "border-amber-border bg-amber-bg text-amber"],
   insufficient: ["数据不足", "Insufficient data", "border-amber-border bg-amber-bg text-amber"],
@@ -20,8 +21,8 @@ const REASONS: Record<Scorecard["quality_reasons"][number], [string, string]> = 
 };
 // On the improvement path FreeSki flags only the expert-to-advanced fallback with no_matching_reference.
 const NO_EXPERT: [string, string] = ["这个动作没有专家示范，改用进阶示范对比", "No expert example for this action, so advanced examples were used"];
-type EvidenceReason = NonNullable<Scorecard["turns"][number]["evidence"]>["reasons"][number];
-const EVIDENCE: Record<EvidenceReason, [string, string]> = {
+export type EvidenceReason = NonNullable<Scorecard["turns"][number]["evidence"]>["reasons"][number];
+export const EVIDENCE: Record<EvidenceReason, [string, string]> = {
   subject_small: ["人太小", "too small in frame"], out_of_frame: ["出画或贴边", "at or past the frame edge"],
   lower_body_hidden: ["下半身看不清", "lower body not visible"], tracking_lost: ["跟踪丢失", "tracking lost"],
   overlapping_person: ["与他人重叠", "overlapping another person"], discontinuity: ["画面突跳", "abrupt camera change"],
@@ -94,7 +95,7 @@ function comparedWith(target: ReferenceTarget | null, count: number, zh: boolean
   }
 }
 
-function exampleName(target: ReferenceTarget): [string, string] {
+export function exampleName(target: ReferenceTarget): [string, string] {
   const t = target.slice(-1);
   return target === "expert" ? ["专家示范", "expert examples"] : target === "advanced" ? ["进阶示范", "advanced examples"]
     : target === "all_pass_levels" ? ["各级通过示范", "pass examples across levels"] : [`CSIA ${t} 级通过示范`, `CSIA level ${t} pass examples`];
@@ -133,26 +134,15 @@ function TurnSparkline({ card, metricKey, zh }: { card: Scorecard; metricKey: st
   </div>;
 }
 
-function MetricBar({ metric, card, previous, zh, selected, onSelect }: { metric: Metric; card: Scorecard; previous: Scorecard | null; zh: boolean;
-  selected: boolean; onSelect?: (key: string) => void }) {
+/** One metric's comparison under its name: the range meter, values, what it measures, confidence and the turn-by-turn chart. */
+function MetricFacts({ metric, card, zh }: { metric: Metric; card: Scorecard; zh: boolean }) {
   const label = zh ? metric.label_zh : metric.label_en;
   const value = metricValue(metric, metric.value, zh), reference = metricValue(metric, metric.reference?.median ?? null, zh);
   const band = metric.band && BAND[metric.band][zh ? 0 : 1];
   const confidence = metricConfidence(card, metric);
   const [confZh, confEn, confTone] = CONFIDENCE[confidence.level];
-  const delta = metricDelta(card, previous, metric.key);
   const insight = metricInsight(metric.key);
-  const worst = worstTurnFor(card, metric.key);
-  const body = <>
-    <div className="flex items-start justify-between gap-3">
-      <p className="min-w-0 break-words text-sm font-medium">{label}
-        {metric.measurement === "estimated" && <span className="ml-2 whitespace-nowrap rounded-full border border-amber-border bg-amber-bg px-2 py-0.5 text-xs font-normal text-amber">{zh ? "视频估算 · 不计分" : "Video estimate · not scored"}</span>}
-      </p>
-      <p className="flex shrink-0 items-baseline gap-1.5 text-sm font-semibold" data-numeric>
-        {metric.score === null ? (zh ? "暂无" : "N/A") : round(metric.score)}
-        {delta !== null && delta !== 0 && <span className={`text-xs ${delta > 0 ? "text-success" : "text-danger"}`} title={zh ? "和上一次分析相比" : "Compared with your previous analysis"}>{delta > 0 ? "+" : ""}{delta}</span>}
-      </p>
-    </div>
+  return <>
     {metric.target ? <div role="meter" aria-label={`${label}${band ? `：${band}` : ""}`} aria-valuemin={0} aria-valuemax={100}
       aria-valuenow={metric.position ?? undefined} className="relative h-2 rounded-full bg-surface-2">
       <div className="absolute inset-y-0 rounded-full bg-success-bg ring-1 ring-success/40"
@@ -174,6 +164,25 @@ function MetricBar({ metric, card, previous, zh, selected, onSelect }: { metric:
       {confidence.reasons.length > 0 && <span className="text-[11px] text-ink-3">{confidence.reasons.map(reason => reason[zh ? 0 : 1]).join(zh ? "、" : ", ")}</span>}
     </div>
     <TurnSparkline card={card} metricKey={metric.key} zh={zh} />
+  </>;
+}
+
+function MetricBar({ metric, card, previous, zh, selected, onSelect }: { metric: Metric; card: Scorecard; previous: Scorecard | null; zh: boolean;
+  selected: boolean; onSelect?: (key: string) => void }) {
+  const label = zh ? metric.label_zh : metric.label_en;
+  const delta = metricDelta(card, previous, metric.key);
+  const worst = worstTurnFor(card, metric.key);
+  const body = <>
+    <div className="flex items-start justify-between gap-3">
+      <p className="min-w-0 break-words text-sm font-medium">{label}
+        {metric.measurement === "estimated" && <span className="ml-2 whitespace-nowrap rounded-full border border-amber-border bg-amber-bg px-2 py-0.5 text-xs font-normal text-amber">{zh ? "视频估算 · 不计分" : "Video estimate · not scored"}</span>}
+      </p>
+      <p className="flex shrink-0 items-baseline gap-1.5 text-sm font-semibold" data-numeric>
+        {metric.score === null ? (zh ? "暂无" : "N/A") : round(metric.score)}
+        {delta !== null && delta !== 0 && <span className={`text-xs ${delta > 0 ? "text-success" : "text-danger"}`} title={zh ? "和上一次分析相比" : "Compared with your previous analysis"}>{delta > 0 ? "+" : ""}{delta}</span>}
+      </p>
+    </div>
+    <MetricFacts metric={metric} card={card} zh={zh} />
     {onSelect && worst && <span className="text-xs font-semibold text-accent">{selected ? (zh ? "已在播放器里高亮" : "Highlighted in the player") : (zh ? `看最差的${turnLabel(worst, zh)} ›` : `See weakest ${turnLabel(worst, zh).toLowerCase()} ›`)}</span>}
   </>;
   const className = `min-w-0 space-y-2 rounded-lg p-3 text-left ${selected ? "bg-accent-soft ring-2 ring-accent" : "bg-surface"}`;
@@ -196,32 +205,20 @@ export function AnalysisScorecard({ card, zh, currentLevel = null, previous = nu
 }) {
   const [qualityZh, qualityEn, qualityTone] = QUALITY[card.quality];
   const metrics = [...card.metrics].sort((a, b) => Number(a.measurement === "estimated") - Number(b.measurement === "estimated") || b.weight - a.weight);
-  const separateTurns = card.turns.some(turn => turn.role !== "middle");
   const reacquired = card.turns.some(turn => turn.evidence?.reacquired);
-  const target = referenceTarget(card);
-  const aboveLevel = currentLevel ? null : target === "expert" ? ["专家", "expert"] : target === "advanced" ? ["进阶", "advanced"] : null;
   return <section className="space-y-4" aria-label={zh ? "FreeSki 动作对比" : "FreeSki technique comparison"}>
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0 space-y-1">
         <p className="text-sm font-semibold">{zh ? "FreeSki 动作对比" : "FreeSki technique comparison"}</p>
-        <p className="text-xs text-ink-3">{zh ? "总分暂不显示：评分方法还在用考官打分验证，验证通过后再开放。" : "No overall score yet: the scoring is still being validated against examiner marks."}</p>
+        <p className="text-xs text-ink-3">{NO_OVERALL[zh ? 0 : 1]}</p>
       </div>
       <div className="flex flex-wrap gap-2">
         <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${qualityTone}`}>{zh ? qualityZh : qualityEn}</span>
         <span className="rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-bold text-ink-2">{zh ? "试验性" : "Experimental"}</span>
       </div>
     </div>
-    <p className="text-xs text-ink-3">{comparedWith(target, card.calibration.matched_reference_count, zh)}{zh
-      ? ` · ${card.overall.turns_used} 个中间弯${separateTurns ? "，启动弯和结束弯单独列出" : ""}`
-      : ` · ${card.overall.turns_used} middle turns${separateTurns ? "; start and end turns are listed separately" : ""}`}</p>
-    {aboveLevel && <p className="text-xs text-ink-3">{zh
-      ? `技术提升按${aboveLevel[0]}示范对比，分数表示离${aboveLevel[0]}水平还有多远，还没到这个水平时普遍偏低。想和自己所在级别的通过示范比，请选 CSIA 考证动作和级别。`
-      : `Improvement analyses compare with ${aboveLevel[1]} examples, so scores show the distance to that level and run low below it. To compare with pass examples at your own level, choose a CSIA certification action and level.`}</p>}
-    {currentLevel && target && <p className="text-xs text-ink-3">{levelNote(currentLevel, target, zh)}</p>}
-    {card.quality_reasons.length > 0 && <ul className="list-disc space-y-1 pl-5 text-xs text-ink-3">
-      {card.quality_reasons.map(reason => <li key={reason}>{(reason === "no_matching_reference" && card.level === null && target === "advanced"
-        ? NO_EXPERT : REASONS[reason])[zh ? 0 : 1]}</li>)}</ul>}
-    {previous && <p className="text-xs text-ink-3">{zh ? "分数旁的 +/− 是和你上一次同一动作分析的变化。" : "The +/− beside a score is the change since your previous analysis of this action."}</p>}
+    <ComparisonNotes card={card} zh={zh} currentLevel={currentLevel} />
+    {previous && <p className="text-xs text-ink-3">{PREVIOUS_NOTE[zh ? 0 : 1]}</p>}
     {metrics.length > 0 && <div className="grid gap-2 sm:grid-cols-2">{metrics.map(metric => <MetricBar key={metric.key} metric={metric} card={card} previous={previous} zh={zh}
       selected={selectedMetric === metric.key} onSelect={onSelectMetric} />)}</div>}
     {card.turns.length > 0 && <div className="space-y-2">
@@ -242,8 +239,90 @@ export function AnalysisScorecard({ card, zh, currentLevel = null, previous = nu
       {reacquired && <p className="text-xs text-amber">{zh ? "标“重新识别”的弯：中途重新识别了滑雪者，请确认画面中是你。"
         : "Turns marked re-identified: the skier was picked up again mid-clip, so check that it is you in the frame."}</p>}
     </div>}
-    <p className="text-xs leading-relaxed text-ink-3">{zh
-      ? "对比为试验性：与 FreeSki 的标准动作数据比较得出，尚未经过考官或教练打分验证。人太小、出画或与他人重叠的弯不打分；其余弯也会受拍摄角度和镜头移动影响。标“视频估算”的指标来自单机位视频，只显示、不计分。只对比视频能测量的 CSIA 考核要求。"
-      : "Experimental: compared with FreeSki's standard examples and not yet validated against examiner or coach ratings. Turns where the skier is too small, out of frame or overlapping someone are not scored; the rest can still be affected by camera angle and movement. Metrics marked as video estimates come from single-camera video and are shown but not scored. Only CSIA criteria that video can measure are compared."}</p>
+    <p className="text-xs leading-relaxed text-ink-3">{SCORECARD_NOTE[zh ? 0 : 1]}</p>
   </section>;
+}
+
+export const NO_OVERALL: [string, string] = ["总分暂不显示：评分方法还在用考官打分验证，验证通过后再开放。",
+  "No overall score yet: the scoring is still being validated against examiner marks."];
+const PREVIOUS_NOTE: [string, string] = ["分数旁的 +/− 是和你上一次同一动作分析的变化。",
+  "The +/− beside a score is the change since your previous analysis of this action."];
+/** What the comparison is and is not: the scorecard's footnote, and part of the report's note on the experimental results. */
+export const SCORECARD_NOTE: [string, string] = [
+  "对比为试验性：与 FreeSki 的标准动作数据比较得出，尚未经过考官或教练打分验证。人太小、出画或与他人重叠的弯不打分；其余弯也会受拍摄角度和镜头移动影响。标“视频估算”的指标来自单机位视频，只显示、不计分。只对比视频能测量的 CSIA 考核要求。",
+  "Experimental: compared with FreeSki's standard examples and not yet validated against examiner or coach ratings. Turns where the skier is too small, out of frame or overlapping someone are not scored; the rest can still be affected by camera angle and movement. Metrics marked as video estimates come from single-camera video and are shown but not scored. Only CSIA criteria that video can measure are compared."];
+
+/** Which examples were compared, and why the data may be limited. */
+export function ComparisonNotes({ card, zh, currentLevel = null }: { card: Scorecard; zh: boolean; currentLevel?: FreeSkiCurrentLevel | null }) {
+  const separateTurns = card.turns.some(turn => turn.role !== "middle");
+  const target = referenceTarget(card);
+  const aboveLevel = currentLevel ? null : target === "expert" ? ["专家", "expert"] : target === "advanced" ? ["进阶", "advanced"] : null;
+  return <>
+    <p className="text-xs text-ink-3">{comparedWith(target, card.calibration.matched_reference_count, zh)}{zh
+      ? ` · ${card.overall.turns_used} 个中间弯${separateTurns ? "，启动弯和结束弯单独列出" : ""}`
+      : ` · ${card.overall.turns_used} middle turns${separateTurns ? "; start and end turns are listed separately" : ""}`}</p>
+    {aboveLevel && <p className="text-xs text-ink-3">{zh
+      ? `技术提升按${aboveLevel[0]}示范对比，分数表示离${aboveLevel[0]}水平还有多远，还没到这个水平时普遍偏低。想和自己所在级别的通过示范比，请选 CSIA 考证动作和级别。`
+      : `Improvement analyses compare with ${aboveLevel[1]} examples, so scores show the distance to that level and run low below it. To compare with pass examples at your own level, choose a CSIA certification action and level.`}</p>}
+    {currentLevel && target && <p className="text-xs text-ink-3">{levelNote(currentLevel, target, zh)}</p>}
+    {card.quality_reasons.length > 0 && <ul className="list-disc space-y-1 pl-5 text-xs text-ink-3">
+      {card.quality_reasons.map(reason => <li key={reason}>{(reason === "no_matching_reference" && card.level === null && target === "advanced"
+        ? NO_EXPERT : REASONS[reason])[zh ? 0 : 1]}</li>)}</ul>}
+  </>;
+}
+
+const GROUPS: [MetricStanding, string, string][] = [
+  ["work", "需要加强", "Needs work"],
+  ["good", "达到示范常见水平", "At the examples' usual level"],
+  ["estimated", "视频估算 · 不计分", "Video estimates · not scored"],
+  ["none", "这次没算出", "Not computed this time"],
+];
+const SHORT_BAND: Record<NonNullable<Metric["band"]>, [string, string]> = {
+  below: ["低于范围", "Below range"], within: ["在范围内", "In range"], above: ["高于范围", "Above range"],
+};
+
+/**
+ * The report's measurements: one row per metric, grouped by where it stands, heaviest first. A row opens to the
+ * full comparison and can send the turn player to the metric's weakest turn.
+ */
+export function MetricList({ card, zh, previous = null, selectedMetric = null, onSelectMetric }: {
+  card: Scorecard; zh: boolean; previous?: Scorecard | null; selectedMetric?: string | null; onSelectMetric?: (key: string) => void;
+}) {
+  const metrics = [...card.metrics].sort((a, b) => b.weight - a.weight);
+  return <div className="max-w-2xl space-y-4">
+    {previous && <p className="text-xs text-ink-3">{PREVIOUS_NOTE[zh ? 0 : 1]}</p>}
+    {GROUPS.map(([standing, groupZh, groupEn]) => {
+      const group = metrics.filter(metric => metricStanding(metric) === standing);
+      return group.length > 0 && <div key={standing} data-standing={standing}>
+        <p className="text-xs font-semibold text-ink-3">{zh ? groupZh : groupEn}</p>
+        <ul className="divide-y divide-border">{group.map(metric => <MetricRow key={metric.key} metric={metric} card={card} previous={previous}
+          zh={zh} selected={selectedMetric === metric.key} onSelect={onSelectMetric} />)}</ul>
+      </div>;
+    })}
+  </div>;
+}
+
+function MetricRow({ metric, card, previous, zh, selected, onSelect }: { metric: Metric; card: Scorecard; previous: Scorecard | null; zh: boolean;
+  selected: boolean; onSelect?: (key: string) => void }) {
+  const standing = metricStanding(metric);
+  const delta = metricDelta(card, previous, metric.key);
+  const worst = worstTurnFor(card, metric.key);
+  const tone = standing === "work" ? "bg-amber-bg text-amber" : standing === "good" ? "bg-success-bg text-success" : "bg-surface-2 text-ink-3";
+  return <li><details className="group">
+    <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 py-2 text-sm">
+      <span className="min-w-0 flex-1 break-words font-medium">{zh ? metric.label_zh : metric.label_en}</span>
+      {metric.band && <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${tone}`}>{SHORT_BAND[metric.band][zh ? 0 : 1]}</span>}
+      <span className="min-w-8 shrink-0 text-right font-semibold" data-numeric>{metric.score === null ? (zh ? "暂无" : "N/A") : round(metric.score)}</span>
+      {delta !== null && delta !== 0 && <span className={`shrink-0 text-xs ${delta > 0 ? "text-success" : "text-danger"}`}
+        title={zh ? "和上一次分析相比" : "Compared with your previous analysis"}>{delta > 0 ? "+" : ""}{delta}</span>}
+      <ChevronRight className="size-4 shrink-0 text-ink-3 transition-transform group-open:rotate-90" aria-hidden />
+    </summary>
+    <div className="space-y-2 pb-3">
+      <MetricFacts metric={metric} card={card} zh={zh} />
+      {onSelect && worst && <button type="button" aria-pressed={selected} onClick={() => onSelect(metric.key)}
+        className="press min-h-9 text-xs font-semibold text-accent underline underline-offset-4">
+        {selected ? (zh ? "已在播放器里高亮，点击取消" : "Highlighted in the player; tap to clear")
+          : zh ? `在播放器里看最差的${turnLabel(worst, zh)}` : `Watch the weakest ${turnLabel(worst, zh).toLowerCase()} in the player`}</button>}
+    </div>
+  </details></li>;
 }

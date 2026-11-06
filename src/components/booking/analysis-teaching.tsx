@@ -5,29 +5,70 @@ import { findingKey, type FindingKind } from "@/lib/video-analysis/finding-key";
 
 export type FindingReview = { findingKey: string; verdict: "AGREE" | "DISAGREE"; note: string | null; coachName: string; mine: boolean };
 
-/** Model-written explanation whose every conclusion cites a code-computed comparison fact. */
-export function AnalysisTeaching({ teaching, zh, turnLabel, onSelectTurn, reviews = [], canReview = false, onReview }: { teaching: Teaching; zh: boolean;
-  turnLabel: (turnId: string) => string | null; onSelectTurn?: (turnId: string) => void;
+type ReviewProps = {
   /** Coach verdicts on each finding; `onReview` lets a coach set or clear one. */
   reviews?: FindingReview[]; canReview?: boolean;
   onReview?: (key: string, verdict: "AGREE" | "DISAGREE" | null, note: string, metricKeys: string[]) => Promise<void>;
-}) {
-  const estimated = (factIds: string[]) => citesEstimated(teaching, factIds)
-    ? <span className="ml-2 whitespace-nowrap rounded-full border border-amber-border bg-amber-bg px-2 py-0.5 text-xs text-amber">{zh ? "视频估算" : "Video estimate"}</span> : null;
-  const improvements = [...teaching.improvements].sort((a, b) => Number(b.priority === "primary") - Number(a.priority === "primary"));
-  const summary = zh ? teaching.summary_zh : teaching.summary_en;
-  const limitations = zh ? teaching.limitations_zh : teaching.limitations_en;
+};
+
+/** FreeSki writes the CSIA criterion in a fixed phrase: the finding itself, then the criterion, when present. */
+export function splitCriterion(text: string): [string, string | null] {
+  const split = text.split(/(对应 CSIA 要求：|CSIA criterion: )/);
+  return [split[0].trim(), split.length >= 3 ? split.slice(1).join("").trim() : null];
+}
+
+function verdictsFor(teaching: Teaching, zh: boolean, { reviews = [], canReview = false, onReview }: ReviewProps) {
   const metricsOf = (factIds: string[]) => [...new Set(factIds.flatMap(id => teaching.facts.filter(fact => fact.fact_id === id).map(fact => fact.metric_key)))];
-  const verdicts = (kind: FindingKind, textZh: string, factIds: string[]) => {
+  return function verdicts(kind: FindingKind, textZh: string, factIds: string[]) {
     const key = findingKey(kind, textZh);
     return <Verdicts key={key} findingKey={key} zh={zh} reviews={reviews.filter(review => review.findingKey === key)} canReview={canReview}
       onReview={onReview && ((verdict, note) => onReview(key, verdict, note, metricsOf(factIds)))} />;
   };
+}
+
+function estimatedTag(teaching: Teaching, zh: boolean, factIds: string[]) {
+  return citesEstimated(teaching, factIds)
+    ? <span className="ml-2 whitespace-nowrap rounded-full border border-amber-border bg-amber-bg px-2 py-0.5 text-xs text-amber">{zh ? "视频估算" : "Video estimate"}</span> : null;
+}
+
+/** FreeSki's drills, each with the turns its facts come from. */
+export function DrillList({ teaching, zh, turnLabel, onSelectTurn, ...review }: { teaching: Teaching; zh: boolean;
+  turnLabel: (turnId: string) => string | null; onSelectTurn?: (turnId: string) => void } & ReviewProps) {
+  const verdicts = verdictsFor(teaching, zh, review);
+  return <div className="space-y-2">{teaching.drills.map(drill => {
+    const [why, criterion] = splitCriterion(zh ? drill.why_zh : drill.why_en);
+    const turns = [...new Set(teaching.facts.flatMap(fact => drill.fact_ids.includes(fact.fact_id) && fact.turn_id ? [fact.turn_id] : []))];
+    return <div key={drill.drill_id} className="space-y-1 rounded-lg border border-border bg-surface p-3 text-sm">
+      <p className="font-semibold">{zh ? drill.name_zh : drill.name_en}{estimatedTag(teaching, zh, drill.fact_ids)}</p>
+      <p className="text-ink-2">{why}</p>
+      {criterion && <p className="text-xs text-ink-3">{criterion}</p>}
+      {onSelectTurn && turns.length > 0 && <div className="flex flex-wrap gap-3 pt-1">{turns.map(turnId => {
+        const label = turnLabel(turnId);
+        return label && <button type="button" key={turnId} className="text-accent underline" onClick={() => onSelectTurn(turnId)}>
+          {zh ? `看${label}` : `Watch ${label.toLowerCase()}`}</button>;
+      })}</div>}
+      {verdicts("drill", drill.why_zh, drill.fact_ids)}
+    </div>;
+  })}</div>;
+}
+
+/**
+ * Model-written explanation whose every conclusion cites a code-computed comparison fact. Inside the report,
+ * `compact` drops the heading the surrounding section already gives, and `drills={false}` leaves the drills to their own section.
+ */
+export function AnalysisTeaching({ teaching, zh, turnLabel, onSelectTurn, compact = false, drills = true, ...review }: { teaching: Teaching; zh: boolean;
+  turnLabel: (turnId: string) => string | null; onSelectTurn?: (turnId: string) => void; compact?: boolean; drills?: boolean } & ReviewProps) {
+  const { canReview = false } = review;
+  const estimated = (factIds: string[]) => estimatedTag(teaching, zh, factIds);
+  const improvements = [...teaching.improvements].sort((a, b) => Number(b.priority === "primary") - Number(a.priority === "primary"));
+  const summary = zh ? teaching.summary_zh : teaching.summary_en;
+  const limitations = zh ? teaching.limitations_zh : teaching.limitations_en;
+  const verdicts = verdictsFor(teaching, zh, review);
   return <section className="space-y-3" aria-label={zh ? "动作解释" : "Technique explanation"}>
-    <div className="flex flex-wrap items-center gap-2">
+    {!compact && <div className="flex flex-wrap items-center gap-2">
       <p className="text-sm font-semibold">{zh ? "动作解释" : "Technique explanation"}</p>
       <span className="rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-bold text-ink-2">{zh ? "试验性" : "Experimental"}</span>
-    </div>
+    </div>}
     <p className="text-xs text-ink-3">{zh ? "由本地模型根据与示范的对比数据撰写，每条结论都对应一项测量。" : "Written by a local model from the comparison with the examples; every conclusion matches one measurement."}
       {teaching.model.model && <span className="break-all">{zh ? ` 模型：${teaching.model.model}` : ` Model: ${teaching.model.model}`}</span>}</p>
     {canReview && <p className="rounded-lg bg-accent-soft px-3 py-2 text-xs text-ink-2">{zh ? "你是这段视频的教练：每条结论可以标“同意”或“不同意”，学员能看到，FreeSki 也会用它校准对比。" : "As this clip's coach you can mark each finding agree or disagree; the student sees it and FreeSki uses it to calibrate the comparison."}</p>}
@@ -49,12 +90,9 @@ export function AnalysisTeaching({ teaching, zh, turnLabel, onSelectTurn, review
         {verdicts("improvement", item.text_zh, item.fact_ids)}
       </div>)}
     </div>}
-    {teaching.drills.length > 0 && <div className="space-y-2">
+    {drills && teaching.drills.length > 0 && <div className="space-y-2">
       <p className="text-sm font-semibold">{zh ? "建议练习" : "Suggested drills"}</p>
-      {teaching.drills.map(drill => <div key={drill.drill_id} className="rounded-lg border border-border p-3 text-sm">
-        <p className="font-semibold">{zh ? drill.name_zh : drill.name_en}</p>
-        <p className="mt-1 text-ink-2">{zh ? drill.why_zh : drill.why_en}</p>
-        {verdicts("drill", drill.why_zh, drill.fact_ids)}</div>)}
+      <DrillList teaching={teaching} zh={zh} turnLabel={turnLabel} onSelectTurn={onSelectTurn} {...review} />
     </div>}
     {limitations.length > 0 && <ul className="space-y-1 text-xs text-ink-3">{limitations.map((text, index) => <li key={index}>{text}</li>)}</ul>}
   </section>;

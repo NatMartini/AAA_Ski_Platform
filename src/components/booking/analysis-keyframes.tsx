@@ -2,32 +2,41 @@
 
 import { useEffect, useState } from "react";
 import { isCurrentMedia, keyframesSchema, type Keyframes } from "@/lib/freeski/scorecard";
+import { retryWhileStarting } from "@/lib/freeski/startup-retry";
 import { clientFetch } from "@/lib/client-fetch";
 import { referenceNote, type ReferenceTarget } from "./analysis-scorecard";
 
-/** Rendered still frames for one turn; silently absent when the provider has none. */
-export function AnalysisKeyframes({ base, turnId, zh, target = null }: { base: string; turnId: string; zh: boolean; target?: ReferenceTarget | null }) {
+/**
+ * Rendered still frames for one turn. Silently absent when the provider has none, unless `showEmpty`: opened on
+ * request, it says so instead.
+ */
+export function AnalysisKeyframes({ base, turnId, zh, target = null, showEmpty = false }: { base: string; turnId: string; zh: boolean;
+  target?: ReferenceTarget | null; showEmpty?: boolean }) {
   const [manifest, setManifest] = useState<Keyframes | null>(null);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>, attempts = 0;
     const load = async () => {
       try {
-        const response = await clientFetch(`${base}/turns/${turnId}/keyframes`, { cache: "no-store", signal: controller.signal });
-        if (!response.ok) return;
+        const response = await retryWhileStarting(() => clientFetch(`${base}/turns/${turnId}/keyframes`, { cache: "no-store", signal: controller.signal }),
+          { signal: controller.signal });
+        if (!response.ok) { if (!controller.signal.aborted) setFailed(true); return; }
         const value = keyframesSchema.parse(await response.json());
         if (controller.signal.aborted || value.turn_id !== turnId) return;
         setManifest(value);
         if (value.status === "pending" && attempts++ < 60) timer = setTimeout(() => void load(), 5000);
-      } catch { /* Keyframes are optional; the turn player stays usable. */ }
+      } catch { if (!controller.signal.aborted) setFailed(true); /* Keyframes are optional; the turn player stays usable. */ }
     };
     void load();
     return () => { controller.abort(); clearTimeout(timer); };
   }, [base, turnId]);
+  const none = showEmpty ? <p className="text-xs text-ink-3">{zh ? "这个弯没有可用的关键帧图片。" : "No key frames are available for this turn."}</p> : null;
+  if (!manifest) return failed ? none : showEmpty ? <p className="text-xs text-ink-3">{zh ? "正在读取关键帧…" : "Loading key frames…"}</p> : null;
   // v1 key frames draw a raw reference clip that may turn the other way; they are not shown.
-  if (!manifest || manifest.status === "unavailable" || !isCurrentMedia(manifest)) return null;
+  if (manifest.status === "unavailable" || !isCurrentMedia(manifest)) return none;
   if (manifest.status === "pending") return <p className="text-xs text-ink-3">{zh ? "关键帧图片生成中…" : "Generating key frames…"}</p>;
-  if (!manifest.items.length) return null;
+  if (!manifest.items.length) return none;
   const note = referenceNote(manifest.items.flatMap(item => item.reference_status ?? []), zh, target);
   return <div className="space-y-2">
     <p className="text-sm font-semibold">{zh ? "关键帧对比" : "Key frames"}</p>

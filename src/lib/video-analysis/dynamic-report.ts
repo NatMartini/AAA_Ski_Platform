@@ -54,7 +54,8 @@ export async function readDynamicReport(input: { scope: string; jobId: string; r
       range: video ? input.request.headers.get("range") ?? undefined : undefined,
       signal: input.request.signal });
   } catch (error) {
-    if (error instanceof FreeSkiError) throw new DynamicReportError(503, "dynamic-report-unavailable");
+    // Pages retry a 503 while the on-demand provider starts; waiting cannot help a job pinned to a deployment this site no longer serves.
+    if (error instanceof FreeSkiError) throw new DynamicReportError(error.code === "analysis-unconfigured" ? 409 : 503, "dynamic-report-unavailable");
     throw error;
   }
   // A permission or video deletion that won while the network request waited

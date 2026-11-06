@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { scorecardSchema, type Scorecard } from "./scorecard";
 import { sampleScorecard } from "./scorecard.fixtures";
-import { comparableScorecards, metricConfidence, metricDelta, metricInsight, perTurnScores, worstTurnFor } from "./metric-insight";
+import { comparableScorecards, metricConfidence, metricDelta, metricInsight, metricStanding, perTurnScores, standingCounts, worstTurnFor } from "./metric-insight";
 
 const card = () => scorecardSchema.parse(sampleScorecard);
 const direct = (c: Scorecard) => c.metrics.find(metric => metric.measurement === "direct" && metric.score !== null)!;
@@ -15,6 +15,20 @@ describe("metric insight", () => {
       expect(insight!.lines.length > 0 || insight!.hipPath).toBe(true);
     }
     expect(metricInsight("made_up")).toBeNull();
+  });
+
+  it("counts a bar metric above its range as good, but a bell metric only inside its zone", () => {
+    const c = card();
+    const standing = (key: string) => metricStanding(c.metrics.find(metric => metric.key === key)!);
+    expect(standing("parallel_skis")).toBe("good");
+    expect(standing("upper_body_quiet_index")).toBe("good");
+    expect(standing("rotation_rate")).toBe("work");
+    expect(standing("turn_tempo")).toBe("good");
+    expect(standing("edge_angle")).toBe("estimated");
+    const below = { ...c.metrics.find(metric => metric.key === "parallel_skis")!, band: "below" as const };
+    expect(metricStanding(below)).toBe("work");
+    expect(metricStanding({ ...below, score: null })).toBe("none");
+    expect(standingCounts(c)).toEqual({ good: 6, work: 1, estimated: 2, none: 0 });
   });
 
   it("finds the counted turn where a metric scored lowest, ignoring unscored and start turns", () => {

@@ -40,6 +40,23 @@ export function metricInsight(key: string) {
   return Object.hasOwn(METRIC_INSIGHT, key) ? METRIC_INSIGHT[key] : null;
 }
 
+/** Where a metric stands against the examples: at their usual level or better, short of it, a video estimate, or not computed. */
+export type MetricStanding = "good" | "work" | "estimated" | "none";
+
+export function metricStanding(metric: Metric): MetricStanding {
+  if (metric.measurement === "estimated") return "estimated";
+  if (metric.score === null || metric.band === null) return "none";
+  // A bar metric above its usual range is better than the examples; a bell metric must sit inside its zone.
+  return metric.band === "within" || metric.presentation === "bar" && metric.band === "above" ? "good" : "work";
+}
+
+/** How many metrics have each standing: the report's summary while the overall score is withheld. */
+export function standingCounts(card: Scorecard): Record<MetricStanding, number> {
+  const counts: Record<MetricStanding, number> = { good: 0, work: 0, estimated: 0, none: 0 };
+  for (const metric of card.metrics) counts[metricStanding(metric)]++;
+  return counts;
+}
+
 /** This metric's score in each turn, in turn order; null where the turn was not scored for it. */
 export function perTurnScores(card: Scorecard, key: string): { turnId: string; score: number | null; counted: boolean }[] {
   return card.turns.map(turn => ({ turnId: turn.turn_id, counted: turn.used_in_overall,

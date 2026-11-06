@@ -52,10 +52,12 @@ export function analysisReasonText(reason: string | null, zh: boolean): string |
   return reason && Object.hasOwn(REASONS, reason) ? REASONS[reason][zh ? 0 : 1] : null;
 }
 
-export function VideoAnalysisResult({ result: rawResult, locale, dynamicReportBase, previousResult = null, expanded = false }: {
+export function VideoAnalysisResult({ result: rawResult, locale, dynamicReportBase, previousResult = null, expanded = false, reviewHref = null }: {
   result: unknown; locale: Locale; dynamicReportBase?: string;
   /** The raw result of a comparable earlier analysis, for "since last time" deltas. */
   previousResult?: unknown; expanded?: boolean;
+  /** Where the page offers a human coach review of this clip. */
+  reviewHref?: string | null;
 }) {
   const zh = locale === "zh";
   const result = readAnalysisResult(rawResult);
@@ -85,7 +87,7 @@ export function VideoAnalysisResult({ result: rawResult, locale, dynamicReportBa
     </>}
     {coaching && coaching.length > 0 && <ul className="space-y-1 text-sm leading-relaxed text-ink-2">{coaching.map((text, index) => <li key={index}>{text}</li>)}</ul>}
     {dynamicReportBase && <DynamicCoachingReport base={dynamicReportBase} zh={zh} card={comparison ? card : null} currentLevel={result?.currentLevel ?? null}
-      previous={previous} defaultOpen={expanded} />}
+      previous={previous} defaultOpen={expanded} reviewHref={reviewHref} />}
   </div>;
 }
 

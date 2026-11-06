@@ -56,6 +56,29 @@ export default async function AnalysisReportPage({ params, searchParams }: PageP
   const pending = job.status === "QUEUED" || job.status === "RUNNING";
   const back = lesson ? `/video-analysis?lesson=${encodeURIComponent(lesson)}#workspace` : "/video-analysis?source=account#workspace";
   const when = (value: string | null | undefined) => value ? formatTorontoShortDateTime(new Date(value), loc) : null;
+  const finished = job.result !== null && job.result !== undefined && (job.status === "SUCCEEDED" || job.status === "FAILED");
+  // The student can ask for a human review below the report.
+  const reviewHref = video && (!lesson || user.role === "CUSTOMER") ? `#coach-feedback-${video.id}` : null;
+  const clip = <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+    <div className="overflow-hidden rounded-2xl border border-border bg-black">
+      {video
+        ? <video controls preload="metadata" playsInline src={video.url} className="aspect-video w-full object-contain" />
+        : <p className="flex aspect-video items-center justify-center p-6 text-sm text-white/70">{zh ? "这个视频已删除，报告仍保留。" : "This video was deleted; its report is kept."}</p>}
+    </div>
+    <Card className="space-y-4 self-start">
+      <h2 className="text-base">{zh ? "时间线" : "Timeline"}</h2>
+      <ol className="space-y-3 text-sm">
+        {video?.uploadedAt && <Step icon={<Upload aria-hidden />} label={zh ? "上传视频" : "Video uploaded"} time={when(video.uploadedAt)} />}
+        <Step icon={<Wand2 aria-hidden />} label={zh ? "提交分析" : "Submitted for analysis"} time={when(job.createdAt)} />
+        {pending && <Step icon={<Loader2 className="animate-spin" aria-hidden />} label={badge.label} time={zh ? "完成后本页自动更新" : "This page updates when it finishes"} highlight />}
+        {job.finishedAt && <Step
+          icon={job.status === "SUCCEEDED" ? <CheckCircle2 aria-hidden /> : <CircleAlert aria-hidden />}
+          label={job.status === "SUCCEEDED" ? (zh ? "分析完成" : "Analysis finished") : (zh ? "分析失败，次数未扣除" : "Analysis failed; no credit used")}
+          time={when(job.finishedAt)} highlight />}
+      </ol>
+      <JobNotes job={job} zh={zh} />
+    </Card>
+  </div>;
 
   return (
     <div className="space-y-6">
@@ -72,33 +95,20 @@ export default async function AnalysisReportPage({ params, searchParams }: PageP
         actions={<Badge tone={badge.tone} dot className="text-sm">{badge.label}</Badge>}
       />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="overflow-hidden rounded-2xl border border-border bg-black">
-          {video
-            ? <video controls preload="metadata" playsInline src={video.url} className="aspect-video w-full object-contain" />
-            : <p className="flex aspect-video items-center justify-center p-6 text-sm text-white/70">{zh ? "这个视频已删除，报告仍保留。" : "This video was deleted; its report is kept."}</p>}
-        </div>
-        <Card className="space-y-4 self-start">
-          <h2 className="text-base">{zh ? "时间线" : "Timeline"}</h2>
-          <ol className="space-y-3 text-sm">
-            {video?.uploadedAt && <Step icon={<Upload aria-hidden />} label={zh ? "上传视频" : "Video uploaded"} time={when(video.uploadedAt)} />}
-            <Step icon={<Wand2 aria-hidden />} label={zh ? "提交分析" : "Submitted for analysis"} time={when(job.createdAt)} />
-            {pending && <Step icon={<Loader2 className="animate-spin" aria-hidden />} label={badge.label} time={zh ? "完成后本页自动更新" : "This page updates when it finishes"} highlight />}
-            {job.finishedAt && <Step
-              icon={job.status === "SUCCEEDED" ? <CheckCircle2 aria-hidden /> : <CircleAlert aria-hidden />}
-              label={job.status === "SUCCEEDED" ? (zh ? "分析完成" : "Analysis finished") : (zh ? "分析失败，次数未扣除" : "Analysis failed; no credit used")}
-              time={when(job.finishedAt)} highlight />}
-          </ol>
-          <JobNotes job={job} zh={zh} />
-        </Card>
-      </div>
-
-      {job.result !== null && job.result !== undefined && (job.status === "SUCCEEDED" || job.status === "FAILED") && (
+      {/* While it runs the clip and its timeline lead; once finished the report does, so the conclusion is on the first screen. */}
+      {!finished && clip}
+      {finished && (
         <section className="space-y-3">
           <SectionHeading title={zh ? "分析报告" : "Analysis report"} />
           {previous && <p className="text-xs text-ink-3">{zh ? `和上一次（${when(previous.finishedAt)}）的同一动作分析对比。` : `Compared with your previous analysis of this action (${when(previous.finishedAt)}).`}</p>}
           <VideoAnalysisResult result={job.result} locale={loc} dynamicReportBase={`/api/video-analysis/reports/${lesson ? "booking" : "account"}/${job.id}`}
-            previousResult={previous?.result ?? null} expanded />
+            previousResult={previous?.result ?? null} expanded reviewHref={reviewHref} />
+        </section>
+      )}
+      {finished && (
+        <section className="space-y-3">
+          <SectionHeading title={zh ? "原视频与时间线" : "Original clip and timeline"} />
+          {clip}
         </section>
       )}
 
