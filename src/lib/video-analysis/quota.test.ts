@@ -17,27 +17,27 @@ describe("whole-lesson included analyses", () => {
 
 describe("video analysis entitlement", () => {
   it("derives old completed courses directly from hours and shares the allowance across attendees", () => {
-    const historical = { status: "COMPLETED", hours: 2, headcount: 3, totalCents: 14500 };
+    const historical = { status: "COMPLETED", hours: 2, headcount: 3, totalCents: 14500, accountId: "student" };
     expect(analysisQuota(historical, [], [])).toEqual({ active: true, freeTotal: 3,
       paidTotal: 0, used: 0, reserved: 0, remaining: 3 });
-    expect(historical).toEqual({ status: "COMPLETED", hours: 2, headcount: 3, totalCents: 14500 });
+    expect(historical).toEqual({ status: "COMPLETED", hours: 2, headcount: 3, totalCents: 14500, accountId: "student" });
   });
 
   it.each([1, 2, 3])("shares five credits for a three-hour lesson with %i attendees", (headcount) => {
-    const course = { status: "COMPLETED", hours: 3, headcount };
+    const course = { status: "COMPLETED", hours: 3, headcount, accountId: "student" };
     expect(analysisQuota(course, [], []))
       .toMatchObject({ freeTotal: 5, remaining: 5 });
   });
 
   it.each(["HOLD", "CONFIRMED", "CANCELLED", "EXPIRED"])("does not activate credits for %s", (status) => {
-    expect(analysisQuota({ status, hours: 2 }, [], [{ status: "CONFIRMED", quantity: 4 }]))
+    expect(analysisQuota({ status, hours: 2, accountId: "student" }, [], [{ status: "CONFIRMED", quantity: 4 }]))
       .toMatchObject({ active: false, freeTotal: 0, remaining: 0 });
   });
 
   it("only counts received purchases and reserves queued or running jobs immediately", () => {
-    expect(analysisQuota({ status: "COMPLETED", hours: 2 }, [
-      { status: "QUEUED", refundedAt: null }, { status: "RUNNING", refundedAt: null },
-      { status: "SUCCEEDED", refundedAt: null },
+    expect(analysisQuota({ status: "COMPLETED", hours: 2, accountId: "student" }, [
+      { status: "QUEUED", refundedAt: null, createdById: "student" }, { status: "RUNNING", refundedAt: null, createdById: "student" },
+      { status: "SUCCEEDED", refundedAt: null, createdById: "student" },
     ], [
       { status: "AWAITING_PAYMENT", quantity: 10 }, { status: "PENDING_PAYMENT_REVIEW", quantity: 10 },
       { status: "PAYMENT_REJECTED", quantity: 10 }, { status: "CANCELLED", quantity: 10 },
@@ -46,20 +46,20 @@ describe("video analysis entitlement", () => {
   });
 
   it("refunds failed jobs but preserves successful consumption after their video was deleted", () => {
-    const deletedVideoJob = { status: "SUCCEEDED", refundedAt: null, videoId: null };
-    expect(analysisQuota({ status: "COMPLETED", hours: 2 }, [deletedVideoJob,
-      { status: "FAILED", refundedAt: new Date() }], [])).toMatchObject({ used: 1, remaining: 2 });
+    const deletedVideoJob = { status: "SUCCEEDED", refundedAt: null, createdById: "student", videoId: null };
+    expect(analysisQuota({ status: "COMPLETED", hours: 2, accountId: "student" }, [deletedVideoJob,
+      { status: "FAILED", refundedAt: new Date(), createdById: "student" }], [])).toMatchObject({ used: 1, remaining: 2 });
   });
 
   it("fails closed when a failed ledger entry has not actually been refunded", () => {
-    expect(analysisQuota({ status: "COMPLETED", hours: 2 }, [
-      { status: "FAILED", refundedAt: null }, { status: "SUCCEEDED", refundedAt: null },
+    expect(analysisQuota({ status: "COMPLETED", hours: 2, accountId: "student" }, [
+      { status: "FAILED", refundedAt: null, createdById: "student" }, { status: "SUCCEEDED", refundedAt: null, createdById: "student" },
     ], [])).toMatchObject({ used: 1, reserved: 0, remaining: 1 });
   });
 
   it("retains historical consumption above the new allowance without refunding or resetting records", () => {
-    const booking = Object.freeze({ status: "COMPLETED", hours: 2, headcount: 3, totalCents: 14500 });
-    const jobs = Object.freeze(Array.from({ length: 6 }, () => Object.freeze({ status: "SUCCEEDED", refundedAt: null })));
+    const booking = Object.freeze({ status: "COMPLETED", hours: 2, headcount: 3, totalCents: 14500, accountId: "student" });
+    const jobs = Object.freeze(Array.from({ length: 6 }, () => Object.freeze({ status: "SUCCEEDED", refundedAt: null, createdById: "student" })));
     const purchases = Object.freeze([Object.freeze({ status: "CONFIRMED", quantity: 2 })]);
     expect(analysisQuota(booking, jobs, purchases)).toEqual({ active: true, freeTotal: 3,
       paidTotal: 2, used: 6, reserved: 0, remaining: 0 });
@@ -68,9 +68,16 @@ describe("video analysis entitlement", () => {
     expect(booking.totalCents).toBe(14500);
   });
 
+  it("does not use the lesson's credits for its coach's own analyses", () => {
+    const jobs = [{ status: "SUCCEEDED", refundedAt: null, createdById: "own-coach" }, { status: "QUEUED", refundedAt: null, createdById: "admin" },
+      { status: "SUCCEEDED", refundedAt: null, createdById: "student" }];
+    expect(analysisQuota({ status: "COMPLETED", hours: 2, accountId: "student" }, jobs, []))
+      .toMatchObject({ used: 1, reserved: 0, remaining: 2 });
+  });
+
   it("adds confirmed paid credits to the included whole-lesson allowance", () => {
-    expect(analysisQuota({ status: "COMPLETED", hours: 4 }, [
-      { status: "SUCCEEDED", refundedAt: null }, { status: "FAILED", refundedAt: new Date() },
+    expect(analysisQuota({ status: "COMPLETED", hours: 4, accountId: "student" }, [
+      { status: "SUCCEEDED", refundedAt: null, createdById: "student" }, { status: "FAILED", refundedAt: new Date(), createdById: "student" },
     ], [{ status: "CONFIRMED", quantity: 2 }])).toMatchObject({ freeTotal: 5, paidTotal: 2, used: 1, remaining: 6 });
   });
 });

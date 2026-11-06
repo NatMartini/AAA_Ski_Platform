@@ -31,19 +31,26 @@ export async function lockedAccount<T>(accountId: string,
   });
 }
 
-/** Every student account starts with these personal analyses (owner's decision, 2026-11-06); coaches issue more. */
+/**
+ * What an account may analyse of its own clips (owner's decisions, 2026-11-06): every student account
+ * starts with three analyses and coaches issue more; coaches and administrators analyse without limit.
+ */
 export const ACCOUNT_FREE_ANALYSES = 3;
-export const accountFreeAnalyses = (user: Pick<ActiveUser, "role">) => user.role === "CUSTOMER" ? ACCOUNT_FREE_ANALYSES : 0;
+export type AccountAllowance = { free: number; unlimited: boolean };
+export const accountAllowance = (user: Pick<ActiveUser, "role">): AccountAllowance => ({
+  free: user.role === "CUSTOMER" ? ACCOUNT_FREE_ANALYSES : 0, unlimited: user.role === "COACH" || user.role === "ADMIN" });
 
+/** `remaining` counts credits; an unlimited account has none to count and is never refused for want of one. */
 export function accountAnalysisQuota(grants: readonly { quantity: number }[],
-  jobs: readonly { status: string; refundedAt: Date | null }[], freeTotal: number) {
+  jobs: readonly { status: string; refundedAt: Date | null }[], allowance: AccountAllowance) {
   const grantTotal = grants.reduce((sum, grant) => sum + grant.quantity, 0);
   const charged = jobs.filter((job) => !job.refundedAt);
   const used = charged.filter((job) => job.status === "SUCCEEDED").length;
   const reserved = charged.filter((job) => ["QUEUED", "RUNNING"].includes(job.status)).length;
-  return { active: true, freeTotal, paidTotal: 0, grantTotal, used, reserved,
-    remaining: Math.max(0, freeTotal + grantTotal - charged.length) };
+  return { active: true, unlimited: allowance.unlimited, freeTotal: allowance.free, paidTotal: 0, grantTotal, used, reserved,
+    remaining: allowance.unlimited ? 0 : Math.max(0, allowance.free + grantTotal - charged.length) };
 }
+const mayAnalyse = (quota: ReturnType<typeof accountAnalysisQuota>) => quota.unlimited || quota.remaining > 0;
 
 const jobDto = (job: Prisma.AccountAnalysisJobGetPayload<object>) => ({ id: job.id,
   videoId: job.videoId, actionId: job.actionId, status: job.status, createdAt: job.createdAt,
@@ -63,7 +70,7 @@ async function accountLedger(tx: Prisma.TransactionClient, user: ActiveUser) {
   const grants = await tx.accountAnalysisGrant.findMany({ where: { accountId: user.id },
     orderBy: { createdAt: "desc" }, include: grantInclude });
   const jobs = await tx.accountAnalysisJob.findMany({ where: { accountId: user.id }, orderBy: { createdAt: "desc" } });
-  return { grants, jobs, quota: accountAnalysisQuota(grants, jobs, accountFreeAnalyses(user)) };
+  return { grants, jobs, quota: accountAnalysisQuota(grants, jobs, accountAllowance(user)) };
 }
 
 export async function getAccountVideoAnalysisState(user: ActiveUser) {
@@ -71,8 +78,8 @@ export async function getAccountVideoAnalysisState(user: ActiveUser) {
     await expireAccountJobs(tx, user.id, new Date());
     const { grants, jobs, quota } = await accountLedger(tx, user);
     const videos = await tx.accountAnalysisVideo.findMany({ where: { accountId: user.id }, orderBy: { uploadedAt: "asc" } });
-    return { ok: true, accountId: user.id, quota, price: null, canAnalyze: quota.remaining > 0,
-      canUpload: quota.freeTotal + quota.grantTotal > 0, canPurchase: false, canReview: false,
+    return { ok: true, accountId: user.id, quota, price: null, unlimited: quota.unlimited, canAnalyze: mayAnalyse(quota),
+      canUpload: quota.unlimited || quota.freeTotal + quota.grantTotal > 0, canPurchase: false, canReview: false,
       videos: videos.map((video) => ({ id: video.id, caption: video.caption, uploadedAt: video.uploadedAt,
         contentType: video.contentType, analysisSupported: supportedVideo(video),
         url: `/api/video-analysis/videos/${video.id}`,
@@ -109,7 +116,7 @@ export async function requestAccountAnalysis(user: ActiveUser,
     const video = await tx.accountAnalysisVideo.findFirst({ where: { id: input.videoId, accountId: user.id } });
     if (!video) throw new AnalysisDomainError("video-not-found");
     if (!supportedVideo(video)) throw new AnalysisDomainError("unsupported-video");
-    if (quota.remaining < 1) throw new AnalysisDomainError("quota-exhausted");
+    if (!mayAnalyse(quota)) throw new AnalysisDomainError("quota-exhausted");
     return { kind: "new" as const, storageKey: video.storageKey };
   });
   if (prepared.kind === "existing") {
@@ -134,11 +141,11 @@ export async function requestAccountAnalysis(user: ActiveUser,
     const video = await tx.accountAnalysisVideo.findFirst({ where: { id: input.videoId, accountId: user.id } });
     if (!video || video.storageKey !== prepared.storageKey || !videoAvailable) throw new AnalysisDomainError("video-not-found");
     if (!supportedVideo(video)) throw new AnalysisDomainError("unsupported-video");
-    if (quota.remaining < 1) throw new AnalysisDomainError("quota-exhausted");
+    if (!mayAnalyse(quota)) throw new AnalysisDomainError("quota-exhausted");
     const job = await tx.accountAnalysisJob.create({ data: { accountId: user.id, videoId: video.id,
       createdById: user.id, requestKey: input.requestKey, actionId: input.actionId,
       queuedExpiresAt: new Date(Date.now() + ANALYSIS_QUEUE_MINUTES * 60_000) } });
-    return { ok: true, job: jobDto(job), quota: accountAnalysisQuota(grants, [...jobs, job], quota.freeTotal) };
+    return { ok: true, job: jobDto(job), quota: accountAnalysisQuota(grants, [...jobs, job], accountAllowance(user)) };
   });
   await ensureBusinessAnalysisQueued("account", reservation.job.id);
   return reservation;

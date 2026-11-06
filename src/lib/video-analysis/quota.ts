@@ -11,14 +11,17 @@ export function includedAnalysisCredits(hours: number): number {
   return hours >= 3 ? 5 : 3;
 }
 
-type Usage = { status: string; refundedAt: Date | null };
-/** Derive historical entitlements from the frozen course duration, without rewriting courses. */
-export function analysisQuota(booking: { status: string; hours: number }, jobs: readonly Usage[],
+type Usage = { status: string; refundedAt: Date | null; createdById: string };
+/**
+ * Derive historical entitlements from the frozen course duration, without rewriting courses. Only the
+ * student's own requests use the lesson's credits: its coach analyses without limit (owner's decision, 2026-11-06).
+ */
+export function analysisQuota(booking: { status: string; hours: number; accountId: string | null }, jobs: readonly Usage[],
   purchases: readonly { status: string; quantity: number }[]) {
   const active = booking.status === "COMPLETED";
   const freeTotal = active ? includedAnalysisCredits(booking.hours) : 0;
   const paidTotal = purchases.filter((p) => p.status === "CONFIRMED").reduce((sum, p) => sum + p.quantity, 0);
-  const charged = jobs.filter((job) => !job.refundedAt);
+  const charged = jobs.filter((job) => !job.refundedAt && job.createdById === booking.accountId);
   const used = charged.filter((job) => job.status === "SUCCEEDED").length;
   const reserved = charged.filter((job) => job.status === "QUEUED" || job.status === "RUNNING").length;
   // An inconsistent terminal ledger never creates extra spendable credits.

@@ -239,12 +239,23 @@ describe("atomic shared credits and analysis access", () => {
 
   it("serializes simultaneous competition for the final shared course credit", async () => {
     booking.analysisJobs.push(job({ id: "old-1", status: "SUCCEEDED" }), job({ id: "old-2", status: "SUCCEEDED" }));
-    const results = await Promise.allSettled([run("one"), run("two", coach)]);
+    const results = await Promise.allSettled([run("one"), run("two")]);
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     expect(results.find((r) => r.status === "rejected")).toMatchObject({ reason: { reason: "quota-exhausted" } });
     expect(mocks.jobCreate).toHaveBeenCalledOnce();
     expect((await view()).quota).toMatchObject({ remaining: 0, reserved: 1 });
     expect(mocks.lock).toHaveBeenCalled();
+  });
+
+  it("lets the lesson's coach analyse after the credits run out, without using any", async () => {
+    booking.analysisJobs.push(...["old-1", "old-2", "old-3"].map((id) => job({ id, status: "SUCCEEDED" })));
+    expect(await view()).toMatchObject({ canAnalyze: false, unlimited: false, quota: { remaining: 0 } });
+    await expect(run("student")).rejects.toMatchObject({ reason: "quota-exhausted" });
+    expect(await view(coach)).toMatchObject({ canAnalyze: true, unlimited: true });
+    await run("coach-1", coach);
+    await run("coach-2", coach);
+    expect(mocks.jobCreate).toHaveBeenCalledTimes(2);
+    expect((await view()).quota).toMatchObject({ used: 3, reserved: 0, remaining: 0 });
   });
 
   it("coalesces duplicate requests instead of consuming a second credit", async () => {

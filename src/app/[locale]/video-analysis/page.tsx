@@ -26,12 +26,14 @@ export default async function VideoAnalysisPage({ params, searchParams }: PagePr
   ]);
   // Only codes in this identity's scoped overview can select a lesson workspace.
   const selectedCourse = typeof query.lesson === "string" ? courses.find(course => course.code === query.lesson)
-    : query.source === "account" || account.quota.remaining > 0 ? undefined : courses.find(course => course.quota.active);
+    : query.source === "account" || account.quota.unlimited || account.quota.remaining > 0 ? undefined : courses.find(course => course.quota.active);
   const selectedView = selectedCourse ? await getVideoAnalysisState(selectedCourse.code, user) : account;
   // Match the API's JSON DTO for dates passed into the client workspace.
   const view = JSON.parse(JSON.stringify(selectedView)) as VideoAnalysisView;
   const coachView = user.role === "COACH" || user.role === "ADMIN";
   const remaining = totals.remaining + account.quota.remaining;
+  // Coaches and administrators analyse without limit, their own clips and their lessons' alike.
+  const unlimited = account.quota.unlimited;
 
   return (
     <div className="space-y-8">
@@ -52,7 +54,7 @@ export default async function VideoAnalysisPage({ params, searchParams }: PagePr
         <div className="rounded-2xl bg-cat-video-soft p-5">
           <p className="text-sm font-semibold text-cat-video">{zh ? "当前可分析" : "Currently available"}</p>
           <p className="font-display mt-1 text-5xl font-bold text-cat-video" data-testid="analysis-remaining">
-            {remaining}<span className="ml-2 text-base font-semibold">{zh ? "次" : "analyses"}</span>
+            {unlimited ? (zh ? "不限" : "Unlimited") : <>{remaining}<span className="ml-2 text-base font-semibold">{zh ? "次" : "analyses"}</span></>}
           </p>
         </div>
         <Metric label={zh ? "处理中" : "Processing"} value={totals.reserved + account.quota.reserved} />
@@ -60,15 +62,16 @@ export default async function VideoAnalysisPage({ params, searchParams }: PagePr
         <div className="rounded-2xl border border-border bg-surface p-4 shadow-[var(--shadow-sm)]">
           <p className="text-xs font-semibold text-ink-3">{zh ? "次数来源" : "Where credits come from"}</p>
           <dl className="mt-2 space-y-1 text-sm" data-numeric>
-            <Source label={zh ? "注册赠送" : "With your account"} value={account.quota.freeTotal} />
-            <Source label={zh ? "教练发放" : "Coach-issued"} value={account.quota.grantTotal ?? 0} />
+            {unlimited ? <Source label={zh ? "教练账号" : "Coach account"} value={zh ? "不限" : "Unlimited"} /> : <>
+              <Source label={zh ? "注册赠送" : "With your account"} value={account.quota.freeTotal} />
+              <Source label={zh ? "教练发放" : "Coach-issued"} value={account.quota.grantTotal ?? 0} /></>}
             <Source label={zh ? "课程赠送" : "From lessons"} value={totals.freeTotal} />
             <Source label={zh ? "已购买" : "Purchased"} value={totals.paidTotal} />
           </dl>
         </div>
         <p className="text-xs leading-relaxed text-ink-3 sm:col-span-4">
-          {zh ? "注册赠送和教练发放的次数即时可用，无需课程订单。课程免费次数在完课后解锁；额外次数经教练确认收款后到账。分析失败或无法评分会返还次数。"
-            : "Account and coach-issued credits are available immediately without a lesson booking. Lesson credits unlock after completion; purchased credits unlock after receipt confirmation. Failed or ungradable analyses return their credit."}
+          {zh ? "注册赠送和教练发放的次数即时可用，无需课程订单。课程免费次数在完课后解锁；额外次数经教练确认收款后到账。分析失败或无法评分会返还次数。教练分析不限次数，也不占用课程次数。"
+            : "Account and coach-issued credits are available immediately without a lesson booking. Lesson credits unlock after completion; purchased credits unlock after receipt confirmation. Failed or ungradable analyses return their credit. Coaches analyse without limit, without using a lesson's credits."}
         </p>
       </section>
 
@@ -76,7 +79,7 @@ export default async function VideoAnalysisPage({ params, searchParams }: PagePr
         <SectionHeading title={zh ? "视频库" : "Video library"}
           description={zh ? "按分析状态分类，显示每个视频的上传、提交和完成时间。" : "Grouped by analysis status, with when each video was uploaded, submitted and finished."} />
         <div className="max-w-xl">
-          <AnalysisSourceSelector locale={loc} value={selectedCourse?.code ?? "account"} accountRemaining={account.quota.remaining}
+          <AnalysisSourceSelector locale={loc} value={selectedCourse?.code ?? "account"} accountRemaining={account.quota.remaining} accountUnlimited={unlimited}
             courses={courses.map(course => ({ code: course.code, remaining: course.quota.remaining,
               label: `${zh ? course.resort.nameZh : course.resort.nameEn} · ${course.coachName} · ${formatTorontoDate(course.startAt, loc)} · ${course.code}` }))} />
         </div>
@@ -153,6 +156,6 @@ function Metric({ label, value }: { label: string; value: number }) {
   </div>;
 }
 
-function Source({ label, value }: { label: string; value: number }) {
+function Source({ label, value }: { label: string; value: number | string }) {
   return <div className="flex items-center justify-between gap-3"><dt className="text-ink-2">{label}</dt><dd className="font-semibold">{value}</dd></div>;
 }

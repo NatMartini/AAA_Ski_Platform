@@ -5,7 +5,7 @@ import { rateLimitOrRespond } from "@/lib/rate-limit";
 import { buildKey, deleteObject, KEY_PREFIX, writeObject } from "@/lib/storage";
 import { checkVideo, MAX_VIDEO_BYTES, VideoRejected } from "@/lib/upload/video";
 import { readLimitedFormData, requestBodyErrorResponse } from "@/lib/request-body";
-import { accountFreeAnalyses, lockedAccount } from "@/lib/video-analysis/account-service";
+import { accountAllowance, lockedAccount } from "@/lib/video-analysis/account-service";
 import { AnalysisDomainError } from "@/lib/video-analysis/quota";
 
 export const runtime = "nodejs";
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Personal clips use the signed-in account; granting coaches cannot read them. Students start with
- * free analyses, so they may store clips at once; anyone else needs a coach's grant first.
+ * free analyses and coaches have no limit, so they may store clips at once; anyone else needs a grant first.
  */
 export async function POST(req: Request) {
   const limited = rateLimitOrRespond(req, "upload", "account-analysis-video");
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
   const accountId = auth.user.id;
-  const free = accountFreeAnalyses(auth.user) > 0;
+  const allowance = accountAllowance(auth.user), free = allowance.unlimited || allowance.free > 0;
   if (!free && !await prisma.accountAnalysisGrant.count({ where: { accountId } })) {
     return NextResponse.json({ error: "quota-not-granted" }, { status: 409 });
   }

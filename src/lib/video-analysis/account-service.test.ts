@@ -259,10 +259,13 @@ describe("account FreeSki grant wallet", () => {
     expect(jobs).toHaveLength(3);
   });
 
-  it("gives other accounts no free analyses, so storage still needs an issued grant", async () => {
+  it.each([coach, actor("admin", "ADMIN")])("lets %s analyse their own clips without limit or grants", async (user) => {
     grants = [];
-    expect(await getAccountVideoAnalysisState(coach)).toMatchObject({ canUpload: false, canAnalyze: false,
-      quota: { freeTotal: 0, grantTotal: 0, remaining: 0 } });
+    videos.push(video("staff-video", user.id));
+    expect(await getAccountVideoAnalysisState(user)).toMatchObject({ unlimited: true, canUpload: true, canAnalyze: true,
+      quota: { unlimited: true, freeTotal: 0, grantTotal: 0 } });
+    for (let i = 0; i < 5; i++) await run(`staff-${i}`, user, "staff-video");
+    expect(jobs.filter((row) => row.accountId === user.id)).toHaveLength(5);
   });
 
   it("enriches only the authenticated wallet with one real scheduler reason", async () => {
@@ -506,7 +509,7 @@ describe("account reservations, leases and refunds", () => {
   });
 
   it("does not mint credits from an inconsistent terminal ledger", () => {
-    expect(accountAnalysisQuota([grant({ quantity: 1 })], [job({ status: "FAILED" })], 0)).toMatchObject({ remaining: 0, used: 0, reserved: 0 });
-    expect(accountAnalysisQuota([grant({ quantity: 1 })], [job({ status: "FAILED" })], 3)).toMatchObject({ remaining: 3, used: 0, reserved: 0 });
+    expect(accountAnalysisQuota([grant({ quantity: 1 })], [job({ status: "FAILED" })], { free: 0, unlimited: false })).toMatchObject({ remaining: 0, used: 0, reserved: 0 });
+    expect(accountAnalysisQuota([grant({ quantity: 1 })], [job({ status: "FAILED" })], { free: 3, unlimited: false })).toMatchObject({ remaining: 3, used: 0, reserved: 0 });
   });
 });

@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth/require-user", () => ({ requireUser: mocks.user }));
 vi.mock("@/lib/prisma", () => ({ prisma: { accountAnalysisGrant: { count: mocks.grantCount } } }));
 vi.mock("@/lib/video-analysis/account-service", () => ({ lockedAccount: mocks.lock,
-  accountFreeAnalyses: (user: { role: string }) => user.role === "CUSTOMER" ? 3 : 0 }));
+  accountAllowance: (user: { role: string }) => ({ free: user.role === "CUSTOMER" ? 3 : 0, unlimited: user.role === "COACH" || user.role === "ADMIN" }) }));
 vi.mock("@/lib/request-body", async (original) => {
   const actual = await original<typeof import("@/lib/request-body")>();
   return { ...actual, readLimitedFormData: vi.fn(actual.readLimitedFormData) };
@@ -63,8 +63,8 @@ describe("private account FreeSki upload boundary", () => {
     expect(mocks.write).not.toHaveBeenCalled();
   });
 
-  it("requires issued credits from an account without free analyses before reading any multipart body", async () => {
-    mocks.user.mockResolvedValue({ ok: true, user: { id: "student", role: "COACH" } });
+  it("requires issued credits from an account with no allowance before reading any multipart body", async () => {
+    mocks.user.mockResolvedValue({ ok: true, user: { id: "student", role: "GUEST" } });
     mocks.grantCount.mockResolvedValue(0);
     const response = await POST(upload());
     expect(response.status).toBe(409);
@@ -74,7 +74,8 @@ describe("private account FreeSki upload boundary", () => {
     expect(mocks.create).not.toHaveBeenCalled();
   });
 
-  it("lets a student with only the free analyses store a clip", async () => {
+  it.each(["CUSTOMER", "COACH"])("lets a %s without grants store a clip", async (role) => {
+    mocks.user.mockResolvedValue({ ok: true, user: { id: "student", role } });
     mocks.grantCount.mockResolvedValue(0);
     mocks.lockedGrantCount.mockResolvedValue(0);
     const response = await POST(upload());

@@ -24,7 +24,7 @@ export async function getVideoAnalysisOverview(user: ActiveUser) {
       lessonStartAt: true, lessonEndAt: true, participantNameSnapshot: true,
       coach: { select: { name: true, coachProfile: { select: { displayName: true } } } },
       resort: { select: { nameZh: true, nameEn: true } },
-      analysisJobs: { select: { status: true, refundedAt: true } },
+      analysisJobs: { select: { status: true, refundedAt: true, createdById: true } },
       analysisPurchases: { select: { status: true, quantity: true } },
     },
   });
@@ -32,7 +32,7 @@ export async function getVideoAnalysisOverview(user: ActiveUser) {
     ...booking,
     coachName: coach.coachProfile?.displayName ?? coach.name ?? "",
     includedCredits: includedAnalysisCredits(booking.hours),
-    quota: analysisQuota(booking, analysisJobs, analysisPurchases),
+    quota: analysisQuota({ ...booking, accountId }, analysisJobs, analysisPurchases),
     isCustomer: accountId === user.id,
     isOwnCoach: user.role === "ADMIN" || (user.role === "COACH" && coachId === user.id),
   })).sort((a, b) => Number(b.quota.active) - Number(a.quota.active));

@@ -49,7 +49,9 @@ export type AnalysisActionView = {
 export type VideoAnalysisView = {
   ok: true;
   accountId?: string;
-  quota: { active: boolean; freeTotal: number; paidTotal: number; grantTotal?: number; reserved: number; used: number; remaining: number };
+  quota: { active: boolean; unlimited?: boolean; freeTotal: number; paidTotal: number; grantTotal?: number; reserved: number; used: number; remaining: number };
+  /** The viewer analyses without limit: a coach or administrator, on their own clips or their lesson's. */
+  unlimited?: boolean;
   grants?: { id: string; quantity: number; note: string | null; createdAt: string; coach: { name: string | null } }[];
   price: { unitCents: number; currency: "CAD" } | null;
   service: { configured: boolean; available: boolean };

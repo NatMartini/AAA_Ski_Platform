@@ -65,7 +65,8 @@ export async function getVideoAnalysisState(code: string, user: ActiveUser) {
     const profile = await tx.coachProfile.findUnique({ where: { userId: booking.coachId } });
     const paidEnabled = !!profile?.analysisCreditPriceCents && profile.wechatPayEnabled;
     return { ok: true, quota, price: paidEnabled ? { unitCents: profile!.analysisCreditPriceCents!, currency: "CAD" } : null,
-      canAnalyze: party.canAct && quota.active && quota.remaining > 0,
+      // The lesson's coach analyses without limit and without using the lesson's credits.
+      unlimited: party.isCoach, canAnalyze: party.canAct && quota.active && (party.isCoach || quota.remaining > 0),
       canUpload: party.canAct && ["CONFIRMED", "COMPLETED"].includes(booking.status),
       canPurchase: party.isCustomer && quota.active && paidEnabled, canReview: party.isCoach,
       videos: booking.videos.map((video) => ({ id: video.id, caption: video.caption, uploadedAt: video.uploadedAt,
@@ -105,7 +106,9 @@ export async function requestVideoAnalysis(code: string, user: ActiveUser,
     const video = booking.videos.find((item) => item.id === input.videoId);
     if (!video) throw new AnalysisDomainError("video-not-found");
     if (!supportedVideo(video)) throw new AnalysisDomainError("unsupported-video");
-    if (analysisQuota(booking, booking.analysisJobs, booking.analysisPurchases).remaining < 1) throw new AnalysisDomainError("quota-exhausted");
+    if (!analysisParty(booking, user).isCoach && analysisQuota(booking, booking.analysisJobs, booking.analysisPurchases).remaining < 1) {
+      throw new AnalysisDomainError("quota-exhausted");
+    }
     return { kind: "new" as const, storageKey: video.storageKey };
   }, "act", false);
   if (prepared.kind === "existing") {
@@ -130,7 +133,7 @@ export async function requestVideoAnalysis(code: string, user: ActiveUser,
     if (!video || video.storageKey !== prepared.storageKey || !videoAvailable) throw new AnalysisDomainError("video-not-found");
     if (!supportedVideo(video)) throw new AnalysisDomainError("unsupported-video");
     const quota = analysisQuota(booking, booking.analysisJobs, booking.analysisPurchases);
-    if (quota.remaining < 1) throw new AnalysisDomainError("quota-exhausted");
+    if (!analysisParty(booking, user).isCoach && quota.remaining < 1) throw new AnalysisDomainError("quota-exhausted");
     const job = await tx.videoAnalysisJob.create({ data: { bookingId: booking.id, videoId: video.id,
       createdById: user.id, requestKey: input.requestKey, actionId: input.actionId,
       queuedExpiresAt: new Date(Date.now() + ANALYSIS_QUEUE_MINUTES * 60_000) } });
