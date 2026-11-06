@@ -41,7 +41,10 @@ const STUDENT: NavSection[] = [
   },
   {
     key: "video", href: "/video-analysis", zh: "视频分析", en: "Video analysis", icon: "video", tone: "video",
-    items: [{ href: "/video-analysis", zh: "视频库", en: "Video library" }],
+    items: [
+      { href: "/video-analysis", zh: "视频库", en: "Video library" },
+      { href: "/video-analysis/standards", zh: "标准动作库", en: "Standard movements" },
+    ],
   },
 ];
 
@@ -68,6 +71,7 @@ const COACH: NavSection[] = [
     key: "video", href: "/video-analysis", zh: "视频", en: "Video", icon: "video", tone: "video",
     items: [
       { href: "/video-analysis", zh: "视频分析", en: "Video analysis" },
+      { href: "/video-analysis/standards", zh: "标准动作库", en: "Standard movements" },
       { href: "/coach/video-analysis", zh: "发放次数", en: "Issue credits" },
       { href: "/coach/video-reviews", zh: "视频点评", en: "Video reviews" },
     ],

@@ -1,11 +1,13 @@
-import { createElement } from "react";
+import { createElement, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readAnalysisResult, VideoAnalysisResult } from "./video-analysis-result";
 import { AnalysisScorecard, referenceNote, turnLabel } from "./analysis-scorecard";
 import { AnalysisTeaching } from "./analysis-teaching";
 import { citedTeaching, scorecardSchema, teachingSchema } from "@/lib/freeski/scorecard";
 import { sampleImprovementActionId, sampleImprovementJobResult, sampleScorecard, sampleTeaching } from "@/lib/freeski/scorecard.fixtures";
+
+vi.mock("@/i18n/navigation", () => ({ Link: (props: ComponentProps<"a">) => createElement("a", props) }));
 
 const graded = { version: 1, provider: "freeski", gradingStatus: "graded", scoreKind: "TECH", score: 0,
   gradingReason: null, coachingZh: ["保持重心稳定"], coachingEn: ["Keep your balance centered"] };

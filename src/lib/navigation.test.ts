@@ -38,6 +38,7 @@ describe("current section and page", () => {
     // A booking is not the booking flow, even though both start with "/book".
     ["/booking/SKI-1", ["lessons", "/my/bookings"]],
     ["/video-analysis/report/job", ["video", "/video-analysis"]],
+    ["/video-analysis/standards", ["video", "/video-analysis/standards"]],
     ["/legal/terms", [null, null]],
   ] as const)("places a student on %s", (pathname, expected) => {
     expect(at(pathname)).toEqual(expected);

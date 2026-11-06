@@ -11,6 +11,7 @@ import { AnalysisProgress } from "./analysis-progress";
 import { AnalysisScorecard, referenceTarget, turnLabel as numberedTurn } from "./analysis-scorecard";
 import { TurnComparisonPlayer, type TurnMeta } from "./turn-comparison-player";
 import { withoutOverallScore, type Scorecard, type Teaching } from "@/lib/freeski/scorecard";
+import { standardMotionId } from "@/lib/freeski/standard-motion";
 import { metricDelta, metricInsight, worstTurnFor } from "@/lib/freeski/metric-insight";
 import type { FreeSkiCurrentLevel } from "@/lib/freeski/actions";
 import { clientFetch } from "@/lib/client-fetch";
@@ -174,6 +175,7 @@ export function DynamicCoachingReport({ base, zh, card = null, currentLevel = nu
           </p>}
           {shown && report.turns.some(t => t.turnId === shown) && <>
             <TurnComparisonPlayer key={`${base}:${shown}`} base={base} turnId={shown} zh={zh} meta={metaOf(shown)} focusMetric={focusMetric}
+              motionId={scorecard ? standardMotionId(scorecard) : null}
               comparison={report.turns.find(turn => turn.turnId === shown)?.comparisonReference} />
             <AnalysisKeyframes key={`${base}:${shown}:keyframes`} base={base} turnId={shown} zh={zh} target={target} /></>}
         </section>}

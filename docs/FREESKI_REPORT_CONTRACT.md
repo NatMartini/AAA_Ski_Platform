@@ -346,6 +346,26 @@ AAA 结算：TECH 已评分，或 `scorecard.overall.score` 不为 `null` 且 `q
   没有中间弯时 `status` 为 `unavailable`。
 - 参考骨架取与动作/级别匹配的标准动作片段；有审核过的阶段标注时按阶段对齐，否则保持整弯线性对齐并照常标明。
 
+### 生成的标准动作（2026-11-02，社长要求）
+
+逐弯播放器的绿色标准动作不再来自示范视频的骨架，而是网站生成的数据：`public/standard-motions/<动作>-l<级别>.json`，
+19 个动作×级别，生成器在 `scripts/standard-motion/`，方法和总表在 `docs/STANDARD_MOTIONS.md`。播放器按学员这个弯的姿态反推机位和转弯方向，
+把这份三维数据投影过去，按进度、身高和髋部对齐，并画出人、雪板和雪杖。manifest 的 `standardPose` 和 `reference-pose` 只在
+某个动作没有生成数据时才用，FreeSki 不需要再为播放器合成标准骨架。
+
+数据格式 `standard_motion.v1`：`frames` 是一个右转（换刃到换刃，61 个阶段），每帧按 `points` 的顺序平铺 xyz，单位毫米，斜面坐标
+（x 横跨山坡、向山下看的右手方向为正，y 沿山下线向下，z 垂直雪面向上）。左转是镜像：x 取反，`left_`/`right_` 互换。`points` 前 23 个是
+FreeSki 的 23 个关键点（名称和顺序相同），后面是每只雪板 4 个角点（`*_ski_tip_a` 等，a 在外侧）和两个杖尖。
+`motion.apexPhase` 是弯顶所在阶段，`motion.durationSec` 是每个弯的用时，`curves` 是可读的逐阶段数值，`verification` 是用 FreeSki 代码打分的结果。
+
+示范或评分方法变了（新的金标片、`scoring_version` 升级）时，在本仓库重跑
+`python scripts/standard-motion/extract_reference.py` 和 `python scripts/standard-motion/generate.py`。
+
+报告和标准动作库里的人物是 WebGL 渲染的三维滑雪者（穿滑雪服，有头盔、雪镜、雪靴、雪板和雪杖），模型在 `public/standard-motions/skier-mesh.bin`，
+由 `python scripts/standard-motion/build_skier_mesh.py` 生成，渲染在 `src/components/booking/skier-stage.ts`。学员也用同一个人物：
+`src/lib/freeski/skier-lift.ts` 按学员的二维骨架还原三维，上下左右来自视频，前后深度由骨长和同一时刻的标准动作推算，雪板方向由脚的方向和小腿立刃推算，只用于显示，不进入评分。
+浏览器不支持 WebGL 或模型加载失败时，退回 `skier-figure.ts` 的平面画法。
+
 ## 6. 标识格式与兼容
 
 - `fact_id`：`^f_[a-z0-9_]{1,80}$`；`keyframe_id`：`^kf_[a-f0-9]{32}$`；`drill_id`：`^[a-z][a-z0-9_]{0,63}$`；

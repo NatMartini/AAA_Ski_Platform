@@ -1,30 +1,47 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Pause, Play, Repeat, ScanSearch, StepBack, StepForward } from "lucide-react";
-import { bodyHeight, decodeCompactPose, jointCenter, poseAt, referenceTimeAt, smoothPose, turnManifestSchema,
+import { Bone, Pause, Play, Repeat, ScanSearch, StepBack, StepForward } from "lucide-react";
+import { bodyHeight, decodeCompactPose, jointCenter, poseAt, poseFrameAt, referenceTimeAt, smoothPose, turnManifestSchema,
   type DecodedPose, type PoseSample, type TurnManifest } from "@/lib/freeski/report-v2";
 import type { ReferenceStatus } from "@/lib/freeski/scorecard";
 import { metricInsight } from "@/lib/freeski/metric-insight";
+import { bumpField, cameraAxes, decodeStandardMotion, fitView, motionMarks, motionPointsAt, phaseAt, skiLine, smoothedFootVectors, snowLevelAt, standardPoseForTurn, viewName,
+  type FittedView, type StandardMotion, type StandardMotionId, type StandardPose, type TurnTiming } from "@/lib/freeski/standard-motion";
+import { liftedAt, liftedMarks, liftUserPose, type LiftedPose } from "@/lib/freeski/skier-lift";
+import { Link } from "@/i18n/navigation";
 import { clientFetch } from "@/lib/client-fetch";
 import { cn } from "@/lib/utils";
+import { drawBones, drawSkierFigure, fineBonesUnit, STANDARD_BONES, STANDARD_STYLE, USER_BONES, USER_STYLE, type Figure, type FigureStyle, type Point } from "./skier-figure";
+import type { Ribbon, Shot, SkierFigure, SkierStage } from "./skier-stage";
 
 const USER_COLOR = "#ff9f1c";
 const STANDARD_COLOR = "#2fd17a";
 const FOCUS_COLOR = "#ffffff";
 const SKI_COLOR = "rgba(255, 255, 255, 0.85)";
+const STANDARD_SKI_COLOR = "rgba(47, 209, 122, 0.8)";
+// A ski (1.70 m) against the shoulder-to-ankle height (about 1.15 m), the longest it can look.
+const SKI_PER_HEIGHT = 1.5;
 const SPEEDS = [0.25, 0.5, 1] as const;
 const FRAME_STEP = 1 / 60;
+// Lifting a filmed skier into 3D needs some standard to say which way each bone points, even when none is shown.
+const FALLBACK_MOTION: StandardMotionId = "demonstration_parallel-l2";
+const SCENE_FRAME_HEIGHT = 3.1;
 
 /** What the score card says about this turn. */
 export type TurnMeta = { number: number; direction: "left" | "right" | "unknown"; role: "start" | "middle" | "end";
   score: number | null; scored: boolean };
 
+type Feet = { left: ([number, number] | null)[]; right: ([number, number] | null)[] };
 type Loaded = {
   manifest: TurnManifest;
-  user: DecodedPose; userHeight: number | null;
-  /** FreeSki's synthesized standard: already in the user's time base, direction, height and hips. */
-  standard: DecodedPose | null;
+  user: DecodedPose; userHeight: number | null; userFeet: Feet;
+  /** The generated standard motion behind `standard`, when there is one. */
+  motion: StandardMotion | null;
+  /** A standard already in the user's time base, direction, height and hips. */
+  standard: DecodedPose | StandardPose | null;
+  /** The student as a 3D skier, under the camera that filmed them. */
+  lift: LiftedPose | null; liftMotion: StandardMotion | null; view: FittedView | null; timing: TurnTiming;
   /** A reviewed platform reference with its own timing, drawn on the stage only. */
   reviewed: DecodedPose | null; reviewedHeight: number | null;
 };
@@ -88,23 +105,87 @@ function drawFocus(context: CanvasRenderingContext2D, pose: DecodedPose, sample:
   }
 }
 
-/** Each ski as a line through heel and big toe, extended both ways, so parallel and edging read at a glance. */
-function drawSkis(context: CanvasRenderingContext2D, pose: DecodedPose, sample: PoseSample, map: Mapper, color: string, width: number) {
+/** A filmed skier's skis, as long as a ski is and pointing the way the foot does. */
+function userSkis(pose: DecodedPose, sample: PoseSample, feet: Feet, time: number, height: number | null) {
+  const frame = poseFrameAt(pose, time), longest = (height ?? 200) * SKI_PER_HEIGHT;
+  return { left: skiLine(pose, sample, "left", feet.left[frame], longest), right: skiLine(pose, sample, "right", feet.right[frame], longest) };
+}
+
+function drawSkiLines(context: CanvasRenderingContext2D, skis: ReturnType<typeof userSkis>, map: Mapper, color: string, width: number) {
   context.lineCap = "round";
   context.strokeStyle = color;
   context.lineWidth = width;
-  for (const side of ["left", "right"]) {
-    const heel = pose.jointNames.indexOf(`${side}_heel`), toe = pose.jointNames.indexOf(`${side}_bigtoe`);
-    if (heel < 0 || toe < 0 || !sample.observed[heel] || !sample.observed[toe]) continue;
-    const [hx, hy] = map(sample.frame[heel]), [tx, ty] = map(sample.frame[toe]);
-    const dx = tx - hx, dy = ty - hy;
-    if (Math.hypot(dx, dy) < width) continue;
+  for (const ski of [skis.left, skis.right]) {
+    if (!ski) continue;
+    const [x1, y1] = map(ski.tail), [x2, y2] = map(ski.tip);
     context.beginPath();
-    context.moveTo(hx - dx * 1.2, hy - dy * 1.2);
-    context.lineTo(tx + dx * 2.2, ty + dy * 2.2);
+    context.moveTo(x1, y1);
+    context.lineTo(x2, y2);
     context.stroke();
   }
 }
+
+const isGenerated = (pose: DecodedPose | StandardPose): pose is StandardPose => "nearLeft" in pose;
+
+function jointReader(pose: DecodedPose, sample: PoseSample, map: Mapper) {
+  return (name: string): Point | null => {
+    const index = pose.jointNames.indexOf(name);
+    return index >= 0 && sample.observed[index] ? map(sample.frame[index]) : null;
+  };
+}
+
+/** A generated standard has ski corners and pole tips; everything else comes from the joints. */
+function standardFigure(pose: StandardPose, sample: PoseSample, map: Mapper, time: number, unit: number): Figure {
+  const at = jointReader(pose, sample, map), frame = poseFrameAt(pose, time);
+  const corners = (side: string) => {
+    const points = [`${side}_ski_tip_a`, `${side}_ski_tip_b`, `${side}_ski_tail_b`, `${side}_ski_tail_a`].map(at);
+    return points.every(Boolean) ? points as Point[] : null;
+  };
+  return { at, unit, nearLeft: pose.nearLeft[frame], facing: pose.facing[frame], skis: { left: corners("left"), right: corners("right") },
+    poles: { left: at("left_pole_tip"), right: at("right_pole_tip") } };
+}
+
+function userFigure(pose: DecodedPose, sample: PoseSample, map: Mapper, feet: Feet, time: number, height: number | null, unit: number, nearLeft: boolean): Figure {
+  const at = jointReader(pose, sample, map), skis = userSkis(pose, sample, feet, time, height);
+  const left = at("left_shoulder"), right = at("right_shoulder");
+  const line = (ski: { tail: [number, number]; tip: [number, number] } | null) => ski ? [map(ski.tail), map(ski.tip)] as Point[] : null;
+  return { at, unit, nearLeft, facing: Boolean(at("nose")) && Boolean(left && right && left[0] > right[0]),
+    skis: { left: line(skis.left), right: line(skis.right) } };
+}
+
+/** The person, skis and poles, with the skeleton the analysis reads drawn on top. */
+function drawSkier(context: CanvasRenderingContext2D, pose: DecodedPose, figure: Figure, style: FigureStyle) {
+  drawSkierFigure(context, figure, style);
+  const named = pose.jointNames.slice(0, 23).map(name => figure.at(name));
+  drawBones(context, pose.connections.map(([a, b]) => [figure.at(pose.jointNames[a]), figure.at(pose.jointNames[b])] as const),
+    named.filter((_, k) => k >= 5), style.bones, figure.unit);
+}
+
+type Scene3D = { stage: SkierStage; user: SkierFigure; standard: SkierFigure; toCanvas: typeof import("./skier-stage").shotToCanvas };
+
+/** A pose's joints where a shot shows them, as a sample the skeleton drawing can read. The helmet hides the face's joints, and skis and poles are there to see. */
+function shownSample(names: readonly string[], points: ArrayLike<number>, index: Readonly<Record<string, number>>, toCanvas: (x: number, y: number, z: number) => [number, number]): PoseSample {
+  const frame: number[][] = [], observed: boolean[] = [];
+  for (const [position, name] of names.entries()) {
+    const k = index[name];
+    if (k === undefined || position < 5 || position >= 23) { frame.push([0, 0, 0]); observed.push(false); continue; }
+    const [x, y] = toCanvas(points[k * 3], points[k * 3 + 1], points[k * 3 + 2]);
+    frame.push([x, y, 1]);
+    observed.push(true);
+  }
+  return { frame, observed };
+}
+
+/** Fine lines over a 3D skier, enough to read the skeleton without hiding the person. */
+function drawFigureBones(context: CanvasRenderingContext2D, pose: DecodedPose, sample: PoseSample, color: string, ratio: number) {
+  const at = (k: number): Point | null => sample.observed[k] ? [sample.frame[k][0], sample.frame[k][1]] : null;
+  drawBones(context, pose.connections.map(([a, b]) => [at(a), at(b)] as const), sample.frame.map((_, k) => at(k)), color, fineBonesUnit(context.canvas.height, ratio));
+}
+
+const hipsOf = (points: ArrayLike<number>, index: Readonly<Record<string, number>>) => {
+  const a = index.left_hip * 3, b = index.right_hip * 3;
+  return [(points[a] + points[b]) / 2, (points[a + 1] + points[b + 1]) / 2, (points[a + 2] + points[b + 2]) / 2];
+};
 
 /** The hips' path through the turn so far: what the tempo, rhythm and completion metrics look at. */
 function drawHipTrail(context: CanvasRenderingContext2D, pose: DecodedPose, from: number, to: number, map: Mapper, color: string, width: number) {
@@ -145,13 +226,17 @@ function cameraShift(camera: Camera, width: number, height: number) {
   return { tx, ty };
 }
 
-/** Hips pinned to the stage centre at a fixed body size, so only posture changes are visible. */
-function stageMapper(canvas: HTMLCanvasElement, pose: DecodedPose, sample: PoseSample, height: number | null): Mapper | null {
+/** Hips pinned at a place on the stage at a fixed body size, so only posture changes are visible. */
+function stageMapper(canvas: HTMLCanvasElement, pose: DecodedPose, sample: PoseSample, height: number | null, slot: StageSlot): Mapper | null {
   const hip = jointCenter(pose, sample, "left_hip", "right_hip");
   if (!hip || !height) return null;
-  const unit = canvas.height * 0.5 / height, cx = canvas.width / 2, cy = canvas.height * 0.47;
+  const unit = canvas.height * slot.size / height, cx = canvas.width * slot.x, cy = canvas.height * 0.42;
   return (point) => [cx + (point[0] - hip[0]) * unit, cy + (point[1] - hip[1]) * unit];
 }
+
+type StageSlot = { x: number; size: number };
+const OVERLAY_SLOT: StageSlot = { x: .5, size: .46 };
+const SIDE_SLOTS: { user: StageSlot; standard: StageSlot } = { user: { x: .27, size: .4 }, standard: { x: .73, size: .4 } };
 
 /** Where the skier is in a pose sample: bounding-box centre and height, in pose pixels. */
 function subjectBox(sample: PoseSample): { cx: number; cy: number; height: number } | null {
@@ -191,8 +276,10 @@ function targetName(target: string, zh: boolean) {
  * hips pinned, animated every display frame. Skeletons are interpolated between pose samples and
  * lightly smoothed, so they move as smoothly as the screen allows.
  */
-export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focusMetric = null }: {
+export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focusMetric = null, motionId = null }: {
   base: string; turnId: string; zh: boolean; comparison?: ReferenceStatus; meta?: TurnMeta;
+  /** The generated standard for the action and level this report compared with. */
+  motionId?: StandardMotionId | null;
   /** A scorecard metric whose body lines (or hip path) are highlighted on the skeletons. */
   focusMetric?: string | null;
 }) {
@@ -204,11 +291,17 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
   const [loop, setLoop] = useState(true);
   const [ghost, setGhost] = useState(false);
   const [follow, setFollow] = useState(true);
+  const [layout, setLayout] = useState<"side" | "overlay">("side");
+  const [bones, setBones] = useState(true);
+  const [sceneMode, setSceneMode] = useState<"loading" | "scene" | "flat">("loading");
   const videoRef = useRef<HTMLVideoElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const fillRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLCanvasElement>(null);
+  const stageBoxRef = useRef<HTMLDivElement>(null);
+  const scene = useRef<Scene3D | null>(null);
+  const sceneDrawn = useRef("");
   const headRef = useRef<HTMLDivElement>(null);
   const timeRef = useRef<HTMLSpanElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -217,29 +310,45 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
   // The media time of the frame on screen, and the smoothed follow camera.
   const presented = useRef(0);
   const camera = useRef<Camera & { zoomTarget: number; snap: boolean }>({ x: .5, y: .5, zoom: 1, zoomTarget: 1, snap: true });
-  const settings = useRef({ loop, ghost, follow, focusMetric });
-  useEffect(() => { settings.current = { loop, ghost, follow, focusMetric }; }, [loop, ghost, follow, focusMetric]);
+  // The 3D stage needs this turn's poses in 3D. A standard FreeSki supplied as a skeleton only has no 3D to show, so that stays flat.
+  const wantsScene = Boolean(data?.lift && (data.motion || (!data.standard && !data.reviewed)));
+  const stageMode = wantsScene ? sceneMode : "flat";
+  const settings = useRef({ loop, ghost, follow, focusMetric, layout, bones, stageMode });
+  useEffect(() => { settings.current = { loop, ghost, follow, focusMetric, layout, bones, stageMode }; }, [loop, ghost, follow, focusMetric, layout, bones, stageMode]);
+  const layer = useRef<HTMLCanvasElement | null>(null);
+  const metaRole = meta?.role;
 
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
       const manifest = turnManifestSchema.parse(await json(`${base}/turns/${turnId}`, controller.signal));
-      const [user, standard, reviewed] = await Promise.all([
+      const [user, rawMotion] = await Promise.all([
         json(`${base}/assets/user-pose?turn_id=${turnId}`, controller.signal),
+        json(`/standard-motions/${motionId ?? FALLBACK_MOTION}.json`, controller.signal).catch(() => null),
+      ]);
+      if (controller.signal.aborted) return;
+      const userPose = smoothPose(decodeCompactPose(user));
+      const timing = { start: manifest.startMs / 1000, end: manifest.endMs / 1000, apex: manifest.apexMs === undefined ? null : manifest.apexMs / 1000, role: manifest.role ?? metaRole };
+      const motion = rawMotion ? decodeStandardMotion(rawMotion) : null;
+      const view = motion ? fitView(motion, userPose, timing) : null;
+      const generated = motionId && motion && view ? standardPoseForTurn(motion, userPose, timing, view) : null;
+      const lift = motion && view ? liftUserPose(userPose, motion, view, timing) : null;
+      // Without a generated standard, whatever FreeSki offers for this turn.
+      const [standard, reviewed] = generated ? [null, null] : await Promise.all([
         manifest.standardPose ? json(`${base}/assets/standard-pose?turn_id=${turnId}`, controller.signal).catch(() => null) : null,
         !manifest.standardPose && manifest.referencePose
           ? json(`${base}/assets/reference-pose?turn_id=${turnId}`, controller.signal).catch(() => null) : null,
       ]);
       if (controller.signal.aborted) return;
-      const userPose = smoothPose(decodeCompactPose(user));
       const reviewedPose = reviewed ? smoothPose(decodeCompactPose(reviewed)) : null;
       clock.current = { time: manifest.startMs / 1000, wall: performance.now(), rate: 0 };
-      setData({ manifest, user: userPose, userHeight: bodyHeight(userPose),
-        standard: standard ? smoothPose(decodeCompactPose(standard)) : null,
+      setData({ manifest, user: userPose, userHeight: bodyHeight(userPose), motion: generated ? motion : null, lift, liftMotion: motion, view, timing,
+        userFeet: { left: smoothedFootVectors(userPose, "left"), right: smoothedFootVectors(userPose, "right") },
+        standard: generated ?? (standard ? smoothPose(decodeCompactPose(standard)) : null),
         reviewed: reviewedPose, reviewedHeight: reviewedPose ? bodyHeight(reviewedPose) : null });
     })().catch(() => { if (!controller.signal.aborted) setError(true); });
     return () => controller.abort();
-  }, [base, turnId]);
+  }, [base, turnId, motionId, metaRole]);
 
   const start = data ? data.manifest.startMs / 1000 : 0, end = data ? data.manifest.endMs / 1000 : 0;
   const hasVideo = Boolean(data?.manifest.background) && !videoError;
@@ -260,22 +369,99 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
     context.clearRect(0, 0, canvas.width, canvas.height);
     const view = camera.current;
     if (settings.current.ghost && data.standard) {
-      drawSkeleton(context, data.standard, poseAt(data.standard, time), videoMapper(canvas, data.standard, view), STANDARD_COLOR, 2.5 * ratio);
+      const pose = data.standard, sample = poseAt(pose, time), map = videoMapper(canvas, pose, view);
+      drawSkeleton(context, pose, sample, map, STANDARD_COLOR, 2.5 * ratio);
+      if (isGenerated(pose)) {
+        const at = jointReader(pose, sample, map);
+        context.lineCap = "round";
+        context.strokeStyle = STANDARD_SKI_COLOR;
+        context.lineWidth = 2 * ratio;
+        for (const side of ["left", "right"]) {
+          const tip = at(`${side}_ski_tip_a`), tail = at(`${side}_ski_tail_a`);
+          if (tip && tail) { context.beginPath(); context.moveTo(tail[0], tail[1]); context.lineTo(tip[0], tip[1]); context.stroke(); }
+        }
+      }
     }
     const sample = poseAt(data.user, time), map = videoMapper(canvas, data.user, view);
     const focus = settings.current.focusMetric ? metricInsight(settings.current.focusMetric) : null;
     if (focus?.hipPath) drawHipTrail(context, data.user, start, time, map, FOCUS_COLOR, 2 * ratio);
     drawSkeleton(context, data.user, sample, map, USER_COLOR, 3 * ratio);
-    drawSkis(context, data.user, sample, map, SKI_COLOR, 2 * ratio);
+    drawSkiLines(context, userSkis(data.user, sample, data.userFeet, time, data.userHeight), map, SKI_COLOR, 2 * ratio);
     if (focus?.lines.length) drawFocus(context, data.user, sample, map, focus.lines, FOCUS_COLOR, 5 * ratio);
   }, [data, start]);
+
+  /** Both skiers in 3D on the snow, under the camera that filmed the student, hips pinned so only posture moves. */
+  const drawScene = useCallback((time: number, canvas: HTMLCanvasElement, context: CanvasRenderingContext2D, ratio: number, world: Scene3D) => {
+    const { lift, liftMotion, view, timing, motion } = data!;
+    if (!lift || !liftMotion || !view) return;
+    // Nothing moved, nothing to draw: a paused stage should not keep the graphics card busy.
+    const key = `${time}|${settings.current.layout}|${settings.current.bones}|${settings.current.focusMetric}|${canvas.width}x${canvas.height}`;
+    if (key === sceneDrawn.current) return;
+    sceneDrawn.current = key;
+    const axes = cameraAxes(view.camera);
+    const student = liftedAt(lift, time);
+    const userHips = hipsOf(student.points, lift.index);
+    world.user.setPose(student.points, lift.index);
+    const below = SCENE_FRAME_HEIGHT * .05;
+    const aimAt = (hipZ: number): [number, number, number] => [-axes.up[0] * below, -axes.up[1] * below, hipZ - axes.up[2] * below];
+    const base = { axes, slopeDeg: view.camera.slope, frameHeight: SCENE_FRAME_HEIGHT };
+    const userRibbons: Ribbon[] = liftedMarks(lift, time, student.snowAt).map(points => ({ points, alpha: .75 }));
+    let standardPoints: Float64Array | null = null, snowAt: [number, number] = [0, 0], standardRibbons: Ribbon[] = [];
+    if (motion) {
+      const phase = phaseAt(time, timing, motion);
+      standardPoints = motionPointsAt(motion, phase, view.mirrored);
+      const hips = hipsOf(standardPoints, motion.index);
+      snowAt = [hips[0], hips[1]];
+      for (let k = 0; k < motion.pointCount; k++) { standardPoints[k * 3] -= hips[0]; standardPoints[k * 3 + 1] -= hips[1]; }
+      standardRibbons = phase > 0 ? motionMarks(motion, phase, view.mirrored).map(mark => ({ points: mark.map(([x, y, half]) => [x - hips[0], y - hips[1], half]), alpha: .75 })) : [];
+    }
+    const together = settings.current.layout === "overlay" || !standardPoints;
+    const shots: Shot[] = [];
+    if (together) {
+      if (standardPoints && motion) {
+        // Hips on the student's hips.
+        const lift = userHips[2] - hipsOf(standardPoints, motion.index)[2];
+        for (let k = 0; k < motion.pointCount; k++) standardPoints[k * 3 + 2] += lift;
+        world.standard.setPose(standardPoints, motion.index);
+      }
+      world.standard.setAlpha(.55);
+      shots.push({ ...base, rect: { x: 0, y: 0, width: 1, height: 1 }, focus: aimAt(userHips[2]), snowAt: student.snowAt, figures: [world.user], ghost: standardPoints ? world.standard : null, ribbons: userRibbons });
+    } else if (standardPoints && motion) {
+      world.standard.setPose(standardPoints, motion.index);
+      world.standard.setAlpha(1);
+      const hipZ = hipsOf(standardPoints, motion.index)[2], bumps = bumpField(motion);
+      shots.push({ ...base, rect: { x: 0, y: 0, width: .5, height: 1 }, focus: aimAt(userHips[2]), snowAt: student.snowAt, figures: [world.user], groomed: !bumps, bumps, ribbons: userRibbons });
+      shots.push({ ...base, rect: { x: .5, y: 0, width: .5, height: 1 }, focus: aimAt(hipZ), snowAt, figures: [world.standard], groomed: !bumps, bumps, snowLevel: snowLevelAt(motion, phaseAt(time, timing, motion)), ribbons: standardRibbons });
+    }
+    world.stage.render(shots);
+
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    if (shots.length === 2) {
+      context.fillStyle = "rgba(255, 255, 255, 0.9)";
+      context.fillRect(canvas.width / 2 - ratio, 0, ratio * 2, canvas.height);
+    }
+    const focus = settings.current.focusMetric ? metricInsight(settings.current.focusMetric) : null;
+    const identity: Mapper = point => [point[0], point[1]];
+    const show = settings.current.bones;
+    const userSample = shownSample(data!.user.jointNames, student.points, lift.index, world.toCanvas(shots[0], canvas.width, canvas.height));
+    if (standardPoints && motion && data!.standard) {
+      const sample = shownSample(data!.standard.jointNames, standardPoints, motion.index, world.toCanvas(shots[shots.length - 1], canvas.width, canvas.height));
+      if (show) drawFigureBones(context, data!.standard, sample, STANDARD_BONES, ratio);
+      if (focus?.lines.length) drawFocus(context, data!.standard, sample, identity, focus.lines, "rgba(120, 255, 170, 0.9)", 4 * ratio);
+    }
+    if (show) drawFigureBones(context, data!.user, userSample, USER_BONES, ratio);
+    if (focus?.lines.length) drawFocus(context, data!.user, userSample, identity, focus.lines, FOCUS_COLOR, 4 * ratio);
+  }, [data]);
 
   const drawStage = useCallback((time: number) => {
     const canvas = stageRef.current;
     if (!canvas || !data) return;
     const ratio = fitCanvas(canvas), context = canvas.getContext("2d");
     if (!context) return;
+    if (scene.current?.stage.usable) { drawScene(time, canvas, context, ratio, scene.current); return; }
     context.clearRect(0, 0, canvas.width, canvas.height);
+    // The 3D skiers are on their way: no flat ones in the meantime.
+    if (settings.current.stageMode === "loading") return;
     context.strokeStyle = "rgba(255, 255, 255, 0.08)";
     context.lineWidth = ratio;
     context.beginPath();
@@ -284,28 +470,69 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
     context.stroke();
     const user = poseAt(data.user, time);
     const focus = settings.current.focusMetric ? metricInsight(settings.current.focusMetric) : null;
+    const side = settings.current.layout === "side" && Boolean(data.standard || data.reviewed);
+    const userSlot = side ? SIDE_SLOTS.user : OVERLAY_SLOT, standardSlot = side ? SIDE_SLOTS.standard : OVERLAY_SLOT;
+    // Figures are composed on their own layer, so a see-through figure does not show its own overlaps.
+    const paint = (alpha: number, draw: (target: CanvasRenderingContext2D) => void) => {
+      if (alpha >= 1) { draw(context); return; }
+      const sheet = layer.current ??= document.createElement("canvas");
+      if (sheet.width !== canvas.width || sheet.height !== canvas.height) { sheet.width = canvas.width; sheet.height = canvas.height; }
+      const target = sheet.getContext("2d");
+      if (!target) return;
+      target.clearRect(0, 0, sheet.width, sheet.height);
+      draw(target);
+      context.globalAlpha = alpha;
+      context.drawImage(sheet, 0, 0);
+      context.globalAlpha = 1;
+    };
+    let nearLeft = true;
+    if (data.standard && isGenerated(data.standard)) nearLeft = data.standard.nearLeft[poseFrameAt(data.standard, time)];
     if (data.standard) {
-      const sample = poseAt(data.standard, time), map = stageMapper(canvas, data.standard, sample, data.userHeight);
+      const pose = data.standard, sample = poseAt(pose, time), map = stageMapper(canvas, pose, sample, data.userHeight, standardSlot);
       if (map) {
-        drawSkeleton(context, data.standard, sample, map, STANDARD_COLOR, 4 * ratio);
-        drawSkis(context, data.standard, sample, map, "rgba(47, 209, 122, 0.7)", 2 * ratio);
-        if (focus?.lines.length) drawFocus(context, data.standard, sample, map, focus.lines, "rgba(120, 255, 170, 0.9)", 6 * ratio);
+        const unit = canvas.height * standardSlot.size;
+        paint(side ? 1 : .62, target => {
+          if (isGenerated(pose)) drawSkier(target, pose, standardFigure(pose, sample, map, time, unit), STANDARD_STYLE);
+          else {
+            drawSkeleton(target, pose, sample, map, STANDARD_COLOR, 4 * ratio);
+            drawSkiLines(target, userSkis(pose, sample, { left: smoothedFootVectors(pose, "left"), right: smoothedFootVectors(pose, "right") }, time, data.userHeight), map, STANDARD_SKI_COLOR, 2 * ratio);
+          }
+        });
+        if (focus?.lines.length) drawFocus(context, pose, sample, map, focus.lines, "rgba(120, 255, 170, 0.9)", 5 * ratio);
       }
     } else if (data.reviewed) {
       const { manifest, reviewed } = data;
       const fraction = Math.max(0, Math.min(1, (time - start) / Math.max(1e-6, end - start)));
       const referenceTime = manifest.alignment ? referenceTimeAt(manifest.alignment, time, true)
         : reviewed.times[0] + fraction * (reviewed.times.at(-1)! - reviewed.times[0]);
-      const sample = poseAt(reviewed, referenceTime), map = stageMapper(canvas, reviewed, sample, data.reviewedHeight);
+      const sample = poseAt(reviewed, referenceTime), map = stageMapper(canvas, reviewed, sample, data.reviewedHeight, standardSlot);
       if (map) drawSkeleton(context, reviewed, sample, map, STANDARD_COLOR, 4 * ratio);
     }
-    const map = stageMapper(canvas, data.user, user, data.userHeight);
+    const map = stageMapper(canvas, data.user, user, data.userHeight, userSlot);
     if (map) {
-      drawSkeleton(context, data.user, user, map, USER_COLOR, 3.5 * ratio);
-      drawSkis(context, data.user, user, map, SKI_COLOR, 2 * ratio);
-      if (focus?.lines.length) drawFocus(context, data.user, user, map, focus.lines, FOCUS_COLOR, 6 * ratio);
+      const unit = canvas.height * userSlot.size;
+      paint(side ? 1 : .92, target => drawSkier(target, data.user, userFigure(data.user, user, map, data.userFeet, time, data.userHeight, unit, nearLeft), USER_STYLE));
+      if (focus?.lines.length) drawFocus(context, data.user, user, map, focus.lines, FOCUS_COLOR, 5 * ratio);
     }
-  }, [data, start, end]);
+  }, [data, start, end, drawScene]);
+
+  // The 3D stage, once this turn's poses are in. Without WebGL or the mesh, the flat drawing.
+  useEffect(() => {
+    if (!wantsScene) return;
+    let alive = true;
+    void (async () => {
+      const box = stageBoxRef.current;
+      if (!box) return;
+      const library = await import("./skier-stage");
+      const stage = await library.SkierStage.create(box);
+      if (!stage) { if (alive) setSceneMode("flat"); return; }
+      if (!alive) { stage.dispose(); return; }
+      scene.current = { stage, user: stage.figure(library.USER_LOOK, { poles: false }), standard: stage.figure(library.STANDARD_LOOK, { poles: true }), toCanvas: library.shotToCanvas };
+      sceneDrawn.current = "";
+      setSceneMode("scene");
+    })().catch(() => { if (alive) setSceneMode("flat"); });
+    return () => { alive = false; scene.current?.stage.dispose(); scene.current = null; };
+  }, [wantsScene]);
 
   const showProgress = useCallback((time: number) => {
     const fraction = Math.max(0, Math.min(1, (time - start) / Math.max(1e-6, end - start)));
@@ -422,7 +649,7 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
     if (videoRef.current) videoRef.current.playbackRate = speed;
     if (!hasVideo && clock.current.rate) clock.current.rate = speed;
   }, [speed, hasVideo, data]);
-  useEffect(() => { drawOverlay(now()); drawStage(now()); }, [ghost, focusMetric, drawOverlay, drawStage, now]);
+  useEffect(() => { drawOverlay(now()); drawStage(now()); }, [ghost, focusMetric, layout, bones, drawOverlay, drawStage, now]);
 
   function toggle() {
     const element = videoRef.current;
@@ -457,7 +684,12 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
   const role = manifest.role ?? meta?.role;
   const apex = manifest.apexMs !== undefined && manifest.apexMs > manifest.startMs && manifest.apexMs < manifest.endMs
     ? (manifest.apexMs - manifest.startMs) / (manifest.endMs - manifest.startMs) : null;
-  const comparisonLabel = data.standard
+  const generated = data.standard && isGenerated(data.standard) ? data.standard : null;
+  const viewLabel = generated && { front: zh ? "正面" : "the front", rear: zh ? "背面" : "behind", side: zh ? "侧面" : "the side" }[viewName(generated.camera.azimuth)];
+  const comparisonLabel = generated && data.motion
+    ? (zh ? `绿色是按 CSIA 指南和示范数据生成的 ${data.motion.level} 级${data.motion.name.zh}（不是真人）。已按你这个弯的机位（看起来是从${viewLabel}拍的）、转弯方向、身高和进度对齐：标准用时约 ${data.motion.motion.durationSec.toFixed(2)} 秒，你用了 ${(end - start).toFixed(2)} 秒。`
+      : `Green is a generated Level ${data.motion.level} ${data.motion.name.en.toLowerCase()} built from the CSIA guide and demonstration data, not a real skier. It is matched to this turn's camera (it looks filmed from ${viewLabel}), direction, height and progress: the standard takes about ${data.motion.motion.durationSec.toFixed(2)} s, you took ${(end - start).toFixed(2)} s.`)
+    : data.standard
     ? manifest.standard
       ? (zh ? `绿色是按${targetName(manifest.standard.target, true)}生成的标准动作：和你同一转弯方向、同身高，按这个弯的进度对齐${manifest.standard.mirrored ? "（由反方向的示范镜像而来）" : ""}。`
         : `Green is a standard movement generated from ${targetName(manifest.standard.target, false)}: same turn direction and height as you, timed to this turn${manifest.standard.mirrored ? " (mirrored from examples turning the other way)" : ""}.`)
@@ -476,7 +708,7 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
       {meta && !meta.scored && <span className="rounded-full bg-amber-bg px-2 py-0.5 text-xs font-semibold text-amber">{zh ? "不计分" : "Not scored"}</span>}
     </div>
 
-    <div className={cn("grid gap-3", hasVideo && "md:grid-cols-[3fr_2fr]")}>
+    <div className={cn("grid gap-3", hasVideo && "md:grid-cols-2")}>
       {hasVideo && <div ref={frameRef} className="relative aspect-video overflow-hidden rounded-xl bg-black">
         <video ref={videoRef} src={`${base}/assets/background?turn_id=${turnId}`} muted playsInline preload="auto"
           className="h-full w-full origin-top-left object-contain will-change-transform" onError={() => setVideoError(true)}
@@ -485,14 +717,12 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
         <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
         <span className="pointer-events-none absolute left-3 top-3 rounded-full bg-black/55 px-2.5 py-1 text-xs font-semibold text-white">{zh ? "你的滑行" : "Your run"}</span>
       </div>}
-      <div className="relative aspect-video overflow-hidden rounded-xl bg-[#0d1524]">
-        <canvas ref={stageRef} className="absolute inset-0 h-full w-full" aria-label={zh ? "你与标准动作的骨架对比" : "Your skeleton against the standard"} />
-        {focusMetric && metricInsight(focusMetric) && <span className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-white/15 px-2.5 py-1 text-xs font-semibold text-white">
+      <div ref={stageBoxRef} className={cn("relative aspect-video overflow-hidden rounded-xl", stageMode === "flat" ? "bg-[#0d1524]" : "bg-[#e6edf5]", stageMode === "loading" && "animate-pulse")}>
+        <canvas ref={stageRef} className="absolute inset-0 h-full w-full" aria-label={zh ? "你与标准动作的人物、雪板和骨架对比" : "You against the standard: body, skis and skeleton"} />
+        {focusMetric && metricInsight(focusMetric) && <span className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-black/50 px-2.5 py-1 text-xs font-semibold text-white">
           {zh ? "白线：这项指标看的身体线" : "White: the body lines this metric measures"}</span>}
-        <div className="pointer-events-none absolute left-3 top-3 flex gap-2 text-xs font-semibold text-white">
-          <span className="flex items-center gap-1.5 rounded-full bg-black/40 px-2.5 py-1"><span className="size-2 rounded-full" style={{ background: USER_COLOR }} />{zh ? "你" : "You"}</span>
-          {(data.standard || data.reviewed) && <span className="flex items-center gap-1.5 rounded-full bg-black/40 px-2.5 py-1"><span className="size-2 rounded-full" style={{ background: STANDARD_COLOR }} />{zh ? "标准动作" : "Standard"}</span>}
-        </div>
+        <span className="pointer-events-none absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-black/40 px-2.5 py-1 text-xs font-semibold text-white"><span className="size-2 rounded-full" style={{ background: USER_COLOR }} />{zh ? "你" : "You"}</span>
+        {(data.standard || data.reviewed) && <span className={cn("pointer-events-none absolute top-3 flex items-center gap-1.5 rounded-full bg-black/40 px-2.5 py-1 text-xs font-semibold text-white", layout === "side" ? "left-[calc(50%+0.75rem)]" : "left-16")}><span className="size-2 rounded-full" style={{ background: STANDARD_COLOR }} />{zh ? "标准动作" : "Standard"}</span>}
       </div>
     </div>
 
@@ -532,6 +762,14 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
           className={cn("press flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold", follow ? "bg-accent-soft text-accent" : "text-ink-3 hover:bg-surface-2")}>
           <ScanSearch className="size-3.5" aria-hidden />{zh ? "跟随放大" : "Follow & zoom"}
         </button>}
+        <button type="button" aria-pressed={bones} onClick={() => setBones((value) => !value)}
+          className={cn("press flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold", bones ? "bg-accent-soft text-accent" : "text-ink-3 hover:bg-surface-2")}>
+          <Bone className="size-3.5" aria-hidden />{zh ? "骨架" : "Skeleton"}
+        </button>
+        {(data.standard || data.reviewed) && <div role="group" aria-label={zh ? "对比方式" : "Comparison layout"} className="flex rounded-lg border border-border bg-surface-2 p-0.5">
+          {([["side", zh ? "并排" : "Side by side"], ["overlay", zh ? "叠加" : "Overlay"]] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={layout === value} onClick={() => setLayout(value)}
+            className={cn("min-h-8 rounded-md px-2.5 text-xs font-semibold", layout === value ? "bg-surface text-ink shadow-[var(--shadow-sm)]" : "text-ink-3 hover:text-ink")}>{label}</button>)}
+        </div>}
         {data.standard && hasVideo && <label className="flex min-h-9 items-center gap-1.5 px-1 text-xs font-semibold text-ink-2">
           <input type="checkbox" checked={ghost} onChange={(event) => setGhost(event.target.checked)} />{zh ? "在视频上叠加标准骨架" : "Show the standard on the video"}
         </label>}
@@ -539,6 +777,7 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
       </div>
     </div>
 
-    <p className="text-xs leading-relaxed text-ink-3">{comparisonLabel} {zh ? "二维画面对比，会受拍摄角度影响，不代表考官评分。" : "A 2D image comparison: camera angle affects it, and it is not an examiner's assessment."}</p>
+    <p className="text-xs leading-relaxed text-ink-3">{comparisonLabel} {data.lift && (zh ? "橙色人物按视频里的骨架还原：上下左右来自视频，前后深度和雪板是推算的。" : "The orange skier is rebuilt from the skeleton in your video: across and up come from the video, depth and skis are estimated.")} {zh ? "画面对比会受拍摄角度影响，不代表考官评分。" : "Camera angle affects this comparison, and it is not an examiner's assessment."}
+      {generated && data.motion && <Link href={{ pathname: "/video-analysis/standards", query: { motion: data.motion.id } }} className="ml-1 font-semibold text-accent underline underline-offset-2">{zh ? "看这个动作的完整标准" : "See the full standard"}</Link>}</p>
   </div>;
 }
