@@ -20,6 +20,19 @@ export function getWakeConfig(env: Record<string, string | undefined> = process.
 
 let lastRequest = 0;
 
+// A stopped controller logs nothing, so each failed wake-up says which side it failed on: the token
+// file, the connection, or ModelCtrl's answer. Only error names and codes are logged, never the token.
+const warn = (problem: string) => console.warn(`[freeski-wake] ${problem}`);
+const failure = (error: unknown) => {
+  const code = (error as { cause?: { code?: unknown } } | null)?.cause?.code;
+  return typeof code === "string" ? code : error instanceof Error ? error.name : "unknown error";
+};
+// ModelCtrl's own reason when it refuses (a disabled or misregistered service) or cannot start one; it holds no secret.
+const said = (body: unknown) => {
+  const error = (body as { error?: unknown } | null)?.error;
+  return typeof error === "string" && error.trim() ? `: ${error.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 160)}` : "";
+};
+
 /**
  * Requests a start (or keep-alive) and reports the provider state, or null when wake-up is not
  * configured or failed. Never throws and never exposes the token. Without waiting, repeated calls
@@ -31,21 +44,39 @@ export async function wakeFreeSkiProvider(input: { reason: string; waitSeconds?:
   const waitSeconds = Math.max(0, Math.min(120, Math.floor(input.waitSeconds ?? 0)));
   if (waitSeconds === 0 && Date.now() - lastRequest < 10_000) return null;
   lastRequest = Date.now();
+  let token: string;
   try {
-    const token = (await readFile(config.tokenFile, "utf8")).trim();
-    if (!token || /\s/.test(token)) return null;
-    const response = await fetch(`${config.url}/start`, {
+    token = (await readFile(config.tokenFile, "utf8")).trim();
+  } catch (error) {
+    warn(`cannot read the wake token file (${failure(error)})`);
+    return null;
+  }
+  if (!token || /\s/.test(token)) { warn("the wake token file is empty or malformed"); return null; }
+  let response: Response;
+  try {
+    response = await fetch(`${config.url}/start`, {
       method: "POST", redirect: "error", cache: "no-store",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ reason: input.reason.replace(/[^\w:. -]/g, "").slice(0, 120) || "aaa", wait_seconds: waitSeconds }),
       signal: AbortSignal.timeout((waitSeconds + 10) * 1000),
     });
-    if (!response.ok) { await response.body?.cancel(); return null; }
-    const state = (await response.json() as { state?: unknown }).state;
-    return typeof state === "string" && ["stopped", "starting", "ready", "external", "failed"].includes(state) ? state as ProviderState : null;
-  } catch {
+  } catch (error) {
+    warn(`cannot reach ModelCtrl (${failure(error)})`);
     return null;
   }
+  if (!response.ok) {
+    warn(`ModelCtrl refused the wake-up (HTTP ${response.status}${said(await response.json().catch(() => null))})`);
+    return null;
+  }
+  try {
+    const body = await response.json() as { state?: unknown };
+    if (body.state === "failed") warn(`ModelCtrl could not start the service${said(body)}`);
+    if (typeof body.state === "string" && ["stopped", "starting", "ready", "external", "failed"].includes(body.state)) return body.state as ProviderState;
+  } catch {
+    // Reported below with any other unknown answer.
+  }
+  warn("ModelCtrl answered the wake-up without a known service state");
+  return null;
 }
 
 /** Test hook: forget the debounce window. */

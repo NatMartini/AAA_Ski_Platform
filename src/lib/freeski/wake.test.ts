@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -6,7 +6,9 @@ import { getWakeConfig, resetWakeDebounce, wakeFreeSkiProvider } from "./wake";
 
 let dir: string, tokenFile: string;
 const fetcher = vi.fn();
+let warned: MockInstance<typeof console.warn>;
 beforeEach(async () => {
+  warned = vi.spyOn(console, "warn").mockImplementation(() => {});
   dir = await mkdtemp(path.join(os.tmpdir(), "wake-"));
   tokenFile = path.join(dir, "token.txt");
   await writeFile(tokenFile, "scoped-token-value\n");
@@ -18,6 +20,7 @@ beforeEach(async () => {
   resetWakeDebounce();
 });
 afterEach(async () => {
+  warned.mockRestore();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   await rm(dir, { recursive: true, force: true });
@@ -54,6 +57,38 @@ describe("waking the on-demand provider", () => {
     vi.stubEnv("FREESKI_WAKE_TOKEN_FILE", path.join(dir, "missing.txt"));
     expect(await wakeFreeSkiProvider({ reason: "a", waitSeconds: 1 })).toBeNull();
     expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+  it("logs which side a failed wake-up failed on, without the token", async () => {
+    const refused = Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } });
+    fetcher.mockRejectedValueOnce(refused);
+    await wakeFreeSkiProvider({ reason: "a", waitSeconds: 1 });
+    fetcher.mockResolvedValueOnce(new Response("denied", { status: 403 }));
+    await wakeFreeSkiProvider({ reason: "a", waitSeconds: 1 });
+    fetcher.mockResolvedValueOnce(Response.json({ state: "teleported" }));
+    await wakeFreeSkiProvider({ reason: "a", waitSeconds: 1 });
+    vi.stubEnv("FREESKI_WAKE_TOKEN_FILE", path.join(dir, "missing.txt"));
+    await wakeFreeSkiProvider({ reason: "a", waitSeconds: 1 });
+    expect(warned.mock.calls.map(([line]) => line)).toEqual([
+      "[freeski-wake] cannot reach ModelCtrl (ECONNREFUSED)",
+      "[freeski-wake] ModelCtrl refused the wake-up (HTTP 403)",
+      "[freeski-wake] ModelCtrl answered the wake-up without a known service state",
+      expect.stringMatching(/^\[freeski-wake\] cannot read the wake token file \(\w+\)$/),
+    ]);
+    expect(JSON.stringify(warned.mock.calls)).not.toContain("scoped-token-value");
+    fetcher.mockResolvedValueOnce(Response.json({ state: "ready" }));
+    vi.stubEnv("FREESKI_WAKE_TOKEN_FILE", tokenFile);
+    await wakeFreeSkiProvider({ reason: "a", waitSeconds: 1 });
+    expect(warned).toHaveBeenCalledTimes(4);
+  });
+  it("logs ModelCtrl's own reason for refusing or failing to start, on one line", async () => {
+    fetcher.mockResolvedValueOnce(Response.json({ error: "service disabled" }, { status: 400 }));
+    expect(await wakeFreeSkiProvider({ reason: "a", waitSeconds: 1 })).toBeNull();
+    fetcher.mockResolvedValueOnce(Response.json({ state: "failed", error: "start command exited 1\nsee log" }));
+    expect(await wakeFreeSkiProvider({ reason: "a", waitSeconds: 1 })).toBe("failed");
+    expect(warned.mock.calls.map(([line]) => line)).toEqual([
+      "[freeski-wake] ModelCtrl refused the wake-up (HTTP 400: service disabled)",
+      "[freeski-wake] ModelCtrl could not start the service: start command exited 1 see log",
+    ]);
   });
   it("sends one non-waiting wake-up per burst of failing page requests", async () => {
     fetcher.mockImplementation(async () => Response.json({ state: "starting" }));
