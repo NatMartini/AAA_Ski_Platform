@@ -12,7 +12,8 @@ describe("explanation thinking levels", () => {
     const html = render({});
     for (const label of ["快！回答我", "看看算了", "认真一点", "当个事办"]) expect(button(html, label)).not.toBe("");
     expect(html.match(/限时免费/g)).toHaveLength(1);
-    expect(html).toContain("约 5 分钟");
+    expect(html).toContain("约 3 分钟");
+    expect(html).toContain("5 分钟以上");
     expect(button(html, "快！回答我")).toContain('aria-pressed="true"');
     expect(html).not.toContain('role="status"');
   });

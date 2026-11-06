@@ -7,12 +7,13 @@ import { cn } from "@/lib/utils";
 type Status = "pending" | "running" | "ready" | "unavailable" | "failed";
 
 // Names are the owner's (2026-11-06); a fifth, cloud-model level is planned as a paid feature and not offered yet.
-// Waits are ModelCtrl's 2026-11-06 measurements for one answer; a deep one can also queue behind others.
+// Waits are FreeSki's 2026-11-06 measurements of writing one explanation, before any queueing: 63 s, 176 s and
+// about 3 minutes (6 on a busy card). The deep level was not measured yet; ModelCtrl's tests put it past 4 minutes.
 const LEVELS: Record<ThinkingLevel, { zh: string; en: string; waitZh: string; waitEn: string }> = {
   none: { zh: "快！回答我", en: "Quick, just answer", waitZh: "约 1 分钟", waitEn: "about 1 min" },
-  low: { zh: "看看算了", en: "Quick look", waitZh: "约 1 分钟", waitEn: "about 1 min" },
-  medium: { zh: "认真一点", en: "Think it over", waitZh: "约 2 分钟", waitEn: "about 2 min" },
-  xhigh: { zh: "当个事办", en: "Take it seriously", waitZh: "约 5 分钟", waitEn: "about 5 min" },
+  low: { zh: "看看算了", en: "Quick look", waitZh: "约 3 分钟", waitEn: "about 3 min" },
+  medium: { zh: "认真一点", en: "Think it over", waitZh: "3–6 分钟", waitEn: "3–6 min" },
+  xhigh: { zh: "当个事办", en: "Take it seriously", waitZh: "5 分钟以上", waitEn: "5 min or more" },
 };
 
 export const thinkingLabel = (level: ThinkingLevel, zh: boolean) => zh ? LEVELS[level].zh : LEVELS[level].en;
