@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { explainerSchema, isCurrentMedia, type Explainer } from "@/lib/freeski/scorecard";
+import { retryWhileStarting } from "@/lib/freeski/startup-retry";
 import { clientFetch } from "@/lib/client-fetch";
 import { referenceNote, type ReferenceTarget } from "./analysis-scorecard";
 
@@ -10,9 +11,13 @@ const KIND: Record<NonNullable<Explainer["segments"]>[number]["kind"], [string, 
   freeze: ["定格", "Freeze"], outro: ["总结", "Summary"],
 };
 
-/** Slow-motion skeleton comparison rendered by FreeSki; captions come from FreeSki's code templates. */
-export function AnalysisExplainer({ base, zh, target = null }: { base: string; zh: boolean; target?: ReferenceTarget | null }) {
+/**
+ * Slow-motion skeleton comparison rendered by FreeSki; captions come from FreeSki's code templates. `compact`, opened
+ * on request under the turn player, drops the heading and says when there is nothing to show.
+ */
+export function AnalysisExplainer({ base, zh, target = null, compact = false }: { base: string; zh: boolean; target?: ReferenceTarget | null; compact?: boolean }) {
   const [explainer, setExplainer] = useState<Explainer | null>(null);
+  const [failed, setFailed] = useState(false);
   const [current, setCurrent] = useState(0);
   const video = useRef<HTMLVideoElement>(null);
   useEffect(() => {
@@ -20,19 +25,22 @@ export function AnalysisExplainer({ base, zh, target = null }: { base: string; z
     let timer: ReturnType<typeof setTimeout>, attempts = 0;
     const load = async () => {
       try {
-        const response = await clientFetch(`${base}/explainer`, { cache: "no-store", signal: controller.signal });
-        if (!response.ok) return;
+        const response = await retryWhileStarting(() => clientFetch(`${base}/explainer`, { cache: "no-store", signal: controller.signal }),
+          { signal: controller.signal });
+        if (!response.ok) { if (!controller.signal.aborted) setFailed(true); return; }
         const value = explainerSchema.parse(await response.json());
         if (controller.signal.aborted) return;
         setExplainer(value);
         if ((value.status === "pending" || value.status === "running") && attempts++ < 120) timer = setTimeout(() => void load(), 5000);
-      } catch { /* The explainer is optional; the report stays usable without it. */ }
+      } catch { if (!controller.signal.aborted) setFailed(true); /* The explainer is optional; the report stays usable without it. */ }
     };
     void load();
     return () => { controller.abort(); clearTimeout(timer); };
   }, [base]);
+  const none = compact ? <p className="text-sm text-ink-3">{zh ? "这次没有可用的慢动作讲解视频。" : "No slow-motion explainer is available this time."}</p> : null;
+  if (!explainer) return failed ? none : compact ? <p className="text-sm text-ink-3">{zh ? "正在读取慢动作讲解…" : "Loading the slow-motion explainer…"}</p> : null;
   // A v1 explainer compares against a raw reference clip that may turn the other way; it is not shown.
-  if (!explainer || explainer.status === "unavailable" || !isCurrentMedia(explainer)) return null;
+  if (explainer.status === "unavailable" || !isCurrentMedia(explainer)) return none;
   if (explainer.status === "pending" || explainer.status === "running")
     return <p className="text-sm text-ink-3">{zh ? "慢动作讲解视频生成中…" : "Generating the slow-motion explainer…"}</p>;
   if (explainer.status === "failed" || !explainer.segments)
@@ -46,10 +54,10 @@ export function AnalysisExplainer({ base, zh, target = null }: { base: string; z
     if (video.current) { video.current.currentTime = segments[index].start_sec; void video.current.play().catch(() => {}); }
   };
   return <section className="space-y-3" aria-label={zh ? "慢动作讲解" : "Slow-motion explainer"}>
-    <div className="flex flex-wrap items-center gap-2">
+    {!compact && <div className="flex flex-wrap items-center gap-2">
       <p className="text-sm font-semibold">{zh ? "慢动作讲解" : "Slow-motion explainer"}</p>
       <span className="rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-bold text-ink-2">{zh ? "试验性" : "Experimental"}</span>
-    </div>
+    </div>}
     {statuses.length > 0 && <p className="text-xs text-ink-3">{referenceNote(statuses, zh, target)}
       {overlaid && (zh ? "两副骨架按身高和髋部对齐叠放。" : " The skeletons are aligned by height and hips.")}</p>}
     <video ref={video} src={`${base}/assets/explainer`} controls playsInline preload="metadata"

@@ -73,7 +73,7 @@ export function CoachVideoFeedback({ locale, videoId, bookingCode, personal = fa
         : (zh ? "操作未完成，请刷新核对当前授权后重试。" : "The action was not completed. Refresh and check the current authorization."));
     } finally { setBusy(false); }
   }
-  return <section id={`coach-feedback-${videoId}`} className="space-y-3 rounded-xl border border-border bg-surface-2 p-3" aria-label={zh ? "教练人工点评" : "Human coach feedback"}>
+  return <section id={`coach-feedback-${videoId}`} className="scroll-mt-28 space-y-3 rounded-xl border border-border bg-surface-2 p-3" aria-label={zh ? "教练人工点评" : "Human coach feedback"}>
     <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-bold">{zh ? "教练人工点评（选填）" : "Human coach feedback (optional)"}</h3>
       <Button size="sm" variant="secondary" disabled={busy} onClick={() => void show()}>{zh ? opened ? "刷新点评" : "申请或查看人工点评" : opened ? "Refresh feedback" : "Request or view feedback"}</Button></div>
     <Hint>{zh ? "由你指定的教练观看此视频后亲自写点评。与 FreeSki 自动分析独立，不消耗分析次数，无需等待 AI 完成。" : "Your chosen coach watches this clip and writes their own feedback. This is separate from FreeSki AI, uses no analysis credits, and can be requested before AI completes."}</Hint>

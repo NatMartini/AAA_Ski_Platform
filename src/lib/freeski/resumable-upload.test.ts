@@ -40,7 +40,8 @@ describe("provider resumable transport",()=>{
       const body=JSON.parse(String(session[1].body));
       expect(body).toMatchObject({action_name:"parallel",path_type:"improvement",level:null});expect(body.current_level).toBe(level);
     }
-  });
+  // Two whole uploads: about 4.5 s alone, so the default 5 s runs out when the full suite shares the machine.
+  },20_000);
   it("recovers assembling/submitting by idempotent complete without resending bytes",async()=>{
     for(const state of ["assembling","submitting"]){const p=provider([0,1,2],state);expect(await run(file,p.send)).toBe(jobId);expect(p.chunks).toEqual([]);}
   });

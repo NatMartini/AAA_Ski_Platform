@@ -8,7 +8,7 @@
 | --- | --- |
 | 提供方 | FreeSkiclaude源码的`server/scripts/run_integration.py`，部署ID `freeski-platform-8100`，profile `platform-integration`，apiVersion 2，`127.0.0.1:8100`。profile、私有配置和运行目录在`J:\Freeski\deployments\platform-8100\`，由FreeSki管理 |
 | 启停 | ModelCtrl按需服务`freeski-8100`：需要时启动，`/health`报`busy:false`、没有`ski-platform`任务且空闲约20分钟后停止。用户原话：“当freeski有需求的时候再启用，任何调度问题交给model ctrl” |
-| 本站如何叫醒 | 只调`POST {MODELCTRL_URL}/api/services/freeski-8100/start`，使用只能查看和启动该服务的专用令牌`J:\Model_ctrl\data\service-tokens\freeski-8100.txt`，服务端读取、不进日志。后台调度进程有任务时每轮叫醒并最多等30秒；网页请求只在连不上时叫醒、不等待。本站从不自己启动或停止8100 |
+| 本站如何叫醒 | 只调`POST {MODELCTRL_URL}/api/services/freeski-8100/start`，使用只能查看和启动该服务的专用令牌`J:\Model_ctrl\data\service-tokens\freeski-8100.txt`，服务端读取、不进日志。后台调度进程有任务时每轮叫醒并最多等30秒；网页请求只在连不上时叫醒、不等待，接口返回503；报告页读报告、逐弯数据、姿态、关键帧和讲解清单遇到503时每5秒重试、最多约2分钟，报告还没读到时显示“分析服务正在启动，请稍候…”。任务绑定的部署已不由本站提供时返回409，不重试。本站从不自己启动或停止8100 |
 | 启动器 | 配置部署ID且未配置本地启动项时按“外部提供方”处理：只做健康检查，照常启动调度进程 |
 | ModelCtrl身份 | GPU与文字任务为`ski-platform` / `ski-platform-text`，roots已由ModelCtrl改为`J:\Freeski\FreeSkiclaude\server` |
 | 报告内容 | 按[报告接口约定v1.1](FREESKI_REPORT_CONTRACT.md)：评分卡、教学解释、关键帧、慢动作讲解视频，加原有逐弯动态骨架、参考库与导出 |

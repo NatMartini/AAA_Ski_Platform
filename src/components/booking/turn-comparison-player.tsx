@@ -5,6 +5,7 @@ import { Bone, Pause, Play, Repeat, ScanSearch, StepBack, StepForward } from "lu
 import { bodyHeight, decodeCompactPose, jointCenter, poseAt, poseFrameAt, referenceTimeAt, smoothPose, turnManifestSchema,
   type DecodedPose, type PoseSample, type TurnManifest } from "@/lib/freeski/report-v2";
 import type { ReferenceStatus } from "@/lib/freeski/scorecard";
+import { retryWhileStarting } from "@/lib/freeski/startup-retry";
 import { metricInsight } from "@/lib/freeski/metric-insight";
 import { bumpField, cameraAxes, decodeStandardMotion, fitView, motionMarks, motionPointsAt, phaseAt, skiLine, smoothedFootVectors, snowLevelAt, standardPoseForTurn, viewName,
   type FittedView, type StandardMotion, type StandardMotionId, type StandardPose, type TurnTiming } from "@/lib/freeski/standard-motion";
@@ -47,7 +48,8 @@ type Loaded = {
 };
 
 async function json(url: string, signal?: AbortSignal) {
-  const response = await clientFetch(url, { cache: "no-store", signal });
+  // A turn opened after the idle FreeSki service stopped waits for it to start again, instead of losing the turn or its standard.
+  const response = await retryWhileStarting(() => clientFetch(url, { cache: "no-store", signal }), { signal });
   if (!response.ok) throw new Error("resource-unavailable");
   return response.json();
 }

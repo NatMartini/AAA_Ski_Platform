@@ -3,7 +3,8 @@ import type { ActiveUser } from "../auth/require-user";
 const mocks = vi.hoisted(() => ({ account: vi.fn(), booking: vi.fn(), request: vi.fn() }));
 vi.mock("../prisma", () => ({ prisma: { accountAnalysisJob: { findFirst: mocks.account }, videoAnalysisJob: { findFirst: mocks.booking } } }));
 vi.mock("../freeski/adapter", () => ({ requestFreeSkiReportResource: mocks.request,
-  readFreeSkiReportJson: (r: Response) => r.json(), FreeSkiError: class extends Error {} }));
+  readFreeSkiReportJson: (r: Response) => r.json(), FreeSkiError: class extends Error { constructor(readonly code: string) { super(code); } } }));
+import { FreeSkiError } from "../freeski/adapter";
 import { DynamicReportError, loadDynamicReportSource, readDynamicReport } from "./dynamic-report";
 import { sampleExplainer, sampleKeyframes, sampleReport, sampleTeaching } from "../freeski/scorecard.fixtures";
 const user = { id: "owner", role: "CUSTOMER" } as ActiveUser;
@@ -28,6 +29,15 @@ it("does not try a legacy job against the new deployment", async () => {
   mocks.account.mockResolvedValue({ ...row, upstreamDeploymentId: null });
   await expect(readDynamicReport(input(["report"]))).rejects.toMatchObject({ status: 409 });
   expect(mocks.request).not.toHaveBeenCalled();
+});
+it("answers 503, which pages retry, only while the provider may still start", async () => {
+  mocks.request.mockRejectedValueOnce(new FreeSkiError("analysis-unavailable"));
+  await expect(readDynamicReport(input(["report"]))).rejects.toMatchObject({ status: 503, code: "dynamic-report-unavailable" });
+  mocks.request.mockRejectedValueOnce(new FreeSkiError("analysis-timeout"));
+  await expect(readDynamicReport(input(["turns", "turn_1"]))).rejects.toMatchObject({ status: 503 });
+  // A job pinned to a deployment this site no longer serves would wait for nothing.
+  mocks.request.mockRejectedValueOnce(new FreeSkiError("analysis-unconfigured"));
+  await expect(readDynamicReport(input(["report"]))).rejects.toMatchObject({ status: 409, code: "dynamic-report-unavailable" });
 });
 it("rejects a report from another instance and strips no credentials into errors", async () => {
   mocks.request.mockResolvedValue(Response.json({ version: 2, deploymentId: "another", jobId: upstream,
