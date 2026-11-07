@@ -29,6 +29,9 @@ async function main() {
   // Environment must be loaded before Prisma and storage capture their configuration.
   const { createBusinessAnalysisDispatcher } = await import("../src/lib/freeski/dispatcher");
   const { prisma } = await import("../src/lib/prisma");
+  const { purgeExpiredVideos } = await import("../src/lib/video-analysis/retention");
+  // Videos are kept for one ski season; this clears the ones whose season has ended, hourly.
+  let nextPurge = 0;
   const dispatcher = await createBusinessAnalysisDispatcher(jobId);
   // A managed worker's unique marker may already contain a stop requested during imports.
   if (!ownerToken) rmSync(stopFile, { force: true });
@@ -44,6 +47,11 @@ async function main() {
   try {
     do {
       if (controller.signal.aborted) break;
+      if (!jobId && Date.now() >= nextPurge) {
+        nextPurge = Date.now() + 60 * 60_000;
+        const removed = await purgeExpiredVideos().catch(() => 0);
+        if (removed) console.log(`Deleted ${removed} video(s) from past ski seasons; their reports stay`);
+      }
       try {
         const result = await dispatcher.tick(controller.signal);
         if (result.settled) console.log(`Analysis dispatcher settled ${result.settled} verified result(s)`);

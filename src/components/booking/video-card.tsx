@@ -6,7 +6,8 @@ import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { FREESKI_CURRENT_LEVELS, getFreeSkiActionOption, parseFreeSkiActionId } from "@/lib/freeski/actions";
-import { formatTorontoShortDateTime } from "@/lib/time";
+import { formatTorontoDate, formatTorontoShortDateTime, torontoWallTimeToUtc } from "@/lib/time";
+import { seasonLastDay } from "@/lib/video-analysis/season";
 import { analysisReasonText, readAnalysisResult } from "./video-analysis-result";
 import { AnalysisProgress } from "./analysis-progress";
 import type { AnalysisJobView, AnalysisVideoView, VideoAnalysisView } from "./video-analysis-types";
@@ -119,6 +120,8 @@ export function VideoCard({ video, jobs, locale, actions, reportHref, showAnalyz
         {label && <p className="text-sm text-ink-2" data-job-label>{label}</p>}
         <p className="flex flex-wrap gap-x-1.5 text-xs text-ink-3">
           {video.uploadedAt && <span>{zh ? "上传" : "Uploaded"} {when(video.uploadedAt, locale)}</span>}
+          {video.uploadedAt && <span title={zh ? "视频只保存一个雪季，分析报告一直保留" : "Videos are kept for one ski season; reports stay"}>
+            · {zh ? "视频保存到" : "kept until"} {formatTorontoDate(torontoWallTimeToUtc(seasonLastDay(new Date(video.uploadedAt)), 12), locale)}</span>}
           {latest?.finishedAt ? <span className={status === "done" ? "font-semibold text-success" : ""}>
             · {status === "done" ? (zh ? "分析完成" : "Analysis finished") : (zh ? "分析结束" : "Ended")} {when(latest.finishedAt, locale)}
             {duration(latest, zh) && <span className="font-normal text-ink-3">（{duration(latest, zh)}）</span>}</span>

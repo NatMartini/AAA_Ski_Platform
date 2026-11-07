@@ -10,6 +10,7 @@ import { getFreeSkiConfig, isFreeSkiConfigured } from "../freeski/config";
 import { freeSkiServiceState, getFreeSkiActionCatalog } from "../freeski/adapter";
 import { ensureBusinessAnalysisQueued } from "../freeski/dispatcher";
 import { withAnalysisQueueReasons } from "./scheduling";
+import { purgeExpiredVideos } from "./retention";
 import { analysisParty, analysisQuota, AnalysisDomainError, ANALYSIS_LEASE_MINUTES,
   ANALYSIS_QUEUE_MINUTES, MAX_ANALYSIS_PURCHASE_QUANTITY } from "./quota";
 
@@ -59,6 +60,8 @@ const completed = (booking: AnalysisBooking) => {
 };
 
 export async function getVideoAnalysisState(code: string, user: ActiveUser) {
+  // Last season's videos go before the list is read; the worker clears the rest. A failure only delays it.
+  await purgeExpiredVideos({ bookingCode: code }).catch(() => 0);
   const { upstream, ...data } = await locked(code, user, async (tx, booking) => {
     const party = analysisParty(booking, user);
     const quota = analysisQuota(booking, booking.analysisJobs, booking.analysisPurchases);

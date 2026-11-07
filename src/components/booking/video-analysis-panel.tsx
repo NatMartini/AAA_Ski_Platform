@@ -344,6 +344,7 @@ export function VideoAnalysisPanel({ locale, bookingCode, completed, isCustomer,
 
     {uploadAllowed && <Dialog open={uploadOpen} onClose={() => { setUploadOpen(false); setChecked(null); }} closeLabel={zh ? "关闭" : "Close"} title={uploadLabel}
       description={zh ? "第 1 步：选视频。上传后接着选视频里的动作，就开始分析。MP4、MOV 可分析，WebM 只能观看；每个文件最大 200MB。" : "Step 1: choose the video. After it uploads, choose the action shown and the analysis starts. MP4 and MOV can be analysed; WebM can only be viewed. 200MB per file."}>
+      <Hint>{zh ? "视频保存到这个雪季结束（5 月 31 日）后自动删除；分析报告一直保留，也可以下载 PDF。" : "Videos are kept until the ski season ends (May 31) and then deleted; analysis reports stay and can be downloaded as PDF."}</Hint>
       <Hint>{personal ? (zh ? "个人视频和报告默认仅你本人可见，可逐个授权教练人工点评。分析失败或无法评分不扣次数。" : "Personal videos and reports are visible only to you unless you authorize a coach review for a clip. Failed or ungradable analyses do not use a credit.") : (zh ? "视频及结果仅本订单学员和当前本课教练可见。额度由本订单共享，不按人数增加。" : "Videos and results are visible to this booking's student and current lesson coach. Credits are shared by this booking and do not multiply with group size.")}</Hint>
       <section aria-label={zh ? "拍摄指南" : "Filming guide"} className="space-y-2 rounded-xl border border-border bg-surface-2 p-3.5">
         <p className="flex items-center gap-2 text-sm font-semibold"><Camera className="size-4 text-cat-video" aria-hidden />{zh ? "怎么拍分析才准" : "How to film for an accurate analysis"}</p>

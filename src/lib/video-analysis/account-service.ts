@@ -10,6 +10,7 @@ import { getFreeSkiConfig, isFreeSkiConfigured } from "../freeski/config";
 import { freeSkiServiceState, getFreeSkiActionCatalog } from "../freeski/adapter";
 import { ensureBusinessAnalysisQueued } from "../freeski/dispatcher";
 import { withAnalysisQueueReasons } from "./scheduling";
+import { purgeExpiredVideos } from "./retention";
 import { AnalysisDomainError, ANALYSIS_LEASE_MINUTES, ANALYSIS_QUEUE_MINUTES, LESSON_ANALYSES } from "./quota";
 
 const grantInclude = { account: { select: { name: true, email: true } },
@@ -95,6 +96,8 @@ async function accountLedger(tx: Prisma.TransactionClient, user: ActiveUser) {
 }
 
 export async function getAccountVideoAnalysisState(user: ActiveUser) {
+  // Last season's videos go before the list is read; the worker clears the rest. A failure only delays it.
+  await purgeExpiredVideos({ accountId: user.id }).catch(() => 0);
   const { upstream, ...data } = await lockedAccount(user.id, async (tx) => {
     await expireAccountJobs(tx, user.id, new Date());
     const { grants, jobs, quota } = await accountLedger(tx, user);
