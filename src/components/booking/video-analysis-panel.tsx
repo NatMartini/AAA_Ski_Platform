@@ -260,6 +260,7 @@ export function VideoAnalysisPanel({ locale, bookingCode, completed, isCustomer,
   }
   const analyzeVideo = videos.find((video) => video.id === analyzeVideoId) ?? null;
   const reportHref = (jobId: string) => `/video-analysis/report/${encodeURIComponent(jobId)}${personal ? "" : `?lesson=${encodeURIComponent(bookingCode)}`}`;
+  const pdfHref = (jobId: string) => `/api/video-analysis/reports/${personal ? "account" : "booking"}/${encodeURIComponent(jobId)}/pdf?lang=${locale}`;
   // In a lesson only its coach analyses; a student there can still add a clip for the coach.
   const uploadLabel = personal || ready ? (zh ? "分析新视频" : "Analyse a new video") : (zh ? "上传视频" : "Upload a video");
 
@@ -305,7 +306,7 @@ export function VideoAnalysisPanel({ locale, bookingCode, completed, isCustomer,
       : shown.length === 0 ? <EmptyState title={zh ? "这个分类下没有视频。" : "No videos in this group."} />
       : <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{shown.map((video) => {
         const jobs = jobsByVideo.get(video.id) ?? [];
-        return <VideoCard key={video.id} video={video} jobs={jobs} locale={locale} actions={view?.actions ?? []} reportHref={reportHref}
+        return <VideoCard key={video.id} video={video} jobs={jobs} locale={locale} actions={view?.actions ?? []} reportHref={reportHref} pdfHref={pdfHref}
           showAnalyze={canAct} canAnalyze={canStart} busyAnalyzing={Boolean(busy?.startsWith(`analyze:${video.id}:`))}
           canDelete={video.canDelete} deleteDisabled={Boolean(busy)}
           onAnalyze={() => { setError(null); setAnalyzeVideoId(video.id); }}

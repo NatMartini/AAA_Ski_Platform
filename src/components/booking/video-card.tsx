@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ChevronRight, FileText, Loader2, Trash2, Wand2 } from "lucide-react";
+import { ChevronRight, Download, FileText, Loader2, Trash2, Wand2 } from "lucide-react";
 import { Link } from "@/i18n/navigation";
 import type { Locale } from "@/i18n/routing";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
@@ -77,13 +77,15 @@ export function JobNotes({ job, zh }: { job: AnalysisJobView; zh: boolean }) {
   </div>;
 }
 
-export function VideoCard({ video, jobs, locale, actions, reportHref, showAnalyze, canAnalyze, busyAnalyzing, canDelete, deleteDisabled, onAnalyze, onDelete, feedback }: {
+export function VideoCard({ video, jobs, locale, actions, reportHref, pdfHref, showAnalyze, canAnalyze, busyAnalyzing, canDelete, deleteDisabled, onAnalyze, onDelete, feedback }: {
   video: AnalysisVideoView;
   /** This video's analyses, newest first. */
   jobs: AnalysisJobView[];
   locale: Locale;
   actions: VideoAnalysisView["actions"];
   reportHref: (jobId: string) => string;
+  /** Where a finished report downloads as a PDF. */
+  pdfHref?: (jobId: string) => string;
   showAnalyze: boolean;
   canAnalyze: boolean;
   busyAnalyzing: boolean;
@@ -144,6 +146,9 @@ export function VideoCard({ video, jobs, locale, actions, reportHref, showAnalyz
       <div className="mt-auto flex flex-wrap gap-2 pt-1">
         {hasReport && <Button asChild size="sm" variant={status === "done" ? "primary" : "secondary"}>
           <Link href={reportHref(latest.id)}><FileText aria-hidden />{status === "done" ? (zh ? "查看报告" : "View report") : (zh ? "查看详情" : "View details")}</Link>
+        </Button>}
+        {hasReport && status === "done" && pdfHref && <Button asChild size="sm" variant="ghost">
+          <a href={pdfHref(latest.id)} download><Download aria-hidden />PDF</a>
         </Button>}
         {showAnalyze && <Button size="sm" variant={latest ? "secondary" : "primary"} disabled={!canAnalyze || pending || !supported} onClick={onAnalyze}>
           {pending || busyAnalyzing ? <Loader2 className="animate-spin" aria-hidden /> : <Wand2 aria-hidden />}

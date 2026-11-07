@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import type { ActiveUser } from "../auth/require-user";
 import { prisma } from "../prisma";
 import { requestFreeSkiReportResource, readFreeSkiReportJson, FreeSkiError } from "../freeski/adapter";
@@ -11,14 +12,16 @@ export class DynamicReportError extends Error {
 
 export async function loadDynamicReportSource(scope: string, id: string, user: ActiveUser) {
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) throw new DynamicReportError(404, "not-found");
-  const eligible = { refundedAt: null, status: { in: ["QUEUED", "RUNNING", "SUCCEEDED"] } };
+  // A report stays when its video's season ended (the result is kept); deleting a video erases its result and report.
+  const eligible = { refundedAt: null, status: { in: ["QUEUED", "RUNNING", "SUCCEEDED"] },
+    OR: [{ videoId: { not: null } }, { result: { not: Prisma.DbNull } }] };
   if (scope === "account") {
-    const job = await prisma.accountAnalysisJob.findFirst({ where: { id, accountId: user.id, videoId: { not: null }, ...eligible } });
+    const job = await prisma.accountAnalysisJob.findFirst({ where: { id, accountId: user.id, ...eligible } });
     if (!job) throw new DynamicReportError(404, "not-found");
     return job;
   }
   if (scope === "booking") {
-    const job = await prisma.videoAnalysisJob.findFirst({ where: { id, videoId: { not: null }, ...eligible, booking: {
+    const job = await prisma.videoAnalysisJob.findFirst({ where: { id, ...eligible, booking: {
       OR: [{ accountId: user.id }, ...(user.role === "COACH" ? [{ coachId: user.id }] : [])],
     } } });
     if (!job) throw new DynamicReportError(404, "not-found");

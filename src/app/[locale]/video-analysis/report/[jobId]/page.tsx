@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { setRequestLocale } from "next-intl/server";
-import { ArrowLeft, CheckCircle2, CircleAlert, FileVideo, Loader2, Upload, Wand2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, CircleAlert, Download, FileVideo, Loader2, Upload, Wand2 } from "lucide-react";
 import { Link } from "@/i18n/navigation";
 import { toLocale } from "@/i18n/routing";
 import { requireUserPage } from "@/lib/auth/require-user";
@@ -64,7 +64,7 @@ export default async function AnalysisReportPage({ params, searchParams }: PageP
     <div className="overflow-hidden rounded-2xl border border-border bg-black">
       {video
         ? <video controls preload="metadata" playsInline src={video.url} className="aspect-video w-full object-contain" />
-        : <p className="flex aspect-video items-center justify-center p-6 text-sm text-white/70">{zh ? "这个视频已删除，报告仍保留。" : "This video was deleted; its report is kept."}</p>}
+        : <p className="flex aspect-video items-center justify-center p-6 text-center text-sm text-white/70">{zh ? "视频已删除（视频只保存一个雪季），报告仍保留，可以下载 PDF。" : "The video was deleted (videos are kept for one ski season); the report stays and can be downloaded as PDF."}</p>}
     </div>
     <Card className="space-y-4 self-start">
       <h2 className="text-base">{zh ? "时间线" : "Timeline"}</h2>
@@ -99,7 +99,13 @@ export default async function AnalysisReportPage({ params, searchParams }: PageP
         tone="video"
         eyebrow={video?.caption || (zh ? "未命名视频" : "Untitled video")}
         title={label ?? (zh ? "分析报告" : "Analysis report")}
-        actions={<Badge tone={badge.tone} dot className="text-sm">{badge.label}</Badge>}
+        actions={<>
+          <Badge tone={badge.tone} dot className="text-sm">{badge.label}</Badge>
+          {/* Reports outlive their videos, which are kept for one ski season: a PDF to keep. */}
+          {job.status === "SUCCEEDED" && finished && <a href={`/api/video-analysis/reports/${lesson ? "booking" : "account"}/${encodeURIComponent(job.id)}/pdf?lang=${loc}`} download
+            className="press inline-flex min-h-9 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-sm font-semibold text-ink-2 hover:text-ink">
+            <Download className="size-4" aria-hidden />{zh ? "下载 PDF" : "Download PDF"}</a>}
+        </>}
       />
 
       {/* While it runs the clip and its timeline lead; once finished the report does, so the conclusion is on the first screen. */}

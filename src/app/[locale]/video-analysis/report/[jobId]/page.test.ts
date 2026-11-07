@@ -77,7 +77,9 @@ describe("analysis report page", () => {
   it("keeps a report whose clip was deleted", async () => {
     mocks.account.mockResolvedValue({ ...state, videos: [] });
     const html = renderToStaticMarkup(await open("job1", {}, "en"));
-    expect(html).toContain("This video was deleted; its report is kept.");
+    expect(html).toContain("The video was deleted (videos are kept for one ski season); the report stays");
+    // A finished report downloads as a PDF to keep.
+    expect(html).toContain("/pdf?lang=en");
     expect(html).toContain("The detected action does not match the selected action.");
   });
 

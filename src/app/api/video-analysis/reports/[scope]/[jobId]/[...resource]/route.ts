@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth/require-user";
 import { DynamicReportError, readDynamicReport } from "@/lib/video-analysis/dynamic-report";
 import {handleCoachingWorkspace} from "@/lib/video-analysis/coaching-workspace";
 import { handleFindingReviews } from "@/lib/video-analysis/finding-reviews";
+import { downloadReportPdf } from "@/lib/video-analysis/report-download";
 import {RequestBodyError} from "@/lib/request-body";
 
 export const runtime = "nodejs";
@@ -14,6 +15,8 @@ async function handle(request: Request, context: { params: Promise<{ scope: stri
   if (!auth.ok) return auth.response;
   const params = await context.params;
   try {
+    if (params.resource.length === 1 && params.resource[0] === "pdf" && request.method === "GET")
+      return await downloadReportPdf({ scope: params.scope, jobId: params.jobId, user: auth.user, zh: new URL(request.url).searchParams.get("lang") !== "en" });
     return await (["report","turns","assets","explainer"].includes(params.resource[0]) && request.method === "GET"
       ? readDynamicReport({ ...params, user: auth.user, request })
       : params.resource[0] === "finding-reviews"

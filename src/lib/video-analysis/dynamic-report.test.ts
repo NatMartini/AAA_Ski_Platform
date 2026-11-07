@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { ActiveUser } from "../auth/require-user";
 const mocks = vi.hoisted(() => ({ account: vi.fn(), booking: vi.fn(), request: vi.fn() }));
@@ -17,7 +18,9 @@ beforeEach(() => { vi.resetAllMocks(); mocks.account.mockResolvedValue(row); });
 it("scopes personal report reads to the owner before touching upstream", async () => {
   mocks.account.mockResolvedValue(null);
   await expect(readDynamicReport(input(["report"]))).rejects.toMatchObject({ status: 404 });
-  expect(mocks.account).toHaveBeenCalledWith({ where: { id: "job", accountId: "owner", videoId: { not: null }, refundedAt: null, status: { in: ["QUEUED", "RUNNING", "SUCCEEDED"] } } });
+  // A report outlives a video whose season ended (its result is kept), not one its owner deleted (result erased).
+  expect(mocks.account).toHaveBeenCalledWith({ where: { id: "job", accountId: "owner", refundedAt: null, status: { in: ["QUEUED", "RUNNING", "SUCCEEDED"] },
+    OR: [{ videoId: { not: null } }, { result: { not: Prisma.DbNull } }] } });
   expect(mocks.request).not.toHaveBeenCalled();
 });
 it("a different coach has no booking video report grant", async () => {
