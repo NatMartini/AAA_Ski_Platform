@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader, SectionHeading } from "@/components/ui/page-header";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { AnalysisProgress } from "@/components/booking/analysis-progress";
+import { Spinner } from "@/components/ui/spinner";
 import { readAnalysisResult, VideoAnalysisResult } from "@/components/booking/video-analysis-result";
 import { comparableScorecards } from "@/lib/freeski/metric-insight";
 import { CoachVideoFeedback } from "@/components/booking/coach-video-feedback";
@@ -83,7 +84,13 @@ export default async function AnalysisReportPage({ params, searchParams }: PageP
   return (
     <div className="space-y-6">
       {pending && <AutoRefresh />}
-      {pending && <AnalysisProgress status={job.status} progress={job.progress} computeWait={job.computeWait} zh={zh} />}
+      {/* A turning ring until the server has finished; the page refreshes itself and shows the report. */}
+      {pending && <div className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-8 text-center shadow-[var(--shadow-sm)]">
+        <Spinner size="lg" className="flex-col gap-3 text-base font-semibold text-ink [&>svg]:text-cat-video"
+          label={job.status === "QUEUED" ? (zh ? "排队中，轮到就开始分析" : "Queued; the analysis starts when its turn comes") : (zh ? "正在分析这个视频" : "Analysing this video")} />
+        <p className="text-sm text-ink-3">{zh ? "分析完成后这里会自动显示报告，可以先离开，稍后再回来看。" : "The report appears here when the analysis is done; you can leave and come back."}</p>
+        <AnalysisProgress status={job.status} progress={job.progress} computeWait={job.computeWait} zh={zh} />
+      </div>}
       <Link href={back} className="inline-flex min-h-9 items-center gap-1.5 text-sm font-semibold text-ink-2 hover:text-ink">
         <ArrowLeft className="size-4" aria-hidden />{zh ? "返回视频库" : "Back to video library"}
       </Link>

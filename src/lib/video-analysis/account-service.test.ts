@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({ transaction: vi.fn(), lock: vi.fn(), userFirst
   grantMany: vi.fn(), grantUnique: vi.fn(), grantCreate: vi.fn(), videoMany: vi.fn(), videoFirst: vi.fn(),
   jobMany: vi.fn(), jobUnique: vi.fn(), jobFirst: vi.fn(), jobCreate: vi.fn(), jobUpdate: vi.fn(), jobUpdateMany: vi.fn(),
   configured: vi.fn(), available: vi.fn(), scheduler: vi.fn(), catalog: vi.fn(), exists: vi.fn(), enqueue: vi.fn(),
-  freeskiConfig: vi.fn(), upstreamJob: vi.fn() }));
+  freeskiConfig: vi.fn(), upstreamJob: vi.fn(), lessonCount: vi.fn(), purchaseMany: vi.fn(), lessonJobMany: vi.fn() }));
 vi.mock("../prisma", () => ({ prisma: { $transaction: mocks.transaction,
   user: { findFirst: mocks.userFirst, findUnique: mocks.userUnique },
   accountAnalysisGrant: { findMany: mocks.grantMany },
@@ -104,6 +104,10 @@ beforeEach(() => {
     grants.push(row);
     return withGrantRelations(row);
   });
+  // No lessons, purchases or lesson analyses unless a test says so.
+  mocks.lessonCount.mockResolvedValue(0);
+  mocks.purchaseMany.mockResolvedValue([]);
+  mocks.lessonJobMany.mockResolvedValue([]);
   mocks.videoMany.mockImplementation(async ({ where }) => structuredClone(videos.filter((row) => matches(row, where))));
   mocks.videoFirst.mockImplementation(async ({ where }) => structuredClone(videos.find((row) => matches(row, where)) ?? null));
   mocks.jobMany.mockImplementation(async ({ where, distinct }) => {
@@ -133,7 +137,8 @@ beforeEach(() => {
     accountAnalysisGrant: { findMany: mocks.grantMany, findUnique: mocks.grantUnique, create: mocks.grantCreate },
     accountAnalysisVideo: { findMany: mocks.videoMany, findFirst: mocks.videoFirst },
     accountAnalysisJob: { findMany: mocks.jobMany, findUnique: mocks.jobUnique, findFirst: mocks.jobFirst,
-      create: mocks.jobCreate, update: mocks.jobUpdate, updateMany: mocks.jobUpdateMany } };
+      create: mocks.jobCreate, update: mocks.jobUpdate, updateMany: mocks.jobUpdateMany },
+    booking: { count: mocks.lessonCount }, videoAnalysisPurchase: { findMany: mocks.purchaseMany }, videoAnalysisJob: { findMany: mocks.lessonJobMany } };
   mocks.transaction.mockImplementation((work: (client: typeof tx) => Promise<unknown>) => {
     const next = tail.then(async () => {
       const snapshot = structuredClone({ users, grants, videos, jobs });
@@ -257,6 +262,19 @@ describe("account FreeSki grant wallet", () => {
     for (const key of ["a", "b", "c"]) await run(key);
     await expect(run("d")).rejects.toMatchObject({ reason: "quota-exhausted" });
     expect(jobs).toHaveLength(3);
+  });
+
+  it("adds three analyses per completed lesson and what the student bought, and counts lesson analyses as spent", async () => {
+    grants = [];
+    mocks.lessonCount.mockResolvedValue(2);
+    mocks.purchaseMany.mockResolvedValue([{ quantity: 2 }]);
+    mocks.lessonJobMany.mockResolvedValue([{ status: "SUCCEEDED", refundedAt: null }, { status: "FAILED", refundedAt: now }]);
+    expect(await getAccountVideoAnalysisState(customer)).toMatchObject({ canAnalyze: true,
+      quota: { freeTotal: 3, lessonCount: 2, lessonTotal: 6, paidTotal: 2, grantTotal: 0, earned: 11, used: 1, remaining: 10 } });
+    // The completed lessons it counts are the student's as booker or as a companion with an account.
+    expect(mocks.lessonCount).toHaveBeenCalledWith({ where: { status: "COMPLETED",
+      OR: [{ accountId: "customer" }, { attendees: { some: { accountId: "customer" } } }] } });
+    expect(mocks.purchaseMany).toHaveBeenCalledWith(expect.objectContaining({ where: { accountId: "customer", status: "CONFIRMED" } }));
   });
 
   it.each([coach, actor("admin", "ADMIN")])("lets %s analyse their own clips without limit or grants", async (user) => {

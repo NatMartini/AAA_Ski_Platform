@@ -13,11 +13,10 @@ import { Dialog } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SegmentedTabs } from "@/components/ui/tabs";
 import { FieldError, Hint, Input, Label, Select } from "@/components/ui/field";
-import { Camera, Check, ChevronRight, CircleAlert, Film, Loader2, MessageSquareText, RefreshCw, Upload, Wand2 } from "lucide-react";
+import { Camera, Check, ChevronRight, CircleAlert, Film, Loader2, MessageSquareText, Plus, RefreshCw, Upload, Wand2 } from "lucide-react";
 import { CoachVideoFeedback } from "./coach-video-feedback";
 import { VideoCard, analysisJobLabel, jobStatusBadge, videoStatus, type VideoStatus } from "./video-card";
 import type { AnalysisJobView, AnalysisPurchaseView, AnalysisVideoView, VideoAnalysisView } from "./video-analysis-types";
-import { includedAnalysisCredits } from "@/lib/video-analysis/quota";
 import { FREESKI_CURRENT_LEVELS, parseFreeSkiActionId, submittedFreeSkiActionId, type FreeSkiCurrentLevel } from "@/lib/freeski/actions";
 import { FILMING_GUIDE, filmingWarnings, readVideoMetadata, type FilmingWarning, type VideoMeta } from "@/lib/video-analysis/precheck";
 
@@ -29,7 +28,7 @@ type Filter = "all" | VideoStatus;
  * and choosing what to analyse happen in dialogs, and each finished analysis
  * opens on its own report page.
  */
-export function VideoAnalysisPanel({ locale, bookingCode, bookedHours, completed, isCustomer, isOwnCoach, canUpload, initialVideos, initialView, accountId }: {
+export function VideoAnalysisPanel({ locale, bookingCode, completed, isCustomer, isOwnCoach, canUpload, initialVideos, initialView, accountId }: {
   locale: Locale;
   bookingCode: string;
   bookedHours: number;
@@ -48,7 +47,6 @@ export function VideoAnalysisPanel({ locale, bookingCode, bookedHours, completed
   const [caption, setCaption] = useState("");
   const [actionId, setActionId] = useState("");
   const [currentLevel, setCurrentLevel] = useState<FreeSkiCurrentLevel | "">("");
-  const [quantity, setQuantity] = useState("1");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState(false);
@@ -177,7 +175,7 @@ export function VideoAnalysisPanel({ locale, bookingCode, bookedHours, completed
       if (accountId) form.set("expectedAccountId", accountId);
       if (caption.trim()) form.set("caption", caption.trim());
       const response = await clientFetch(videosBase, { method: "POST", body: form });
-      const data = await response.json().catch(() => ({})) as { error?: string };
+      const data = await response.json().catch(() => ({})) as { error?: string; id?: string };
       if (!response.ok) {
         setError(failure(data.error));
         if (response.status === 401 || response.status === 403 || (personal && data.error === "state-changed")) {
@@ -193,8 +191,9 @@ export function VideoAnalysisPanel({ locale, bookingCode, bookedHours, completed
       setCaption("");
       setUploadOpen(false);
       setFilter("all");
-      setMessage(zh ? "视频已上传。点“分析这个视频”选择动作并提交分析。" : "Video uploaded. Press Analyze this video to choose an action and submit it.");
       await refresh();
+      if (data.id && ready) setAnalyzeVideoId(data.id);
+      else setMessage(zh ? "视频已上传，现在还不能提交分析；可以稍后在下面点“分析这个视频”。" : "Video uploaded. It cannot be submitted yet; press Analyze this video below later.");
     } finally {
       setBusy(null);
     }
@@ -214,13 +213,6 @@ export function VideoAnalysisPanel({ locale, bookingCode, bookedHours, completed
       setFilter("all");
       setMessage(zh ? "已提交分析，完成后这里会自动更新。" : "Analysis submitted. This page updates when it finishes.");
     }
-  }
-
-  async function purchase() {
-    const count = /^\d+$/.test(quantity) ? Number(quantity) : NaN;
-    if (!Number.isInteger(count) || count < 1 || count > 50) { setError(zh ? "请选择 1–50 次额外分析。" : "Choose between 1 and 50 extra analyses."); return; }
-    const operation = `purchase:${count}`;
-    if (await mutate(operation, `${base}/purchases`, { quantity: count, expectedUnitPriceCents: view?.price?.unitCents, requestKey: requestKey(operation) })) setMessage(zh ? "已生成额外次数订单，请按订单金额通过微信付款。" : "Your extra-credit order is ready. Pay its stated amount by WeChat.");
   }
 
   const videos = useMemo(() => [...(view?.videos ?? initialVideos)]
@@ -243,12 +235,12 @@ export function VideoAnalysisPanel({ locale, bookingCode, bookedHours, completed
 
   const hasSupportedVideo = videos.some((video) => video.analysisSupported ?? video.contentType !== "video/webm");
   const active = view?.quota.active ?? completed;
-  const totalFree = active ? view?.quota.freeTotal ?? includedAnalysisCredits(bookedHours) : includedAnalysisCredits(bookedHours);
   const serviceReady = Boolean(view?.service.configured && view.service.available);
   const canAct = isCustomer || isOwnCoach;
   const anyActionAvailable = view?.actions.some((action) => action.available === true) ?? false;
   // Opening the analyse dialog for a clip; the dialog then requires an action (and level).
-  const canStart = Boolean(canAct && view?.canAnalyze && active && serviceReady && anyActionAvailable && !busy);
+  const ready = Boolean(canAct && view?.canAnalyze && active && serviceReady && anyActionAvailable);
+  const canStart = ready && !busy;
   const selectedActionAvailable = view?.actions.some((action) => action.id === actionId && action.available === true) ?? false;
   const needsLevel = selectedActionAvailable && parseFreeSkiActionId(actionId)?.pathType === "improvement";
   const canRun = Boolean(canStart && analyzeVideoId && selectedActionAvailable && (!needsLevel || currentLevel));
@@ -268,28 +260,27 @@ export function VideoAnalysisPanel({ locale, bookingCode, bookedHours, completed
   }
   const analyzeVideo = videos.find((video) => video.id === analyzeVideoId) ?? null;
   const reportHref = (jobId: string) => `/video-analysis/report/${encodeURIComponent(jobId)}${personal ? "" : `?lesson=${encodeURIComponent(bookingCode)}`}`;
-  const uploadLabel = personal ? (zh ? "上传滑雪视频" : "Upload skiing video") : (zh ? "上传课程视频" : "Upload lesson video");
+  // In a lesson only its coach analyses; a student there can still add a clip for the coach.
+  const uploadLabel = personal || ready ? (zh ? "分析新视频" : "Analyse a new video") : (zh ? "上传视频" : "Upload a video");
 
   if (sessionChanged) return <div className="space-y-2 rounded-2xl border border-border bg-surface p-5"><h2 className="font-semibold">{zh ? "登录状态已变化" : "Your sign-in changed"}</h2><p role="alert" className="text-sm text-ink-2">{zh ? "正在重新检查订单访问权限。请重新登录后查看视频。" : "Booking access is being checked again. Sign in again to view videos."}</p></div>;
 
   return <section className="space-y-4" aria-label={personal ? (zh ? "我的视频" : "My videos") : (zh ? "课程视频" : "Lesson videos")}>
-    <div className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-border bg-surface p-4 shadow-[var(--shadow-sm)] sm:p-5">
-      <div className="min-w-0 space-y-1">
-        <h3 className="flex items-center gap-2 font-semibold"><Film className="size-4 text-cat-video" aria-hidden />{personal ? (zh ? "我的 FreeSki 视频分析" : "My FreeSki video analysis") : (zh ? "课程视频与分析" : "Lesson videos and analysis")}</h3>
-        <p className="text-sm font-medium">{personal ? (view?.unlimited ? (zh ? "教练账号：分析不限次数" : "Coach account: unlimited analyses")
-          : zh ? `注册赠送 ${view?.quota.freeTotal ?? 0} 次 · 教练累计发放 ${view?.quota.grantTotal ?? 0} 次` : `${view?.quota.freeTotal ?? 0} free with your account · ${view?.quota.grantTotal ?? 0} issued by coaches`) : (zh ? `本节 ${bookedHours} 小时课包含 ${totalFree} 次共享免费分析` : `This ${bookedHours}-hour lesson includes ${totalFree} shared free analyses`)}</p>
-        {!active ? <p role="status" className="text-sm text-ink-2">{zh ? "待课程完成后解锁。请教练在授课结束后确认课程已完成。" : "Credits unlock after the lesson is completed. Ask the coach to mark it completed after the teaching time ends."}</p>
-          : view ? <p className="text-sm text-ink-2" data-numeric>{personal && view.unlimited
-            ? (zh ? `不限次数 · 已使用 ${view.quota.used} 次 · 处理中 ${view.quota.reserved} 次` : `Unlimited · ${view.quota.used} used · ${view.quota.reserved} processing`)
-            : zh ? `可用 ${view.quota.remaining} 次 · 已使用 ${view.quota.used} 次 · 处理中 ${view.quota.reserved} 次 · 已购 ${view.quota.paidTotal} 次` : `${view.quota.remaining} available · ${view.quota.used} used · ${view.quota.reserved} processing · ${view.quota.paidTotal} purchased`}</p>
-            : <p className="text-sm text-ink-3">{zh ? "正在读取可用额度…" : "Loading available credits…"}</p>}
-        {!personal && view?.unlimited && <p className="text-sm text-ink-2">{zh ? "你是本课教练：你提交的分析不限次数，不占用本节课的次数。" : "As this lesson's coach, your analyses are unlimited and do not use the lesson's credits."}</p>}
-        <Hint>{personal ? (zh ? "个人视频和报告默认仅你本人可见，可逐个授权教练人工点评。MP4、MOV 可分析，每个文件最大 200MB。分析失败或无法评分不扣次数。" : "Personal videos and reports are visible only to you unless you authorize a coach review for a clip. MP4 and MOV can be analysed; 200MB per file. Failed or ungradable analyses do not use a credit.") : (zh ? "视频及结果仅本订单学员和当前本课教练可见。额度由本订单共享，不按人数增加。MP4、MOV 可分析，WebM 只能观看；每个文件最大 200MB。" : "Videos and results are visible to this booking's student and current lesson coach. Credits are shared by this booking and do not multiply with group size. MP4 and MOV can be analysed; WebM can only be viewed; 200MB per file.")}</Hint>
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="min-w-0 space-y-0.5">
+        <h2 className="flex items-center gap-2 text-lg font-semibold"><Film className="size-5 text-cat-video" aria-hidden />{personal ? (zh ? "我的分析" : "My analyses") : (zh ? "课程视频与分析" : "Lesson videos and analysis")}</h2>
+        {!personal && (view?.unlimited
+          ? <p className="text-sm text-ink-2">{zh ? `你是本课教练：分析不限次数${active ? "" : "，课程完成后才能分析"}。` : `As this lesson's coach you analyse without limit${active ? "" : ", once the lesson is completed"}.`}</p>
+          : <p className="text-sm text-ink-2">{zh ? "这节课的视频由教练上传和分析，你随时能看；你自己的视频在“我的分析”里分析，用账户里的次数。" : "Your coach uploads and analyses this lesson's videos for you to watch; analyse your own videos under My analyses with your account's credits."}</p>)}
+        {personal && (view ? <p className="text-sm text-ink-3" data-numeric>{view.unlimited
+            ? (zh ? `不限次数 · 分析中 ${view.quota.reserved} 次` : `Unlimited · ${view.quota.reserved} in progress`)
+            : zh ? `可用 ${view.quota.remaining} 次 · 分析中 ${view.quota.reserved} 次` : `${view.quota.remaining} available · ${view.quota.reserved} in progress`}</p>
+          : <p className="text-sm text-ink-3">{zh ? "正在读取可用次数…" : "Loading available credits…"}</p>)}
         {personal && !view?.canUpload && <p className="text-sm text-ink-2">{zh ? "联系教练发放次数后，即可上传和分析视频。" : "Contact your coach for credits to start uploading and analysing clips."}</p>}
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="ghost" size="sm" disabled={Boolean(busy)} onClick={() => void refresh()}><RefreshCw aria-hidden />{zh ? "刷新分析" : "Refresh analysis"}</Button>
-        {uploadAllowed && <Button disabled={Boolean(busy)} onClick={() => { setError(null); setUploadOpen(true); }}>{busy === "upload" ? <Loader2 className="animate-spin" aria-hidden /> : <Upload aria-hidden />}{uploadLabel}</Button>}
+        <Button variant="ghost" size="sm" disabled={Boolean(busy)} onClick={() => void refresh()} aria-label={zh ? "刷新" : "Refresh"}><RefreshCw aria-hidden /></Button>
+        {uploadAllowed && <Button disabled={Boolean(busy)} onClick={() => { setError(null); setUploadOpen(true); }}>{busy === "upload" ? <Loader2 className="animate-spin" aria-hidden /> : <Plus aria-hidden />}{uploadLabel}</Button>}
       </div>
     </div>
 
@@ -299,7 +290,7 @@ export function VideoAnalysisPanel({ locale, bookingCode, bookedHours, completed
     {message && <p role="status" className="flex items-center gap-2 rounded-xl bg-success-bg px-4 py-3 text-sm font-medium text-success"><Check className="size-4 shrink-0" aria-hidden />{message}</p>}
     {!analyzeVideoId && !uploadOpen && <FieldError>{error}</FieldError>}
 
-    {videos.length > 0 && <SegmentedTabs label={zh ? "按分析状态筛选" : "Filter by analysis status"} value={filter} onChange={setFilter} items={[
+    {videos.length > 4 && <SegmentedTabs label={zh ? "按分析状态筛选" : "Filter by analysis status"} value={filter} onChange={setFilter} items={[
       { key: "all", label: zh ? "全部" : "All", count: counts.all },
       { key: "new", label: zh ? "待分析" : "Not analyzed", count: counts.new },
       { key: "processing", label: zh ? "分析中" : "In progress", count: counts.processing },
@@ -308,9 +299,9 @@ export function VideoAnalysisPanel({ locale, bookingCode, bookedHours, completed
     ]} />}
 
     {videos.length === 0 ? <EmptyState icon={<Film aria-hidden />}
-      title={personal ? (zh ? "还没有上传视频。" : "No videos uploaded yet.") : (zh ? "还没有课程视频。" : "No lesson videos yet.")}
-      description={uploadAllowed ? (zh ? "上传一段完整的滑行片段，然后选择视频里的动作提交分析。" : "Upload a complete run, then choose the action shown to submit it for analysis.") : undefined}
-      action={uploadAllowed ? <Button variant="secondary" onClick={() => setUploadOpen(true)}><Upload aria-hidden />{uploadLabel}</Button> : undefined} />
+      title={personal ? (zh ? "还没有分析过视频。" : "No videos analysed yet.") : (zh ? "还没有课程视频。" : "No lesson videos yet.")}
+      description={uploadAllowed ? (zh ? "点“分析新视频”，选一段完整的滑行片段，再选视频里的动作就能开始。" : "Press Analyse a new video, pick a complete run, then choose the action shown to start.") : undefined}
+      action={uploadAllowed ? <Button onClick={() => setUploadOpen(true)}><Plus aria-hidden />{uploadLabel}</Button> : undefined} />
       : shown.length === 0 ? <EmptyState title={zh ? "这个分类下没有视频。" : "No videos in this group."} />
       : <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{shown.map((video) => {
         const jobs = jobsByVideo.get(video.id) ?? [];
@@ -346,16 +337,14 @@ export function VideoAnalysisPanel({ locale, bookingCode, bookedHours, completed
       })}</ul>
     </details>}
 
-    {active && !personal && <div className="space-y-4 rounded-2xl border border-border bg-surface p-4 shadow-[var(--shadow-sm)] sm:p-5">
-      <div className="space-y-1"><h3 className="font-semibold">{zh ? "额外分析次数" : "Extra analysis credits"}</h3><Hint>{zh ? "通过微信付款后通知教练，教练核对到账后才增加额度。每笔订单保留下单时的价格。" : "Pay by WeChat and notify your coach. Credits are added after the coach checks receipt. Each order keeps its original price."}</Hint></div>
-      {!view ? <Hint>{zh ? "正在读取购买信息…" : "Loading purchase details…"}</Hint> : !view.price ? <p className="text-sm text-ink-3">{zh ? "教练尚未设置额外分析价格或微信收款，暂不能购买。" : "Extra analysis pricing or WeChat payment has not been configured. Purchases are unavailable."}</p> : <p className="text-sm font-semibold">{zh ? "每次" : "Per analysis"} {formatMoneyShort(view.price.unitCents)} CAD</p>}
-      {isCustomer && view?.canPurchase && view.price && <div className="flex flex-wrap items-end gap-3"><div className="w-28 space-y-2"><Label htmlFor={`analysis-quantity-${bookingCode}`}>{zh ? "购买次数" : "Credits"}</Label><Input id={`analysis-quantity-${bookingCode}`} type="number" min={1} max={50} step={1} value={quantity} disabled={Boolean(busy)} onChange={(event) => setQuantity(event.target.value)} /></div><Button variant="secondary" disabled={Boolean(busy)} onClick={() => void purchase()}>{busy?.startsWith("purchase:") && <Loader2 className="animate-spin" aria-hidden />}{zh ? "生成微信付款订单" : "Create WeChat payment order"}</Button></div>}
-      {view && isCustomer && view.price && !view.payment.wechatEnabled && <p className="text-sm text-ink-3">{zh ? "教练暂未启用微信收款，请联系教练。" : "The coach has not enabled WeChat payment. Contact your coach."}</p>}
-      {view?.purchases.map((purchase) => <AnalysisPurchase key={purchase.id} purchase={purchase} locale={locale} isCustomer={isCustomer} canReview={isOwnCoach && view.canReview} payment={view.payment} busy={Boolean(busy)} onAction={(path, body) => mutate(`order:${purchase.id}`, `${base}/purchases/${purchase.id}/${path}`, body)} />)}
+    {active && !personal && isOwnCoach && (view?.purchases.length ?? 0) > 0 && <div className="space-y-4 rounded-2xl border border-border bg-surface p-4 shadow-[var(--shadow-sm)] sm:p-5">
+      <div className="space-y-1"><h3 className="font-semibold">{zh ? "学员购买的分析次数" : "Analyses the student bought"}</h3><Hint>{zh ? "核对微信到账后确认，次数会加到学员的账户里。" : "Confirm once WeChat shows the payment; the analyses go to the student's account."}</Hint></div>
+      {view?.purchases.map((purchase) => <AnalysisPurchase key={purchase.id} purchase={purchase} locale={locale} isCustomer={false} canReview={isOwnCoach && view.canReview} payment={view.payment} busy={Boolean(busy)} onAction={(path, body) => mutate(`order:${purchase.id}`, `${base}/purchases/${purchase.id}/${path}`, body)} />)}
     </div>}
 
     {uploadAllowed && <Dialog open={uploadOpen} onClose={() => { setUploadOpen(false); setChecked(null); }} closeLabel={zh ? "关闭" : "Close"} title={uploadLabel}
-      description={zh ? "MP4、MOV 可分析，WebM 只能观看；每个文件最大 200MB。上传后再选择视频里的动作提交分析。" : "MP4 and MOV can be analysed; WebM can only be viewed. 200MB per file. Choose the action to analyse after uploading."}>
+      description={zh ? "第 1 步：选视频。上传后接着选视频里的动作，就开始分析。MP4、MOV 可分析，WebM 只能观看；每个文件最大 200MB。" : "Step 1: choose the video. After it uploads, choose the action shown and the analysis starts. MP4 and MOV can be analysed; WebM can only be viewed. 200MB per file."}>
+      <Hint>{personal ? (zh ? "个人视频和报告默认仅你本人可见，可逐个授权教练人工点评。分析失败或无法评分不扣次数。" : "Personal videos and reports are visible only to you unless you authorize a coach review for a clip. Failed or ungradable analyses do not use a credit.") : (zh ? "视频及结果仅本订单学员和当前本课教练可见。额度由本订单共享，不按人数增加。" : "Videos and results are visible to this booking's student and current lesson coach. Credits are shared by this booking and do not multiply with group size.")}</Hint>
       <section aria-label={zh ? "拍摄指南" : "Filming guide"} className="space-y-2 rounded-xl border border-border bg-surface-2 p-3.5">
         <p className="flex items-center gap-2 text-sm font-semibold"><Camera className="size-4 text-cat-video" aria-hidden />{zh ? "怎么拍分析才准" : "How to film for an accurate analysis"}</p>
         <ol className="list-decimal space-y-1 pl-5 text-sm text-ink-2">{FILMING_GUIDE.map((rule, index) => <li key={index}>{zh ? rule.zh : rule.en}</li>)}</ol>
@@ -379,7 +368,7 @@ export function VideoAnalysisPanel({ locale, bookingCode, bookedHours, completed
     </Dialog>}
 
     {canAct && <Dialog open={analyzeVideoId !== null} onClose={() => setAnalyzeVideoId(null)} closeLabel={zh ? "关闭" : "Close"}
-      title={zh ? "提交分析" : "Submit for analysis"}
+      title={zh ? "第 2 步：选动作，开始分析" : "Step 2: choose the action and start"}
       description={analyzeVideo ? `${analyzeVideo.caption || (zh ? "未命名视频" : "Untitled video")}` : undefined}>
       <section aria-labelledby={`analysis-learning-path-${bookingCode}`} className="space-y-3 rounded-xl border border-border bg-surface-2 p-3.5">
         <h3 id={`analysis-learning-path-${bookingCode}`} className="text-sm font-semibold">{zh ? "从新手到平行式" : "From first turns to parallel"}</h3>
@@ -427,7 +416,7 @@ function Notice({ children, role = "status" }: { children: React.ReactNode; role
   </p>;
 }
 
-function AnalysisPurchase({ purchase, locale, isCustomer, canReview, payment, busy, onAction }: {
+export function AnalysisPurchase({ purchase, locale, isCustomer, canReview, payment, busy, onAction }: {
   purchase: AnalysisPurchaseView;
   locale: Locale;
   isCustomer: boolean;

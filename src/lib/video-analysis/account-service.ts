@@ -10,7 +10,7 @@ import { getFreeSkiConfig, isFreeSkiConfigured } from "../freeski/config";
 import { freeSkiServiceState, getFreeSkiActionCatalog } from "../freeski/adapter";
 import { ensureBusinessAnalysisQueued } from "../freeski/dispatcher";
 import { withAnalysisQueueReasons } from "./scheduling";
-import { AnalysisDomainError, ANALYSIS_LEASE_MINUTES, ANALYSIS_QUEUE_MINUTES } from "./quota";
+import { AnalysisDomainError, ANALYSIS_LEASE_MINUTES, ANALYSIS_QUEUE_MINUTES, LESSON_ANALYSES } from "./quota";
 
 const grantInclude = { account: { select: { name: true, email: true } },
   coach: { select: { name: true, coachProfile: { select: { displayName: true } } } } } as const;
@@ -32,23 +32,43 @@ export async function lockedAccount<T>(accountId: string,
 }
 
 /**
- * What an account may analyse of its own clips (owner's decisions, 2026-11-06): every student account
- * starts with three analyses and coaches issue more; coaches and administrators analyse without limit.
+ * What an account may analyse (owner's decisions, 2026-11-06 and 2026-11-07): every student account starts with
+ * three analyses, gets three more for each completed lesson, and adds what coaches issue and what the student
+ * bought; all of it is spent from the account whenever the student likes. Coaches and administrators analyse
+ * without limit.
  */
 export const ACCOUNT_FREE_ANALYSES = 3;
 export type AccountAllowance = { free: number; unlimited: boolean };
 export const accountAllowance = (user: Pick<ActiveUser, "role">): AccountAllowance => ({
   free: user.role === "CUSTOMER" ? ACCOUNT_FREE_ANALYSES : 0, unlimited: user.role === "COACH" || user.role === "ADMIN" });
 
+/**
+ * What the student's lessons add: how many they completed, what they bought through them, and the analyses they
+ * ran on lesson clips before credits moved to the account, which count as spent.
+ */
+export type LessonCredits = { lessons: number; purchased: number; lessonJobs: readonly { status: string; refundedAt: Date | null }[] };
+const NO_LESSONS: LessonCredits = { lessons: 0, purchased: 0, lessonJobs: [] };
+
 /** `remaining` counts credits; an unlimited account has none to count and is never refused for want of one. */
 export function accountAnalysisQuota(grants: readonly { quantity: number }[],
-  jobs: readonly { status: string; refundedAt: Date | null }[], allowance: AccountAllowance) {
+  jobs: readonly { status: string; refundedAt: Date | null }[], allowance: AccountAllowance, lessons: LessonCredits = NO_LESSONS) {
   const grantTotal = grants.reduce((sum, grant) => sum + grant.quantity, 0);
-  const charged = jobs.filter((job) => !job.refundedAt);
+  const lessonTotal = lessons.lessons * LESSON_ANALYSES, paidTotal = lessons.purchased;
+  const charged = [...jobs, ...lessons.lessonJobs].filter((job) => !job.refundedAt);
   const used = charged.filter((job) => job.status === "SUCCEEDED").length;
   const reserved = charged.filter((job) => ["QUEUED", "RUNNING"].includes(job.status)).length;
-  return { active: true, unlimited: allowance.unlimited, freeTotal: allowance.free, paidTotal: 0, grantTotal, used, reserved,
-    remaining: allowance.unlimited ? 0 : Math.max(0, allowance.free + grantTotal - charged.length) };
+  const earned = allowance.free + lessonTotal + grantTotal + paidTotal;
+  return { active: true, unlimited: allowance.unlimited, freeTotal: allowance.free, lessonCount: lessons.lessons, lessonTotal, paidTotal,
+    grantTotal, earned, used, reserved, remaining: allowance.unlimited ? 0 : Math.max(0, earned - charged.length) };
+}
+
+/** Completed lessons count for the booker and for every companion with an account. */
+async function lessonCredits(tx: Prisma.TransactionClient, user: ActiveUser): Promise<LessonCredits> {
+  const lessons = await tx.booking.count({ where: { status: "COMPLETED",
+    OR: [{ accountId: user.id }, { attendees: { some: { accountId: user.id } } }] } });
+  const purchases = await tx.videoAnalysisPurchase.findMany({ where: { accountId: user.id, status: "CONFIRMED" }, select: { quantity: true } });
+  const lessonJobs = await tx.videoAnalysisJob.findMany({ where: { createdById: user.id }, select: { status: true, refundedAt: true } });
+  return { lessons, purchased: purchases.reduce((sum, purchase) => sum + purchase.quantity, 0), lessonJobs };
 }
 const mayAnalyse = (quota: ReturnType<typeof accountAnalysisQuota>) => quota.unlimited || quota.remaining > 0;
 
@@ -70,7 +90,8 @@ async function accountLedger(tx: Prisma.TransactionClient, user: ActiveUser) {
   const grants = await tx.accountAnalysisGrant.findMany({ where: { accountId: user.id },
     orderBy: { createdAt: "desc" }, include: grantInclude });
   const jobs = await tx.accountAnalysisJob.findMany({ where: { accountId: user.id }, orderBy: { createdAt: "desc" } });
-  return { grants, jobs, quota: accountAnalysisQuota(grants, jobs, accountAllowance(user)) };
+  const lessons = await lessonCredits(tx, user);
+  return { grants, jobs, lessons, quota: accountAnalysisQuota(grants, jobs, accountAllowance(user), lessons) };
 }
 
 export async function getAccountVideoAnalysisState(user: ActiveUser) {
@@ -79,7 +100,7 @@ export async function getAccountVideoAnalysisState(user: ActiveUser) {
     const { grants, jobs, quota } = await accountLedger(tx, user);
     const videos = await tx.accountAnalysisVideo.findMany({ where: { accountId: user.id }, orderBy: { uploadedAt: "asc" } });
     return { ok: true, accountId: user.id, quota, price: null, unlimited: quota.unlimited, canAnalyze: mayAnalyse(quota),
-      canUpload: quota.unlimited || quota.freeTotal + quota.grantTotal > 0, canPurchase: false, canReview: false,
+      canUpload: quota.unlimited || quota.earned > 0, canPurchase: false, canReview: false,
       videos: videos.map((video) => ({ id: video.id, caption: video.caption, uploadedAt: video.uploadedAt,
         contentType: video.contentType, analysisSupported: supportedVideo(video),
         url: `/api/video-analysis/videos/${video.id}`,
@@ -128,7 +149,7 @@ export async function requestAccountAnalysis(user: ActiveUser,
   ]);
   const reservation = await lockedAccount(user.id, async (tx) => {
     await expireAccountJobs(tx, user.id, new Date());
-    const { jobs, grants, quota } = await accountLedger(tx, user);
+    const { jobs, grants, lessons, quota } = await accountLedger(tx, user);
     const existing = jobs.find((job) => job.requestKey === input.requestKey);
     if (existing) {
       if (existing.videoId !== input.videoId || existing.actionId !== input.actionId) throw new AnalysisDomainError("request-conflict");
@@ -145,7 +166,7 @@ export async function requestAccountAnalysis(user: ActiveUser,
     const job = await tx.accountAnalysisJob.create({ data: { accountId: user.id, videoId: video.id,
       createdById: user.id, requestKey: input.requestKey, actionId: input.actionId,
       queuedExpiresAt: new Date(Date.now() + ANALYSIS_QUEUE_MINUTES * 60_000) } });
-    return { ok: true, job: jobDto(job), quota: accountAnalysisQuota(grants, [...jobs, job], accountAllowance(user)) };
+    return { ok: true, job: jobDto(job), quota: accountAnalysisQuota(grants, [...jobs, job], accountAllowance(user), lessons) };
   });
   await ensureBusinessAnalysisQueued("account", reservation.job.id);
   return reservation;

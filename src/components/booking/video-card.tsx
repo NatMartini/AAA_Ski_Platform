@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
-import { CheckCircle2, ChevronRight, CircleAlert, Clock3, FileText, Loader2, Trash2, Upload, Wand2 } from "lucide-react";
+import { ChevronRight, FileText, Loader2, Trash2, Wand2 } from "lucide-react";
 import { Link } from "@/i18n/navigation";
 import type { Locale } from "@/i18n/routing";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { FREESKI_CURRENT_LEVELS, getFreeSkiActionOption, parseFreeSkiActionId } from "@/lib/freeski/actions";
 import { formatTorontoShortDateTime } from "@/lib/time";
 import { analysisReasonText, readAnalysisResult } from "./video-analysis-result";
@@ -107,26 +108,27 @@ export function VideoCard({ video, jobs, locale, actions, reportHref, showAnalyz
     <div className="relative bg-black">
       <video controls preload="metadata" playsInline src={video.url} className="aspect-video w-full object-contain" />
       <Badge tone={badge.tone} dot className="pointer-events-none absolute left-3 top-3 shadow-[var(--shadow-sm)]">{badge.label}</Badge>
+      {pending && <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/55 text-white">
+        <Spinner size="lg" className="flex-col gap-2 text-center text-sm font-semibold"
+          label={latest!.status === "QUEUED" ? (zh ? "排队中，轮到就开始" : "Queued; starts when its turn comes") : (zh ? "正在分析，完成后自动更新" : "Analysing; this updates when done")} />
+      </div>}
     </div>
     <div className="flex flex-1 flex-col gap-3 p-4">
       <div className="space-y-1">
         <h3 className="break-words font-semibold">{video.caption || (zh ? "未命名视频" : "Untitled video")}</h3>
         {label && <p className="text-sm text-ink-2" data-job-label>{label}</p>}
+        <p className="flex flex-wrap gap-x-1.5 text-xs text-ink-3">
+          {video.uploadedAt && <span>{zh ? "上传" : "Uploaded"} {when(video.uploadedAt, locale)}</span>}
+          {latest?.finishedAt ? <span className={status === "done" ? "font-semibold text-success" : ""}>
+            · {status === "done" ? (zh ? "分析完成" : "Analysis finished") : (zh ? "分析结束" : "Ended")} {when(latest.finishedAt, locale)}
+            {duration(latest, zh) && <span className="font-normal text-ink-3">（{duration(latest, zh)}）</span>}</span>
+            : latest ? <span>· {zh ? "提交分析" : "Submitted"} {when(latest.createdAt, locale)}</span>
+            : <span>· {zh ? "还没有分析" : "Not analyzed yet"}</span>}
+        </p>
         {!supported && <p className="text-sm text-ink-3">{zh ? "此视频可观看；分析请上传 MP4 或 MOV。" : "This video can be viewed. Upload MP4 or MOV for analysis."}</p>}
       </div>
 
-      <ol className="space-y-1.5 border-l-2 border-border pl-3 text-xs text-ink-2">
-        {video.uploadedAt && <li className="flex flex-wrap items-center gap-1.5"><Upload className="size-3.5 text-ink-3" aria-hidden />{zh ? "上传" : "Uploaded"} · {when(video.uploadedAt, locale)}</li>}
-        {latest && <li className="flex flex-wrap items-center gap-1.5"><Wand2 className="size-3.5 text-ink-3" aria-hidden />{zh ? "提交分析" : "Submitted"} · {when(latest.createdAt, locale)}</li>}
-        {pending && <li className="flex items-center gap-1.5 font-semibold text-accent"><Loader2 className="size-3.5 animate-spin" aria-hidden />{badge.label}…</li>}
-        {pending && <li><AnalysisProgress status={latest!.status} progress={latest!.progress} computeWait={latest!.computeWait} zh={zh} compact /></li>}
-        {latest?.finishedAt && <li className={`flex flex-wrap items-center gap-1.5 ${status === "done" ? "font-semibold text-success" : ""}`}>
-          {status === "done" ? <CheckCircle2 className="size-3.5" aria-hidden /> : <CircleAlert className="size-3.5 text-danger" aria-hidden />}
-          {status === "done" ? (zh ? "分析完成" : "Analysis finished") : (zh ? "分析结束" : "Ended")} · {when(latest.finishedAt, locale)}
-          {duration(latest, zh) && <span className="font-normal text-ink-3">（{duration(latest, zh)}）</span>}
-        </li>}
-        {!latest && <li className="flex items-center gap-1.5 text-ink-3"><Clock3 className="size-3.5" aria-hidden />{zh ? "还没有分析" : "Not analyzed yet"}</li>}
-      </ol>
+      {pending && <AnalysisProgress status={latest!.status} progress={latest!.progress} computeWait={latest!.computeWait} zh={zh} compact />}
 
       {latest && <JobNotes job={latest} zh={zh} />}
 

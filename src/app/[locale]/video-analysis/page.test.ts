@@ -18,7 +18,8 @@ const user: ActiveUser = { id: "student", role: "CUSTOMER", email: "student@test
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.auth.mockResolvedValue(user);
-  const view = { ok: true, accountId: user.id, quota: { active: true, freeTotal: 0, paidTotal: 0, grantTotal: 0, used: 0, reserved: 0, remaining: 0 },
+  const view = { ok: true, accountId: user.id, quota: { active: true, unlimited: false, freeTotal: 3, lessonCount: 1, lessonTotal: 3, paidTotal: 0, grantTotal: 0,
+    earned: 6, used: 0, reserved: 0, remaining: 6 },
     grants: [], price: null, service: { configured: true, available: true }, actions: [], canAnalyze: false, canUpload: false,
     canPurchase: false, canReview: false, videos: [], jobs: [], purchases: [], payment: { coachName: "", wechatEnabled: false, wechatId: null, wechatQrUrl: null } };
   mocks.account.mockResolvedValue(view);
@@ -39,23 +40,37 @@ describe("FreeSki analysis landing page", () => {
   it.each(["zh", "en"])("shows the actual balance, attribution and lesson link in %s", async locale => {
     const html = renderToStaticMarkup(await VideoAnalysisPage({ params: Promise.resolve({ locale }), searchParams: Promise.resolve({}) }));
     expect(html).toContain(locale === "zh" ? "来自 Kevin 的个人项目" : "From Kevin’s personal project");
-    expect(html).toContain('data-testid="analysis-remaining">3<');
+    // One account, one count by the title, a line of statistics, then the analyses (owner's decision, 2026-11-07).
+    expect(html).toContain('data-testid="analysis-remaining">6<');
+    expect(html).toContain(locale === "zh" ? "可分析" : "analyses left");
+    expect(html).toContain(locale === "zh" ? "共获得 6 次" : "6 received");
+    expect(html).toContain(locale === "zh" ? "我的分析" : "My analyses");
+    // Lessons fold away below, with a link to each lesson's videos.
     expect(html).toContain('href="/video-analysis?lesson=COURSE#workspace"');
-    expect(html).toContain(locale === "zh" ? "视频库" : "Video library");
-    expect(html).toContain(locale === "zh" ? "显示每个视频的上传、提交和完成时间" : "when each video was uploaded, submitted and finished");
     expect(html).toContain(locale === "zh" ? "2 小时课 · 1v3" : "2-hour lesson · 1-to-3");
-    expect(html).not.toContain("× 3");
     expect(mocks.overview).toHaveBeenCalledWith(user);
   });
-  it("combines account and lesson balances and defaults to personal credits without transferring lesson credits", async () => {
+  it("counts joining, lessons, coach grants and purchases in the one account, and opens it by default", async () => {
     const account = await mocks.account();
-    mocks.account.mockResolvedValue({ ...account, quota: { ...account.quota, grantTotal: 5, remaining: 4, used: 1 }, canUpload: true, canAnalyze: true });
+    mocks.account.mockResolvedValue({ ...account, quota: { ...account.quota, grantTotal: 5, earned: 11, remaining: 10, used: 1 }, canUpload: true, canAnalyze: true });
     const html = renderToStaticMarkup(await VideoAnalysisPage({ params: Promise.resolve({ locale: "zh" }), searchParams: Promise.resolve({}) }));
-    expect(html).toContain('data-testid="analysis-remaining">7<');
-    expect(html).toContain("我的 FreeSki 视频分析");
-    expect(html).toContain("教练累计发放 5 次");
+    expect(html).toContain('data-testid="analysis-remaining">10<');
+    expect(html).toContain("我的分析");
+    expect(html).toContain("注册 3 · 上课 1 节 × 3 = 3 · 教练发放 5 · 购买 0");
     expect(html).not.toContain("额外分析次数");
     expect(mocks.course).not.toHaveBeenCalled();
+  });
+  it("lets a student buy more through the coach of their latest completed lesson", async () => {
+    const overview = await mocks.overview();
+    mocks.overview.mockResolvedValue({ ...overview, courses: overview.courses.map((course: object) => ({ ...course, isCustomer: true })) });
+    const lesson = await mocks.course();
+    mocks.course.mockResolvedValue({ ...lesson, price: { unitCents: 500, currency: "CAD" }, canPurchase: true,
+      payment: { coachName: "Kevin", wechatEnabled: true, wechatId: null, wechatQrUrl: null } });
+    const html = renderToStaticMarkup(await VideoAnalysisPage({ params: Promise.resolve({ locale: "zh" }), searchParams: Promise.resolve({}) }));
+    expect(mocks.course).toHaveBeenCalledWith("COURSE", user);
+    expect(html).toContain("买更多次数");
+    expect(html).toContain("付给 Kevin");
+    expect(html).toContain("生成微信付款订单");
   });
   it("never fetches a foreign lesson workspace from an untrusted query", async () => {
     await VideoAnalysisPage({ params: Promise.resolve({ locale: "zh" }), searchParams: Promise.resolve({ lesson: "FOREIGN" }) });
@@ -64,7 +79,9 @@ describe("FreeSki analysis landing page", () => {
   });
   it.each(["CUSTOMER", "COACH"] as const)("gives an empty $role account its own workflow", async role => {
     mocks.auth.mockResolvedValue({ ...user, role });
-    mocks.overview.mockResolvedValue({ courses: [], totals: { remaining: 0, freeTotal: 0, paidTotal: 0, used: 0, reserved: 0 } });
+    mocks.overview.mockResolvedValue({ courses: [] });
+    const account = await mocks.account();
+    mocks.account.mockResolvedValue({ ...account, quota: { ...account.quota, freeTotal: 0, lessonCount: 0, lessonTotal: 0, earned: 0, remaining: 0 } });
     const html = renderToStaticMarkup(await VideoAnalysisPage({ params: Promise.resolve({ locale: "en" }), searchParams: Promise.resolve({}) }));
     expect(html).toContain(`href="${role === "COACH" ? "/coach" : "/book"}"`);
     expect(html).toContain('data-testid="analysis-remaining">0<');

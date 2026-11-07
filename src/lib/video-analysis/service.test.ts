@@ -147,17 +147,18 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-const run = (requestKey = "request", actor = buyer, videoId = "video") => requestVideoAnalysis("SKI-TEST", actor,
+// A lesson holds no student credits any more (owner's decision, 2026-11-07): its coach runs its analyses.
+const run = (requestKey = "request", actor = coach, videoId = "video") => requestVideoAnalysis("SKI-TEST", actor,
   { videoId, actionId: "improvement:level2:parallel", requestKey });
 const buy = (requestKey = "purchase-request", actor = buyer, quantity = 2, expectedUnitPriceCents = 700) =>
   createAnalysisPurchase("SKI-TEST", actor, { quantity, requestKey, expectedUnitPriceCents });
-const view = (actor = buyer) => getVideoAnalysisState("SKI-TEST", actor);
+const view = (actor = coach) => getVideoAnalysisState("SKI-TEST", actor);
 
 describe("atomic shared credits and analysis access", () => {
   it("uses the current catalog and closes submission when all actions are unavailable", async () => {
     const disabled = [action("parallel", false), action("bumps", false)];
     mocks.catalog.mockResolvedValue(disabled);
-    expect(await view()).toMatchObject({ actions: disabled, canAnalyze: false, quota: { remaining: 3 } });
+    expect(await view()).toMatchObject({ actions: disabled, canAnalyze: false });
     await expect(run()).rejects.toMatchObject({ reason: "unsupported-action" });
     expect(mocks.jobCreate).not.toHaveBeenCalled();
     expect(booking.analysisJobs).toHaveLength(0);
@@ -174,7 +175,7 @@ describe("atomic shared credits and analysis access", () => {
   it("does not replace a missing catalog with the historical four-action list", async () => {
     mocks.catalog.mockRejectedValue(new Error("private catalog transport failure"));
     const state = await view();
-    expect(state).toMatchObject({ actions: [], canAnalyze: false, quota: { remaining: 3 } });
+    expect(state).toMatchObject({ actions: [], canAnalyze: false });
     expect(JSON.stringify(state)).not.toContain("private catalog");
     await expect(run()).rejects.toMatchObject({ reason: "service-unavailable" });
     expect(mocks.jobCreate).not.toHaveBeenCalled();
@@ -206,8 +207,8 @@ describe("atomic shared credits and analysis access", () => {
     await run();
   });
 
-  it("rechecks ownership after the catalog response without spending a credit", async () => {
-    mocks.catalog.mockImplementation(async () => { booking.accountId = "other"; return [action()]; });
+  it("rechecks the coach's authority after the catalog response without reserving", async () => {
+    mocks.catalog.mockImplementation(async () => { booking.coachId = "other-coach"; return [action()]; });
     await expect(run()).rejects.toMatchObject({ reason: "forbidden" });
     expect(mocks.jobCreate).not.toHaveBeenCalled();
   });
@@ -215,42 +216,37 @@ describe("atomic shared credits and analysis access", () => {
   it("stores the certification path and level in the action identifier through worker claim", async () => {
     const id = "certification:level2:short_turn";
     mocks.catalog.mockResolvedValue([{ ...action(id), pathType: "certification", level: "level2" }]);
-    const reservation = await requestVideoAnalysis("SKI-TEST", buyer, { videoId: "video", actionId: id, requestKey: "cert" });
+    const reservation = await requestVideoAnalysis("SKI-TEST", coach, { videoId: "video", actionId: id, requestKey: "cert" });
     expect(booking.analysisJobs[0].actionId).toBe(id);
     expect(await claimAnalysisJob(reservation.job.id)).toMatchObject({ actionId: id });
   });
 
   it("stores the skier's current level with an improvement request and refuses one without it", async () => {
-    await expect(requestVideoAnalysis("SKI-TEST", buyer, { videoId: "video", actionId: "parallel", requestKey: "bare" }))
+    await expect(requestVideoAnalysis("SKI-TEST", coach, { videoId: "video", actionId: "parallel", requestKey: "bare" }))
       .rejects.toMatchObject({ reason: "unsupported-action" });
     expect(mocks.jobCreate).not.toHaveBeenCalled();
-    const reservation = await requestVideoAnalysis("SKI-TEST", buyer, { videoId: "video", actionId: "improvement:none:parallel", requestKey: "level" });
+    const reservation = await requestVideoAnalysis("SKI-TEST", coach, { videoId: "video", actionId: "improvement:none:parallel", requestKey: "level" });
     expect(booking.analysisJobs[0].actionId).toBe("improvement:none:parallel");
     expect(await claimAnalysisJob(reservation.job.id)).toMatchObject({ actionId: "improvement:none:parallel" });
   });
 
-  it.each([[2, 3], [3, 5]])("reserves at most the whole-lesson allowance for %i hours", async (hours, allowance) => {
-    booking.hours = hours;
-    const results = await Promise.allSettled(Array.from({ length: 10 }, (_, index) => run(`concurrent-${index}`)));
-    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(allowance);
-    expect(results.filter((result) => result.status === "rejected")).toHaveLength(10 - allowance);
-    expect((await view()).quota).toMatchObject({ freeTotal: allowance, reserved: allowance, remaining: 0 });
+  it("gives a student no lesson credits to spend: theirs are in their account (owner's decision, 2026-11-07)", async () => {
+    expect(await view(buyer)).toMatchObject({ canAnalyze: false, unlimited: false, quota: { freeTotal: 0, remaining: 0 } });
+    await expect(run("student", buyer)).rejects.toMatchObject({ reason: "quota-exhausted" });
+    expect(mocks.jobCreate).not.toHaveBeenCalled();
   });
 
-  it("serializes simultaneous competition for the final shared course credit", async () => {
-    booking.analysisJobs.push(job({ id: "old-1", status: "SUCCEEDED" }), job({ id: "old-2", status: "SUCCEEDED" }));
+  it("serializes the coach's simultaneous requests without limiting them", async () => {
     const results = await Promise.allSettled([run("one"), run("two")]);
-    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-    expect(results.find((r) => r.status === "rejected")).toMatchObject({ reason: { reason: "quota-exhausted" } });
-    expect(mocks.jobCreate).toHaveBeenCalledOnce();
-    expect((await view()).quota).toMatchObject({ remaining: 0, reserved: 1 });
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(2);
+    expect(mocks.jobCreate).toHaveBeenCalledTimes(2);
     expect(mocks.lock).toHaveBeenCalled();
   });
 
   it("lets the lesson's coach analyse after the credits run out, without using any", async () => {
     booking.analysisJobs.push(...["old-1", "old-2", "old-3"].map((id) => job({ id, status: "SUCCEEDED" })));
-    expect(await view()).toMatchObject({ canAnalyze: false, unlimited: false, quota: { remaining: 0 } });
-    await expect(run("student")).rejects.toMatchObject({ reason: "quota-exhausted" });
+    expect(await view(buyer)).toMatchObject({ canAnalyze: false, unlimited: false, quota: { remaining: 0 } });
+    await expect(run("student", buyer)).rejects.toMatchObject({ reason: "quota-exhausted" });
     expect(await view(coach)).toMatchObject({ canAnalyze: true, unlimited: true });
     await run("coach-1", coach);
     await run("coach-2", coach);
@@ -262,7 +258,6 @@ describe("atomic shared credits and analysis access", () => {
     const [first, duplicate] = await Promise.all([run(), run()]);
     expect(first.job.id).toBe(duplicate.job.id);
     expect(mocks.jobCreate).toHaveBeenCalledOnce();
-    expect(duplicate.quota.remaining).toBe(2);
     expect(mocks.enqueue).toHaveBeenCalledWith("booking", first.job.id);
     await expect(run("request", buyer, "coach-video")).rejects.toMatchObject({ reason: "request-conflict" });
   });
@@ -294,7 +289,7 @@ describe("atomic shared credits and analysis access", () => {
     const state = await view();
     expect(state.jobs.map((row) => ({ id: row.id, queueReason: row.queueReason })))
       .toEqual([{ id: "job", queueReason: reason }, { id: "done", queueReason: null }]);
-    expect(state.quota).toMatchObject({ reserved: 1, used: 1, remaining: 1 });
+    expect(state.quota).toMatchObject({ reserved: 1, used: 1, remaining: 0 });
     expect(mocks.scheduler).toHaveBeenCalledOnce();
     expect(mocks.jobUpdateMany).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ refundedAt: expect.anything() }) }));
     expect(JSON.stringify(state)).not.toContain("private-upstream");
@@ -307,7 +302,7 @@ describe("atomic shared credits and analysis access", () => {
     const state = await view();
     expect(state.jobs[0]).toMatchObject({ status: "QUEUED", computeWait: "compute_offline" });
     expect(mocks.upstreamJob).toHaveBeenCalledWith("a".repeat(32), "parallel", expect.any(AbortSignal));
-    expect(state.quota).toMatchObject({ reserved: 1, remaining: 2 });
+    expect(state.quota).toMatchObject({ reserved: 1, remaining: 0 });
     expect(JSON.stringify(state)).not.toContain("a".repeat(32));
     expect(state).not.toHaveProperty("upstream");
   });
@@ -317,7 +312,7 @@ describe("atomic shared credits and analysis access", () => {
     mocks.scheduler.mockRejectedValue(new Error("private credentials and local paths"));
     const state = await view();
     expect(state.jobs[0]).toMatchObject({ status: "QUEUED", queueReason: null });
-    expect(state.quota).toMatchObject({ reserved: 1, remaining: 2 });
+    expect(state.quota).toMatchObject({ reserved: 1, remaining: 0 });
     expect(JSON.stringify(state)).not.toContain("private credentials");
     expect(booking.analysisJobs[0].refundedAt).toBeNull();
   });
@@ -333,7 +328,7 @@ describe("atomic shared credits and analysis access", () => {
 
   it("hides worker credentials and storage locations, and respects uploader deletion ownership", async () => {
     booking.analysisJobs.push(job({ leaseToken: "internal-token", upstreamJobId: "provider-id" }));
-    const state = await view();
+    const state = await view(buyer);
     expect(state.videos.find((v) => v.id === "video")?.canDelete).toBe(false);
     expect(state.videos.find((v) => v.id === "coach-video")?.canDelete).toBe(false);
     const response = JSON.stringify(state);
@@ -352,7 +347,7 @@ describe("atomic shared credits and analysis access", () => {
     expect((await view()).videos[0]).toMatchObject({ contentType: "video/webm", analysisSupported: false });
     await expect(run()).rejects.toMatchObject({ reason: "unsupported-video" });
     expect(mocks.jobCreate).not.toHaveBeenCalled();
-    expect((await view()).quota.remaining).toBe(3);
+    expect((await view()).quota).toMatchObject({ used: 0, reserved: 0 });
   });
 
   it("rejects unconfigured services and unknown or cross-booking video identifiers without spending", async () => {
@@ -387,7 +382,7 @@ describe("worker leases, settlement and refunds", () => {
     expect(outcomes.filter(Boolean)).toHaveLength(1);
     expect(booking.analysisJobs[0]).toMatchObject({ status: "FAILED", errorCode: "ANALYSIS_FAILED" });
     expect(booking.analysisJobs[0].refundedAt).toEqual(now);
-    expect((await view()).quota.remaining).toBe(3);
+    expect((await view()).quota).toMatchObject({ used: 0, reserved: 0 });
     expect(await settleAnalysisJob("job", "lease", { ok: true, result: graded })).toBe(false);
   });
 
@@ -400,7 +395,7 @@ describe("worker leases, settlement and refunds", () => {
     expect(settlements.filter(Boolean)).toHaveLength(1);
     expect(booking.analysisJobs[0]).toMatchObject({ status: "FAILED", refundedAt: now,
       errorCode: "UNSUPPORTED_ACTION", upstreamJobId: null });
-    expect((await view()).quota).toMatchObject({ used: 0, reserved: 0, remaining: 3 });
+    expect((await view()).quota).toMatchObject({ used: 0, reserved: 0, remaining: 0 });
   });
 
   it.each(["attached-upstream", "changed-action"])("does not refund closed-action evidence after a concurrent %s write", async (change) => {
@@ -414,7 +409,7 @@ describe("worker leases, settlement and refunds", () => {
     expect(await settleAnalysisJob("job", "lease", { ok: false, errorCode: "UNSUPPORTED_ACTION",
       expectedUnsubmittedActionId: "carving" })).toBe(false);
     expect(booking.analysisJobs[0]).toMatchObject({ status: "RUNNING", refundedAt: null, errorCode: null });
-    expect((await view()).quota).toMatchObject({ reserved: 1, remaining: 2 });
+    expect((await view()).quota).toMatchObject({ reserved: 1, remaining: 0 });
   });
 
   it("refunds ungradable results while preserving an explicit unavailable report", async () => {
@@ -423,7 +418,7 @@ describe("worker leases, settlement and refunds", () => {
       ...graded, gradingStatus: "unavailable", gradingReason: "wrong-action", score: null, scoreKind: null } })).toBe(true);
     expect(booking.analysisJobs[0]).toMatchObject({ status: "FAILED", errorCode: "UNGRADABLE",
       result: { gradingStatus: "unavailable", gradingReason: "wrong-action", score: null, scoreKind: null } });
-    expect((await view()).quota.remaining).toBe(3);
+    expect((await view()).quota).toMatchObject({ used: 0, reserved: 0 });
   });
 
   it("settles a usable contract scorecard even without a legacy TECH grade", async () => {
@@ -432,7 +427,7 @@ describe("worker leases, settlement and refunds", () => {
     expect(await settleAnalysisJob("job", "lease", { ok: true, result: {
       ...graded, gradingStatus: "unavailable", gradingReason: "score-unavailable", score: null, scoreKind: null, scorecard } })).toBe(true);
     expect(booking.analysisJobs[0]).toMatchObject({ status: "SUCCEEDED", refundedAt: null, result: { scorecard: { overall: { score: sampleScorecard.overall.score } } } });
-    expect((await view()).quota.remaining).toBe(2);
+    expect((await view()).quota.used).toBe(1);
   });
 
   it("refunds when the scorecard reports insufficient evidence", async () => {
@@ -441,7 +436,7 @@ describe("worker leases, settlement and refunds", () => {
     expect(await settleAnalysisJob("job", "lease", { ok: true, result: {
       ...graded, gradingStatus: "unavailable", gradingReason: "insufficient-turns", score: null, scoreKind: null, scorecard } })).toBe(true);
     expect(booking.analysisJobs[0]).toMatchObject({ status: "FAILED", errorCode: "UNGRADABLE" });
-    expect((await view()).quota.remaining).toBe(3);
+    expect((await view()).quota).toMatchObject({ used: 0, reserved: 0 });
   });
 
   it("retains a real TECH zero as successful consumption, including after deleting the video", async () => {
@@ -451,7 +446,7 @@ describe("worker leases, settlement and refunds", () => {
     booking.analysisJobs[0].result = null;
     booking.videos = [];
     expect(await settleAnalysisJob("job", "lease", { ok: false, errorCode: "analysis-failed" })).toBe(false);
-    expect((await view()).quota).toMatchObject({ used: 1, reserved: 0, remaining: 2 });
+    expect((await view()).quota).toMatchObject({ used: 1, reserved: 0, remaining: 0 });
     expect(booking.analysisJobs[0].refundedAt).toBeNull();
   });
 
@@ -466,7 +461,7 @@ describe("worker leases, settlement and refunds", () => {
     expect(await heartbeatAnalysisJob("job", "lease")).toBe(false);
     expect(await settleAnalysisJob("job", "lease", { ok: true, result: graded })).toBe(false);
     expect(booking.analysisJobs[0]).toMatchObject({ status: "QUEUED", refundedAt: null, errorCode: null });
-    expect((await view()).quota).toMatchObject({ reserved: 1, remaining: 2 });
+    expect((await view()).quota).toMatchObject({ reserved: 1, remaining: 0 });
     expect(await claimAnalysisJob()).toMatchObject({ id: "job" });
     expect(mocks.jobCreate).not.toHaveBeenCalled();
   });
@@ -523,7 +518,7 @@ describe("paid supplemental credits", () => {
     expect(reviews.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     expect(booking.analysisPurchases[0]).toMatchObject({ status: "CONFIRMED", paymentMethod: "WECHAT",
       paymentReference: "wechat-receipt", reviewedById: "coach" });
-    expect((await view()).quota).toMatchObject({ paidTotal: 2, remaining: 5 });
+    expect((await view()).quota).toMatchObject({ paidTotal: 2, remaining: 0 });
   });
 
   it("rejects stale review after rejection and resubmission", async () => {

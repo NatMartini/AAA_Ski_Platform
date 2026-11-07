@@ -39,31 +39,29 @@ describe("private video analysis overview", () => {
   it("restricts customers and demoted coaches to courses they ordered", async () => {
     const result = await getVideoAnalysisOverview(viewer("CUSTOMER"));
     expect(result.courses.map(row => row.code)).toEqual(["own"]);
-    expect(result.totals.remaining).toBe(3);
     expect(mocks.recover).toHaveBeenCalledWith(["own"]);
     for (const [args] of mocks.findMany.mock.calls) expect(args.where.accountId).toBe("viewer");
   });
   it("shows a coach their assigned lessons and orders, without other coaches' balances", async () => {
     const result = await getVideoAnalysisOverview(viewer("COACH"));
     expect(result.courses.map(row => row.code)).toEqual(["own", "assigned"]);
-    expect(result.totals.remaining).toBe(8);
     expect(mocks.recover).toHaveBeenCalledWith(["own", "assigned"]);
     expect(JSON.stringify(result)).not.toMatch(/analysisJobs|analysisPurchases|accountId|coachId/);
   });
   it("lets only current admins see all eligible course balances", async () => {
     const result = await getVideoAnalysisOverview(viewer("ADMIN"));
     expect(result.courses.map(row => row.code)).toEqual(["own", "assigned", "stranger"]);
-    expect(result.totals.remaining).toBe(11);
   });
-  it("sums each lesson's spendable balance, keeping historical overuse separate", async () => {
+  it("reports each lesson's own analyses, with nothing to spend there (owner's decision, 2026-11-07)", async () => {
     records = [course("overused", { analysisJobs: Array.from({ length: 6 }, () => ({ status: "SUCCEEDED", refundedAt: null })) }),
       course("fresh", { hours: 3, analysisJobs: [{ status: "RUNNING", refundedAt: null }],
         analysisPurchases: [{ status: "CONFIRMED", quantity: 2 }, { status: "PENDING_PAYMENT_REVIEW", quantity: 10 }] }),
       course("future", { status: "CONFIRMED", hours: 3 })];
     const result = await getVideoAnalysisOverview(viewer("CUSTOMER"));
-    expect(result.totals).toEqual({ freeTotal: 8, paidTotal: 2, remaining: 6, used: 6, reserved: 1 });
-    expect(result.courses.find(row => row.code === "future"))
-      .toMatchObject({ includedCredits: 5, quota: { active: false, remaining: 0 } });
+    expect(result.courses.map(row => row.quota)).toEqual([
+      { active: true, freeTotal: 0, paidTotal: 0, used: 6, reserved: 0, remaining: 0 },
+      { active: true, freeTotal: 0, paidTotal: 2, used: 0, reserved: 1, remaining: 0 },
+      { active: false, freeTotal: 0, paidTotal: 0, used: 0, reserved: 0, remaining: 0 }]);
     expect(records[0].analysisJobs).toHaveLength(6);
   });
   it("recovers only scoped reservations before reading the current balance", async () => {
@@ -73,12 +71,12 @@ describe("private video analysis overview", () => {
       Object.assign(records[0].analysisJobs[0], { status: "FAILED", refundedAt: new Date() });
       return 1;
     });
-    expect((await getVideoAnalysisOverview(viewer("CUSTOMER"))).totals.remaining).toBe(3);
+    expect((await getVideoAnalysisOverview(viewer("CUSTOMER"))).courses[0].quota.reserved).toBe(0);
     expect(mocks.findMany).toHaveBeenCalledTimes(2);
   });
   it("does not fall back to other accounts when no eligible course exists", async () => {
     records = [];
-    expect(await getVideoAnalysisOverview(viewer("CUSTOMER"))).toMatchObject({ courses: [], totals: { remaining: 0 } });
+    expect(await getVideoAnalysisOverview(viewer("CUSTOMER"))).toMatchObject({ courses: [] });
     expect(mocks.recover).toHaveBeenCalledWith([]);
   });
 });

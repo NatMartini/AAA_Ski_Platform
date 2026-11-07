@@ -2,31 +2,27 @@ export const ANALYSIS_LEASE_MINUTES = 15;
 export const ANALYSIS_QUEUE_MINUTES = 30;
 export const MAX_ANALYSIS_PURCHASE_QUANTITY = 50;
 
-/** Included credits belong to one whole lesson and are shared by all attendees.
- * Two-hour lessons include three; three-hour lessons include five. Pending any
- * more specific policy, other valid durations use those two duration tiers.
+/**
+ * Each completed lesson gives three analyses to every student on it with an account, the booker and companions
+ * alike, straight into their own account to use whenever they like (owner's decision, 2026-11-07).
  */
-export function includedAnalysisCredits(hours: number): number {
-  if (!Number.isInteger(hours) || hours < 1 || hours > 12) return 0;
-  return hours >= 3 ? 5 : 3;
-}
+export const LESSON_ANALYSES = 3;
 
 type Usage = { status: string; refundedAt: Date | null; createdById: string };
 /**
- * Derive historical entitlements from the frozen course duration, without rewriting courses. Only the
- * student's own requests use the lesson's credits: its coach analyses without limit (owner's decision, 2026-11-06).
+ * A lesson's own analyses. A lesson holds no credits of its own any more: the student's are in their account,
+ * and the lesson's coach analyses there without limit (owner's decision, 2026-11-06). Used and reserved count
+ * the student's earlier analyses of lesson clips, which their account counts as spent; paidTotal is what the
+ * student bought through this lesson, which their account adds.
  */
-export function analysisQuota(booking: { status: string; hours: number; accountId: string | null }, jobs: readonly Usage[],
+export function analysisQuota(booking: { status: string; accountId: string | null }, jobs: readonly Usage[],
   purchases: readonly { status: string; quantity: number }[]) {
   const active = booking.status === "COMPLETED";
-  const freeTotal = active ? includedAnalysisCredits(booking.hours) : 0;
   const paidTotal = purchases.filter((p) => p.status === "CONFIRMED").reduce((sum, p) => sum + p.quantity, 0);
   const charged = jobs.filter((job) => !job.refundedAt && job.createdById === booking.accountId);
   const used = charged.filter((job) => job.status === "SUCCEEDED").length;
   const reserved = charged.filter((job) => job.status === "QUEUED" || job.status === "RUNNING").length;
-  // An inconsistent terminal ledger never creates extra spendable credits.
-  const remaining = active ? Math.max(0, freeTotal + paidTotal - charged.length) : 0;
-  return { active, freeTotal, paidTotal, used, reserved, remaining };
+  return { active, freeTotal: 0, paidTotal, used, reserved, remaining: 0 };
 }
 
 export class AnalysisDomainError extends Error {

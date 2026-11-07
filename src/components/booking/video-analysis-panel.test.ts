@@ -2,6 +2,7 @@ import { createElement, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { VideoAnalysisPanel } from "./video-analysis-panel";
+import { AnalysisCreditPurchase } from "./analysis-credit-purchase";
 import type { VideoAnalysisView } from "./video-analysis-types";
 
 vi.mock("@/i18n/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }),
@@ -106,42 +107,46 @@ describe("unified lesson video analysis panel", () => {
   it("uses standalone grants without a fake lesson, course price or payment actions", () => {
     const html = render({ ...initialView, accountId: "student", quota: { ...initialView.quota, freeTotal: 3, grantTotal: 5, remaining: 7 },
       videos: [{ ...initialView.videos[0], url: "/api/video-analysis/videos/v1" }] }, { accountId: "student", bookedHours: 0 });
-    expect(html).toContain("My FreeSki video analysis"); expect(html).toContain("3 free with your account · 5 issued by coaches");
-    expect(html).toContain("Upload skiing video"); expect(html).toContain("visible only to you");
+    expect(html).toContain("My analyses"); expect(html).not.toContain("shared free analyses");
+    expect(html).toContain("Analyse a new video"); expect(html).toContain("visible only to you");
     expect(html).not.toContain("shared free analyses"); expect(html).not.toContain("Extra analysis credits");
     expect(html).not.toContain("Create WeChat payment order");
   });
-  it("shows one clip list, shared entitlement, upload and unset-price state", () => {
+  it("shows one clip list and says a lesson's videos are its coach's to analyse", () => {
     const html = render();
     expect(html.match(/<video /g)).toHaveLength(1);
-    expect(html).toContain("2-hour lesson includes 3 shared free analyses");
-    expect(html).toContain("2 available · 1 used · 0 processing");
-    expect(html).toContain("Upload lesson video");
-    expect(html).toContain("Purchases are unavailable");
+    // A lesson holds no credits of its own any more (owner's decision, 2026-11-07).
+    expect(html).toContain("Your coach uploads and analyses this lesson");
+    expect(html).not.toContain("shared free analyses");
+    expect(html).toContain("Analyse a new video");
     expect(html).not.toContain("Create WeChat payment order");
+    // A student whose lesson cannot be analysed by them still adds clips for the coach.
+    expect(render({ ...initialView, canAnalyze: false })).toContain("Upload a video");
   });
   it("escapes video captions instead of treating them as HTML", () => {
     const html = render({ ...initialView, videos: [{ ...initialView.videos[0], caption: "<svg onload=alert(1)>clip</svg>" }] });
     expect(html).toContain("&lt;svg onload=alert(1)&gt;clip&lt;/svg&gt;");
     expect(html).not.toContain("<svg onload");
   });
-  it.each(["zh", "en"] as const)("shows future entitlement but no spending before completion in %s", (locale) => {
+  it.each(["zh", "en"] as const)("points a student to their own account before the lesson is completed too, in %s", (locale) => {
     const html = render({ ...initialView, quota: { ...initialView.quota, active: false, freeTotal: 0, remaining: 0 }, canAnalyze: false }, { completed: false, locale });
-    expect(html).toContain(locale === "zh" ? "本节 2 小时课包含 3 次共享免费分析" : "3 shared free analyses");
-    expect(html).toContain(locale === "zh" ? "待课程完成后解锁" : "Credits unlock after the lesson is completed");
+    expect(html).toContain(locale === "zh" ? "你自己的视频在“我的分析”里分析" : "analyse your own videos under My analyses");
     expect(html).not.toContain(locale === "zh" ? "额外分析次数" : "Extra analysis credits");
+    // The lesson's coach is told they analyse it once it is completed.
+    expect(render({ ...initialView, unlimited: true, quota: { ...initialView.quota, active: false } }, { completed: false, locale, isCustomer: false, isOwnCoach: true }))
+      .toContain(locale === "zh" ? "课程完成后才能分析" : "once the lesson is completed");
   });
   it("keeps shared-coach readers free of upload, run, purchase and review actions", () => {
     const html = render({ ...initialView, price: { unitCents: 100, currency: "CAD" }, canPurchase: true, canReview: true }, { isCustomer: false, isOwnCoach: false, canUpload: false });
     expect(html).toContain("Lesson clip");
-    expect(html).not.toContain("Upload lesson video");
+    expect(html).not.toContain("Analyse a new video");
     expect(html).not.toContain("Analyze this video");
     expect(html).not.toContain("Create WeChat payment order");
     expect(html).not.toContain("WeChat receipt checked; confirm");
   });
   it("allows the own coach to upload and analyze without buying their own credits", () => {
     const html = render(initialView, { isCustomer: false, isOwnCoach: true });
-    expect(html).toContain("Upload lesson video");
+    expect(html).toContain("Analyse a new video");
     expect(html).toContain("Analyze this video");
     expect(html).not.toContain("Create WeChat payment order");
   });
@@ -173,8 +178,10 @@ describe("unified lesson video analysis panel", () => {
   });
   it("blocks delete while a job is queued and shows its reserved credit", () => {
     const html = render({ ...initialView, quota: { ...initialView.quota, reserved: 1, remaining: 1 }, jobs: [{ id: "j1", videoId: "v1", status: "QUEUED", createdAt: "2026-10-06T20:00:00Z", finishedAt: null, errorCode: null, result: null }] });
-    expect(html).toContain("1 processing");
     expect(html).toContain("Analysis in progress");
+    // The clip turns a ring until the server is done.
+    expect(html).toContain("Queued; starts when its turn comes");
+    expect(html).toContain("animate-spin");
     expect(buttonNamed(html, "Delete video")?.split(">")[0]).toContain("disabled=\"\"");
   });
   it.each(["zh", "en"] as const)("shows the supplied queue reason as text in %s", (locale) => {
@@ -221,8 +228,11 @@ describe("unified lesson video analysis panel", () => {
       expect(html).not.toContain("Waiting never times out");
     });
   it("displays an existing purchase at its frozen price after current pricing is disabled", () => {
-    const html = render({ ...initialView, purchases: [{ id: "p1", quantity: 2, unitPriceCents: 150, totalCents: 300,
-      status: "AWAITING_PAYMENT", paymentSubmittedAt: null, reviewNote: null, updatedAt: "2026-10-06T20:00:00Z" }] });
+    // Students buy on their account page now, through their latest completed lesson's coach.
+    const html = renderToStaticMarkup(createElement(AnalysisCreditPurchase, { locale: "en", bookingCode: "test", initialView: { ...initialView,
+      purchases: [{ id: "p1", quantity: 2, unitPriceCents: 150, totalCents: 300,
+      status: "AWAITING_PAYMENT", paymentSubmittedAt: null, reviewNote: null, updatedAt: "2026-10-06T20:00:00Z" }] } }));
+    expect(html).toContain("Buy more analyses");
     expect(html).toContain("2 extra analyses");
     expect(html).toContain("$3");
     expect(html).toContain("I paid by WeChat; notify coach");
@@ -251,13 +261,12 @@ describe("video library", () => {
     vi.setSystemTime(new Date("2026-10-28T12:00:00Z"));
     const html = render({ ...initialView, videos: [clip], jobs: [finished] }, { locale });
     if (locale === "zh") {
-      expect(html).toMatch(/上传 · <time[^>]*>10月27日 14:00<\/time>/);
-      expect(html).toMatch(/提交分析 · <time[^>]*>10月27日 14:01<\/time>/);
-      expect(html).toMatch(/分析完成 · <time[^>]*>10月27日 14:05<\/time>/);
+      expect(html).toMatch(/上传 <time[^>]*>10月27日 14:00<\/time>/);
+      expect(html).toMatch(/分析完成 <time[^>]*>10月27日 14:05<\/time>/);
       expect(html).toContain("用时 4 分钟");
     } else {
-      expect(html).toMatch(/Uploaded · <time[^>]*>Oct 27, 2:00 p\.m\.<\/time>/);
-      expect(html).toMatch(/Analysis finished · <time[^>]*>Oct 27, 2:05 p\.m\.<\/time>/);
+      expect(html).toMatch(/Uploaded <time[^>]*>Oct 27, 2:00 p\.m\.<\/time>/);
+      expect(html).toMatch(/Analysis finished <time[^>]*>Oct 27, 2:05 p\.m\.<\/time>/);
     }
     expect(html).toContain('href="/video-analysis/report/j1?lesson=test"');
   });
@@ -268,11 +277,14 @@ describe("video library", () => {
     expect(render({ ...initialView, videos: [clip], jobs: [finished] }, { locale: "zh" })).toContain("2026年10月27日 14:00");
   });
 
-  it("counts clips by where their newest analysis stands", () => {
+  it("counts clips by where their newest analysis stands once there are several", () => {
     const fresh = { ...clip, id: "v2", caption: "Fresh clip", uploadedAt: "2026-10-28T10:00:00Z" };
-    const html = render({ ...initialView, videos: [clip, fresh], jobs: [finished] });
-    const count = (label: string) => html.match(new RegExp(`${label}<span[^>]*>(\\d+)<`))?.[1];
-    expect([count("All"), count("Not analyzed"), count("In progress"), count("Done"), count("Not graded")]).toEqual(["2", "1", "0", "1", "0"]);
+    const count = (html: string, label: string) => html.match(new RegExp(`${label}<span[^>]*>(\\d+)<`))?.[1];
+    // Two clips need no filter.
+    expect(count(render({ ...initialView, videos: [clip, fresh], jobs: [finished] }), "All")).toBeUndefined();
+    const more = [3, 4, 5].map(n => ({ ...fresh, id: `v${n}`, caption: `Clip ${n}`, uploadedAt: `2026-10-2${n}T10:00:00Z` }));
+    const html = render({ ...initialView, videos: [clip, fresh, ...more], jobs: [finished] });
+    expect([count(html, "All"), count(html, "Not analyzed"), count(html, "In progress"), count(html, "Done"), count(html, "Not graded")]).toEqual(["5", "4", "0", "1", "0"]);
     // Newest upload first.
     expect(html.indexOf("Fresh clip")).toBeLessThan(html.indexOf("Lesson clip"));
   });

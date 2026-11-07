@@ -1,10 +1,10 @@
 import type { Prisma } from "@prisma/client";
 import type { ActiveUser } from "../auth/require-user";
 import { prisma } from "../prisma";
-import { analysisQuota, includedAnalysisCredits } from "./quota";
+import { analysisQuota } from "./quota";
 import { recoverExpiredAnalysisJobs } from "./service";
 
-/** Show spendable credits only for courses this identity may actually analyse. */
+/** The lessons this identity may open, each with its own analyses; credits themselves live in the account. */
 export async function getVideoAnalysisOverview(user: ActiveUser) {
   const where: Prisma.BookingWhereInput = {
     status: { in: ["CONFIRMED", "COMPLETED"] },
@@ -31,17 +31,9 @@ export async function getVideoAnalysisOverview(user: ActiveUser) {
   const courses = bookings.map(({ analysisJobs, analysisPurchases, coach, accountId, coachId, ...booking }) => ({
     ...booking,
     coachName: coach.coachProfile?.displayName ?? coach.name ?? "",
-    includedCredits: includedAnalysisCredits(booking.hours),
     quota: analysisQuota({ ...booking, accountId }, analysisJobs, analysisPurchases),
     isCustomer: accountId === user.id,
     isOwnCoach: user.role === "ADMIN" || (user.role === "COACH" && coachId === user.id),
   })).sort((a, b) => Number(b.quota.active) - Number(a.quota.active));
-  const totals = courses.reduce((sum, course) => ({
-    remaining: sum.remaining + course.quota.remaining,
-    freeTotal: sum.freeTotal + course.quota.freeTotal,
-    paidTotal: sum.paidTotal + (course.quota.active ? course.quota.paidTotal : 0),
-    used: sum.used + course.quota.used,
-    reserved: sum.reserved + course.quota.reserved,
-  }), { remaining: 0, freeTotal: 0, paidTotal: 0, used: 0, reserved: 0 });
-  return { courses, totals };
+  return { courses };
 }
