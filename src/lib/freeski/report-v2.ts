@@ -74,10 +74,14 @@ export const turnManifestSchema = z.object({ version: z.literal(1), turnId: z.st
     ghost:z.object({eligible:z.boolean(),reasons:z.array(z.string().max(120)).max(12)}).optional(),technique_comparison_authorized:z.literal(false).optional() }).nullable(),
   referenceStatus: z.string().max(80), experimental: z.literal(true),
   // Contract additions for the turn player; each optional field fails closed on its own so an older
-  // or partial manifest still plays. A turn runs from one edge change to the next; apexMs sits inside it.
+  // or partial manifest still plays. apexMs sits inside the turn.
   direction: z.enum(["left", "right"]).optional().catch(undefined),
   role: z.enum(["start", "middle", "end"]).optional().catch(undefined),
   apexMs: z.number().finite().nonnegative().optional().catch(undefined),
+  // How FreeSki split the run ("hip_sway": between the hips' widest swings, so the edge change falls inside a
+  // turn), and the turn's one edge change; null when it has none or several. For display only (FreeSki 39e13e6).
+  turnSegmentation: z.string().max(40).optional().catch(undefined),
+  edgeChangeMs: z.number().finite().nonnegative().nullable().optional().catch(undefined),
   // A standard skeleton FreeSki synthesizes from its CSIA references for this turn: same turn direction,
   // the skier's height and hips, and this turn's timing, in the user pose's time base and pixels.
   standardPose: z.literal("standard-pose").nullable().optional().catch(undefined),

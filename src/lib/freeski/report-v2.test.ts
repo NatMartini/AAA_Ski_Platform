@@ -218,4 +218,10 @@ describe("turn manifest additions", () => {
     expect([odd.direction, odd.standardPose, odd.standard]).toEqual([undefined, undefined, undefined]);
     expect(odd.turnId).toBe("turn_3");
   });
+
+  it("reads the edge change FreeSki measured inside the turn, or that it found none", () => {
+    expect(turnManifestSchema.parse({ ...plain, turnSegmentation: "hip_sway", edgeChangeMs: 4719 })).toMatchObject({ turnSegmentation: "hip_sway", edgeChangeMs: 4719 });
+    expect(turnManifestSchema.parse({ ...plain, edgeChangeMs: null }).edgeChangeMs).toBeNull();
+    expect(turnManifestSchema.parse({ ...plain, edgeChangeMs: "soon" }).edgeChangeMs).toBeUndefined();
+  });
 });

@@ -241,6 +241,13 @@ describe("matching the student's camera", () => {
       expect(turnPoint(phaseAt(end - .02, { start, end, edge: view.edge }, motion), view.mirrored).mirrored).toBe(mirrored);
     });
 
+  it("takes an edge change FreeSki measured as it is and fits only the camera and direction around it", () => {
+    const motion = load("short_turn-l2"), duration = motion.motion.durationSec;
+    const user = filmed(motion, { azimuth: 190, elevation: 8, slope: motion.motion.pitchDeg }, true);
+    const view = fitView(motion, user, { start: 10, end: 10 + duration, role: "middle", edge: 10 + .4 * duration })!;
+    expect(view.edge).toBeCloseTo(10 + .4 * duration);
+  });
+
   it("keeps a window that does run edge change to edge change", () => {
     const motion = load("short_turn-l2");
     const user = filmed(motion, { azimuth: 190, elevation: 8, slope: motion.motion.pitchDeg }, true);

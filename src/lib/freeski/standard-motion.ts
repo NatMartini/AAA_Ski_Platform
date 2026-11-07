@@ -259,6 +259,8 @@ export function fitView(motion: StandardMotion, user: DecodedPose, timing: TurnT
     for (let step = -10; step <= 10; step += 5) for (const change of [-4, 0, 4]) consider(coarse.camera.azimuth + step, Math.max(0, coarse.camera.elevation + change), coarse.mirrored);
     return best;
   };
+  // An edge change FreeSki measured is taken as it is; only the camera and direction are fitted around it.
+  if (timing.edge !== null && timing.edge !== undefined) return search(timing.edge);
   const whole = search(null);
   // A start or end part has its one edge change at a known end; only a whole turn's can be inside.
   if (!whole || timing.role === "start" || timing.role === "end" || !(span > 0)) return whole;

@@ -346,10 +346,14 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
       ]);
       if (controller.signal.aborted) return;
       const userPose = smoothPose(decodeCompactPose(user));
-      const bounds = { start: manifest.startMs / 1000, end: manifest.endMs / 1000, apex: manifest.apexMs === undefined ? null : manifest.apexMs / 1000, role: manifest.role ?? metaRole };
+      // FreeSki's window may run from one turn's deepest lean to the next, with the edge change inside: its own
+      // measurement when it found exactly one, otherwise the fit finds where the student changed edges.
+      const measured = manifest.edgeChangeMs !== null && manifest.edgeChangeMs !== undefined
+        && manifest.edgeChangeMs > manifest.startMs && manifest.edgeChangeMs < manifest.endMs ? manifest.edgeChangeMs / 1000 : null;
+      const bounds = { start: manifest.startMs / 1000, end: manifest.endMs / 1000, apex: manifest.apexMs === undefined ? null : manifest.apexMs / 1000,
+        role: manifest.role ?? metaRole, edge: measured };
       const motion = rawMotion ? decodeStandardMotion(rawMotion) : null;
       const view = motion ? fitView(motion, userPose, bounds) : null;
-      // FreeSki's window may run from one turn's deepest lean to the next; the fit found where the student changed edges.
       const timing = view?.edge !== null && view?.edge !== undefined ? { ...bounds, edge: view.edge } : bounds;
       const generated = motionId && motion && view ? standardPoseForTurn(motion, userPose, timing, view) : null;
       const lift = motion && view ? liftUserPose(userPose, motion, view, timing) : null;
