@@ -105,11 +105,12 @@ const drill = z.object({ drill_id: metricKey, name_zh: prose(150), name_en: pros
 /**
  * How long the model thinks before writing the explanation, chosen by the reader per report (owner's
  * decision, 2026-11-06). FreeSki writes it into its ModelCtrl request; without one it does not think.
+ * A report opens at the deepest level (owner's decision, 2026-11-07).
  */
 export const THINKING_LEVELS = ["none", "low", "medium", "xhigh"] as const;
 export const thinkingLevelSchema = z.enum(THINKING_LEVELS);
 export type ThinkingLevel = z.infer<typeof thinkingLevelSchema>;
-export const DEFAULT_THINKING: ThinkingLevel = "none";
+export const DEFAULT_THINKING: ThinkingLevel = "xhigh";
 
 export const teachingSchema = z.object({
   schema_version: z.literal("freeski_teaching.v1"), experimental: z.literal(true), mode: z.literal("reference_comparison"),

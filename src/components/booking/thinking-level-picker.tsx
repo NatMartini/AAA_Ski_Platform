@@ -3,6 +3,7 @@
 import { Brain, Check, Loader2 } from "lucide-react";
 import { THINKING_LEVELS, type ThinkingLevel } from "@/lib/freeski/scorecard";
 import { cn } from "@/lib/utils";
+import { Spinner } from "@/components/ui/spinner";
 
 type Status = "pending" | "running" | "ready" | "unavailable" | "failed";
 
@@ -49,10 +50,13 @@ export function ThinkingLevelPicker({ value, shown, levels, zh, onChange }: {
         {level === "xhigh" && <span className="rounded-full bg-success-bg px-1.5 py-0.5 text-[11px] font-semibold text-success">{zh ? "限时免费" : "Free for now"}</span>}
       </button>;
     })}</div>
-    {(chosen === "pending" || chosen === "running") && <p role="status" className="text-xs leading-relaxed text-ink-3">
-      {zh ? `正在用「${thinkingLabel(value, zh)}」档写讲解，${LEVELS[value].waitZh}；同一时间只写一份讲解，别人在写时要排队。`
-        : `Writing the explanation at “${thinkingLabel(value, zh)}”, ${LEVELS[value].waitEn}; one explanation is written at a time, so it may queue.`}
-      {shown && shown !== value && (zh ? `下面先显示「${thinkingLabel(shown, zh)}」档的讲解，写好后自动换上。` : ` The “${thinkingLabel(shown, zh)}” explanation stays below until then.`)}</p>}
+    {(chosen === "pending" || chosen === "running") && <div className="rounded-xl bg-accent-soft/60 px-3 py-2.5 text-xs leading-relaxed text-ink-2">
+      {/* It keeps turning until the explanation is written. */}
+      <Spinner className="items-start [&>svg]:text-accent" label={<>
+        {zh ? `正在用「${thinkingLabel(value, zh)}」档写讲解，${LEVELS[value].waitZh}；同一时间只写一份讲解，别人在写时要排队。`
+          : `Writing the explanation at “${thinkingLabel(value, zh)}”, ${LEVELS[value].waitEn}; one explanation is written at a time, so it may queue.`}
+        {shown && shown !== value && (zh ? `下面先显示「${thinkingLabel(shown, zh)}」档的讲解，写好后自动换上。` : ` The “${thinkingLabel(shown, zh)}” explanation stays below until then.`)}</>} />
+    </div>}
     {chosen === "failed" && <p role="status" className="text-xs text-ink-3">
       {zh ? `「${thinkingLabel(value, zh)}」档的讲解这次没写成，可以换一档。` : `The “${thinkingLabel(value, zh)}” explanation could not be written this time. Try another depth.`}</p>}
   </section>;

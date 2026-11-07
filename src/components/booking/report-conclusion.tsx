@@ -1,3 +1,4 @@
+import { Spinner } from "@/components/ui/spinner";
 import { ArrowRight, Check, Play, Target } from "lucide-react";
 import type { Scorecard, Teaching } from "@/lib/freeski/scorecard";
 import { metricDelta, metricStanding, standingCounts, worstTurnFor } from "@/lib/freeski/metric-insight";
@@ -72,7 +73,7 @@ export function ReportConclusion({ teaching, card, previous, zh, focus, teaching
           {zh ? `这项比上次${delta > 0 ? "进步" : "退步"} ${Math.abs(delta)} 分` : `${delta > 0 ? "Up" : "Down"} ${Math.abs(delta)} since last time`}</span>}
       </div></div>}
     {!improvement && measured > 0 && counts?.work === 0 && <p className="text-sm text-ink-2">{zh ? "这次没有低于示范常见水平的项目。" : "Nothing measured falls short of the examples' usual level this time."}</p>}
-    {teachingPending && <p className="text-xs text-ink-3">{zh ? "动作解释生成中，评分和动态对比已经可以查看。" : "The explanation is being written; scores and turn playback are already available."}</p>}
+    {teachingPending && <Spinner size="sm" className="text-xs text-ink-3" label={zh ? "动作解释生成中，评分和动态对比已经可以查看。" : "The explanation is being written; scores and turn playback are already available."} />}
     {onShow && (focus.turnId || focus.metric) && <button type="button" onClick={() => onShow(focus.turnId, focus.metric)}
       className="press inline-flex min-h-10 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-semibold text-accent-foreground">
       <Play className="size-4" aria-hidden />{focus.turnId ? (zh ? `看${turnLabel(focus.turnId, zh)}，高亮这个问题` : `Watch ${turnLabel(focus.turnId, zh).toLowerCase()} with this highlighted`)

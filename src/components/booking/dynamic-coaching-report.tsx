@@ -24,6 +24,7 @@ import type { FreeSkiCurrentLevel } from "@/lib/freeski/actions";
 import { retryWhileStarting } from "@/lib/freeski/startup-retry";
 import { clientFetch } from "@/lib/client-fetch";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
 async function json(url: string, signal?: AbortSignal, onStarting?: () => void) {
@@ -57,18 +58,30 @@ export function DynamicCoachingReport({ base, zh, card = null, currentLevel = nu
   const [thinking, setThinking] = useState<ThinkingLevel>(DEFAULT_THINKING);
   const [written, setWritten] = useState<{ teaching: Written; level: ThinkingLevel } | null>(null);
   const chosen = useRef(false);
+  // While the chosen level is written, an explanation already written at another level is shown once.
+  const borrowed = useRef(false);
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController(); let timer: ReturnType<typeof setTimeout>; let polls = 0;
     const started = Date.now();
     const load = async () => {
       try {
-        // Asking for a level starts writing it, so only a level other than the default is named.
-        const query = thinking === DEFAULT_THINKING ? "" : `?thinking=${thinking}`;
-        const value = coachingReportSchema.parse(await json(`${base}/report${query}`, controller.signal, () => setStarting(true)));
+        // Asking for a level starts writing it; FreeSki writes the shallowest one when none is named.
+        const read = (level: ThinkingLevel, onStarting?: () => void) =>
+          json(`${base}/report${level === "none" ? "" : `?thinking=${level}`}`, controller.signal, onStarting).then(raw => coachingReportSchema.parse(raw));
+        const value = await read(thinking, () => setStarting(true));
         if (controller.signal.aborted) return;
         setReport(value); setUnavailable(false); setStarting(false);
         if (value.teaching) setWritten({ teaching: value.teaching, level: thinking });
+        else if (!borrowed.current) {
+          // The deep default takes minutes to write: meanwhile show the deepest explanation already written.
+          borrowed.current = true;
+          const ready = value.teachingLevels?.filter(item => item.status === "ready").map(item => item.level) ?? [];
+          const other = THINKING_LEVELS.filter(level => level !== thinking && ready.includes(level)).pop();
+          const shown = other ? await read(other).catch(() => null) : null;
+          if (controller.signal.aborted) return;
+          if (other && shown?.teaching) setWritten(current => current ?? { teaching: shown.teaching!, level: other });
+        }
         // Opened afresh, show the deepest explanation already written; never start one unasked.
         const ready = value.teachingLevels?.filter(item => item.status === "ready").map(item => item.level) ?? [];
         const deepest = THINKING_LEVELS.filter(level => ready.includes(level)).pop();
@@ -105,8 +118,8 @@ export function DynamicCoachingReport({ base, zh, card = null, currentLevel = nu
         <p className="text-sm text-ink-3">{zh ? "此报告暂未提供动态分析；已有技术评分和建议仍保留。" : "Dynamic analysis is not available for this report. Existing scores and advice remain available."}</p>
         {scorecardBlock}
       </> : !report ? <>
-        <p role="status" className="text-sm text-ink-3">{starting ? (zh ? "分析服务正在启动，请稍候…" : "The analysis service is starting. Please wait…")
-          : zh ? "正在读取分析…" : "Loading analysis…"}</p>
+        <Spinner className="text-sm text-ink-3" label={starting ? (zh ? "分析服务正在启动，请稍候…" : "The analysis service is starting. Please wait…")
+          : zh ? "正在读取分析…" : "Loading analysis…"} />
         {scorecardBlock}
       </> : <CoachingReportView base={base} zh={zh} report={report} card={card ?? report.scorecard} currentLevel={currentLevel} previous={previous}
         reviews={reviews} onReview={review} reviewHref={reviewHref} written={written?.teaching ?? null}
