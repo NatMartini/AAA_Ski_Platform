@@ -105,6 +105,22 @@ describe("lifting a filmed skier into 3D", () => {
     expect(worst * 180 / Math.PI).toBeLessThan(25);
   });
 
+  it("keeps a parallel pair of skis from crossing when one foot's keypoints swing", () => {
+    const swung = filmed(motion, camera, false);
+    const heel = swung.jointNames.indexOf("right_heel"), toe = swung.jointNames.indexOf("right_bigtoe");
+    // The right toe keypoint jumps sideways by a foot's length, as on a small, blurred skier.
+    swung.frames = swung.frames.map((frame, i) => frame.map((point, k) => k === toe && i % 2 === 0 ? [point[0] + (frame[toe][0] - frame[heel][0] > 0 ? -60 : 60), point[1], point[2]] : point));
+    const result = liftUserPose(swung, motion, view, timing)!;
+    const heading = (frame: ArrayLike<number>, side: string) => {
+      const tip = named(result, frame, `${side}_ski_tip_a`), tail = named(result, frame, `${side}_ski_tail_a`);
+      return Math.atan2(tip[0] - tail[0], tip[1] - tail[1]);
+    };
+    for (const frame of result.frames) {
+      const gap = heading(frame, "left") - heading(frame, "right");
+      expect(Math.abs(Math.atan2(Math.sin(gap), Math.cos(gap))) * 180 / Math.PI).toBeLessThan(12.5);
+    }
+  });
+
   it("takes the picture's scale from the bones, so a taller stance looks taller rather than shrunk", () => {
     // The same skier filmed from further away: the same 3D pose comes back.
     const far = filmed(motion, camera, false);

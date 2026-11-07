@@ -1,6 +1,6 @@
 import { bodyHeight, type DecodedPose } from "./report-v2";
 import { skiMark } from "./skier-rig";
-import { cameraAxes, phaseAt, smoothedFootVectors, standardHeight, turnPointsAt, type FittedView, type StandardMotion, type TurnTiming } from "./standard-motion";
+import { cameraAxes, phaseAt, skiSplayLimit, smoothedFootVectors, standardHeight, turnPointsAt, type FittedView, type StandardMotion, type TurnTiming } from "./standard-motion";
 
 /**
  * A filmed skier lifted out of the picture, so the same 3D person can stand in for them, for display only.
@@ -190,6 +190,14 @@ export function liftUserPose(user: DecodedPose, motion: StandardMotion, view: Fi
     for (let s = 1; s < angles.length; s++) angles[s] = angles[s - 1] + Math.atan2(Math.sin(angles[s] - angles[s - 1]), Math.cos(angles[s] - angles[s - 1]));
     headings[side] = smoothed(smoothed(angles));
   }
+  // Even smoothed, one noisy foot swings its ski past the other: the action says how far apart a pair may point.
+  const splay = skiSplayLimit(motion.action) * Math.PI / 180;
+  headings.left.forEach((left, s) => {
+    const right = headings.right[s], gap = Math.atan2(Math.sin(left - right), Math.cos(left - right));
+    const mean = right + gap / 2, half = Math.max(-splay, Math.min(splay, gap)) / 2;
+    headings.left[s] = mean + half;
+    headings.right[s] = mean - half;
+  });
 
   const frames = samples.map((_, s) => {
     const frame = new Float64Array(POINTS.length * 3);

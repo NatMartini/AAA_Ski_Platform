@@ -7,7 +7,7 @@ import { bodyHeight, decodeCompactPose, jointCenter, poseAt, poseFrameAt, refere
 import type { ReferenceStatus } from "@/lib/freeski/scorecard";
 import { retryWhileStarting } from "@/lib/freeski/startup-retry";
 import { metricInsight } from "@/lib/freeski/metric-insight";
-import { bumpField, cameraAxes, decodeStandardMotion, fitView, motionMarks, motionPointsAt, phaseAt, skiLine, smoothedFootVectors, snowLevelAt, standardPoseForTurn, turnPoint, viewName,
+import { bumpField, cameraAxes, decodeStandardMotion, fitView, motionMarks, motionPointsAt, pairedSkiDirections, phaseAt, skiLine, skiSplayLimit, smoothedFootVectors, snowLevelAt, standardPoseForTurn, turnPoint, viewName,
   type FittedView, type StandardMotion, type StandardMotionId, type StandardPose, type TurnTiming } from "@/lib/freeski/standard-motion";
 import { liftedAt, liftedMarks, liftUserPose, type LiftedPose } from "@/lib/freeski/skier-lift";
 import { Link } from "@/i18n/navigation";
@@ -107,10 +107,14 @@ function drawFocus(context: CanvasRenderingContext2D, pose: DecodedPose, sample:
   }
 }
 
-/** A filmed skier's skis, as long as a ski is and pointing the way the foot does. */
-function userSkis(pose: DecodedPose, sample: PoseSample, feet: Feet, time: number, height: number | null) {
+/**
+ * A filmed skier's skis, as long as a ski is and pointing the way the feet do, kept within the spread the
+ * action allows: noisy foot keypoints otherwise cross skis that were parallel.
+ */
+function userSkis(pose: DecodedPose, sample: PoseSample, feet: Feet, time: number, height: number | null, splay = skiSplayLimit(null)) {
   const frame = poseFrameAt(pose, time), longest = (height ?? 200) * SKI_PER_HEIGHT;
-  return { left: skiLine(pose, sample, "left", feet.left[frame], longest), right: skiLine(pose, sample, "right", feet.right[frame], longest) };
+  const paired = pairedSkiDirections(feet.left[frame], feet.right[frame], splay);
+  return { left: skiLine(pose, sample, "left", paired.left, longest), right: skiLine(pose, sample, "right", paired.right, longest) };
 }
 
 function drawSkiLines(context: CanvasRenderingContext2D, skis: ReturnType<typeof userSkis>, map: Mapper, color: string, width: number) {
@@ -410,7 +414,7 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
     const focus = settings.current.focusMetric ? metricInsight(settings.current.focusMetric) : null;
     if (focus?.hipPath) drawHipTrail(context, data.user, start, time, map, FOCUS_COLOR, 2 * ratio);
     drawSkeleton(context, data.user, sample, map, USER_COLOR, 3 * ratio);
-    drawSkiLines(context, userSkis(data.user, sample, data.userFeet, time, data.userHeight), map, SKI_COLOR, 2 * ratio);
+    drawSkiLines(context, userSkis(data.user, sample, data.userFeet, time, data.userHeight, skiSplayLimit(data.liftMotion?.action)), map, SKI_COLOR, 2 * ratio);
     if (focus?.lines.length) drawFocus(context, data.user, sample, map, focus.lines, FOCUS_COLOR, 5 * ratio);
   }, [data, start]);
 

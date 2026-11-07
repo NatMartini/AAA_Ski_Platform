@@ -350,6 +350,36 @@ export function smoothedFootVectors(pose: DecodedPose, side: "left" | "right", w
   });
 }
 
+/**
+ * How far apart a filmed pair of skis may point, in degrees. A small skier's foot keypoints are noisy, so each
+ * ski alone often swings past the other; skis that are parallel in the run stay within a few degrees of each
+ * other. A wedge opens them into a V and a javelin turn crosses the lifted ski over, so those actions allow more.
+ */
+export function skiSplayLimit(action: string | null | undefined) {
+  return action === "javelin" ? 40 : action === "intro_parallel" ? 25 : 12;
+}
+
+/**
+ * A pair of ski directions pulled toward each other until they are at most `limitDeg` apart, each keeping its
+ * share of the difference: the pair's mean direction stays what the feet say, only an implausible spread goes.
+ */
+export function pairedSkiDirections(left: [number, number] | null, right: [number, number] | null, limitDeg: number):
+  { left: [number, number] | null; right: [number, number] | null } {
+  if (!left || !right) return { left, right };
+  const a = Math.atan2(left[1], left[0]), b = Math.atan2(right[1], right[0]);
+  const gap = Math.atan2(Math.sin(a - b), Math.cos(a - b)), limit = limitDeg * Math.PI / 180;
+  // A pair pointing opposite ways is a heel/toe swap on one foot, not two skis: trust the longer foot.
+  if (Math.abs(gap) > Math.PI / 2) {
+    const longer = Math.hypot(...left) >= Math.hypot(...right) ? left : right;
+    const unit = Math.hypot(...longer) || 1, along = (v: [number, number]) => Math.hypot(...v) / unit;
+    return { left: [longer[0] * along(left), longer[1] * along(left)], right: [longer[0] * along(right), longer[1] * along(right)] };
+  }
+  if (Math.abs(gap) <= limit) return { left, right };
+  const mean = b + gap / 2, half = Math.sign(gap) * limit / 2;
+  const turn = (v: [number, number], angle: number): [number, number] => { const length = Math.hypot(...v); return [Math.cos(angle) * length, Math.sin(angle) * length]; };
+  return { left: turn(left, mean + half), right: turn(right, mean - half) };
+}
+
 /** One ski in a pose sample: centred where the foot is, as long as the foot's direction says. */
 export function skiLine(pose: DecodedPose, sample: PoseSample, side: "left" | "right", foot: [number, number] | null, maxLength: number): SkiLine | null {
   const heel = pose.jointNames.indexOf(`${side}_heel`), toe = pose.jointNames.indexOf(`${side}_bigtoe`);

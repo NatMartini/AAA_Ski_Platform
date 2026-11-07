@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { bodyHeight, jointCenter, poseAt, type DecodedPose } from "./report-v2";
-import { bumpField, cameraAxes, decodeStandardMotion, fitView, motionBones, motionMarks, motionPointsAt, phaseAt, projectPoint, skiLine, SKI_PER_FOOT, smoothedFootVectors, snowLevelAt,
+import { bumpField, cameraAxes, decodeStandardMotion, fitView, motionBones, motionMarks, motionPointsAt, pairedSkiDirections, phaseAt, projectPoint, skiLine, skiSplayLimit, SKI_PER_FOOT, smoothedFootVectors, snowLevelAt,
   standardMotionId, standardPoseForTurn, STANDARD_MOTION_GROUPS, STANDARD_MOTION_IDS, turnPoint, viewName, type StandardMotion, type StandardMotionId, type ViewCamera } from "./standard-motion";
 
 const folder = join(process.cwd(), "public", "standard-motions");
@@ -204,6 +204,30 @@ describe("timing to a student's turn", () => {
     expect(phaseAt(5, { start: 5, end: 11, role: "end" }, motion)).toBe(0);
     expect(phaseAt(6, { start: 5, end: 11, role: "end" }, motion)).toBeCloseTo(.5);
     expect(phaseAt(9, { start: 5, end: 11, role: "end" }, motion)).toBe(1);
+  });
+});
+
+describe("a filmed pair of skis", () => {
+  const angle = (v: [number, number] | null) => Math.atan2(v![1], v![0]);
+  const unit = (radians: number, length = 1): [number, number] => [Math.cos(radians) * length, Math.sin(radians) * length];
+
+  it("pulls skis that point too far apart back toward their mean, keeping each one's length", () => {
+    const paired = pairedSkiDirections(unit(.5), unit(-.1, 2), 12);
+    expect((angle(paired.left) - angle(paired.right)) * 180 / Math.PI).toBeCloseTo(12);
+    expect((angle(paired.left) + angle(paired.right)) / 2).toBeCloseTo(.2);
+    expect(Math.hypot(...paired.right!)).toBeCloseTo(2);
+  });
+
+  it("leaves a plausible pair and a lone ski alone, and lets a wedge or a javelin turn spread further", () => {
+    expect(pairedSkiDirections(unit(.1), unit(0), 12)).toEqual({ left: unit(.1), right: unit(0) });
+    expect(pairedSkiDirections(unit(.6), null, 12)).toEqual({ left: unit(.6), right: null });
+    expect([skiSplayLimit("short_turn"), skiSplayLimit("intro_parallel"), skiSplayLimit("javelin")]).toEqual([12, 25, 40]);
+  });
+
+  it("reads a pair pointing opposite ways as one foot's heel and toe swapped", () => {
+    const paired = pairedSkiDirections(unit(0, 2), unit(Math.PI - .05), 12);
+    expect(angle(paired.right)).toBeCloseTo(0);
+    expect(Math.hypot(...paired.right!)).toBeCloseTo(1);
   });
 });
 
