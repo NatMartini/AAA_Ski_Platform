@@ -52,9 +52,9 @@ it("passes only a known thinking level, and only for the report", async () => {
   const read = (url: string, resource = ["report"]) => readDynamicReport({ ...input(resource), request: new Request(url) });
   const report = await (await read("http://localhost/api/report?thinking=xhigh")).json();
   expect(mocks.request).toHaveBeenLastCalledWith(expect.objectContaining({ resource: "report", thinking: "xhigh" }));
-  // A level list with a key outside the four fails closed rather than offering it.
+  // A level outside the four (FreeSki's cloud level, say) is left out rather than offered; the others stay.
   expect(report).toMatchObject({ teachingStatus: "running", teaching: null });
-  expect(report.teachingLevels).toBeUndefined();
+  expect(report.teachingLevels).toEqual([{ level: "none", status: "ready" }, { level: "xhigh", status: "running" }]);
   await read("http://localhost/api/report");
   expect(mocks.request).toHaveBeenLastCalledWith(expect.objectContaining({ thinking: undefined }));
   const calls = mocks.request.mock.calls.length;

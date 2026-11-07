@@ -47,10 +47,15 @@ export const coachingReportSchema = z.object({ version: z.literal(2), deployment
   // Contract v1 addons. Each fails closed to null on its own so media stays usable.
   scorecard: scorecardSchema.nullable().catch(null),
   // teaching and teachingStatus are for the thinking level the read asked for. teachingLevels lists every
-  // level asked for so far, shallowest first; a deployment without thinking levels leaves it out.
+  // level asked for so far, shallowest first; a deployment without thinking levels leaves it out. A level the site
+  // does not offer (FreeSki's cloud level) is left out, not the whole list.
   teachingStatus: addonStatusSchema.nullable().catch(null),
   teaching: teachingSchema.transform(citedTeaching).nullable().catch(null),
-  teachingLevels: z.array(z.object({ level: thinkingLevelSchema, status: addonStatusSchema })).max(THINKING_LEVELS.length).optional().catch(undefined),
+  teachingLevels: z.array(z.object({ level: z.string().max(40), status: addonStatusSchema })).max(THINKING_LEVELS.length * 4)
+    .transform(items => items.flatMap(({ level, status }) => {
+      const known = thinkingLevelSchema.safeParse(level);
+      return known.success ? [{ level: known.data, status }] : [];
+    })).optional().catch(undefined),
   explainerStatus: addonStatusSchema.nullable().catch(null) });
 
 const originalTime = z.object({ user_start: z.number().finite(), reference_start: z.number().finite(),

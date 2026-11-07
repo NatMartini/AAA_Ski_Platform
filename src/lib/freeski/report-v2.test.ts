@@ -88,7 +88,12 @@ describe("dynamic pose interoperability", () => {
     expect(parsed.teachingLevels).toEqual(levels);
     // The site parses the report again in the browser, so what the server passes on must parse the same way.
     expect(coachingReportSchema.parse(JSON.parse(JSON.stringify(parsed))).teachingLevels).toEqual(levels);
-    for (const teachingLevels of [[{ level: "none", status: "thinking" }], [{ level: "high", status: "ready" }], ["none"], { none: "ready" }]) {
+    // A level the site does not offer, like FreeSki's cloud level, is left out and the others stay.
+    const withCloud = coachingReportSchema.parse({ ...raw, teachingLevels: [...levels, { level: "cloud", status: "unavailable" }] });
+    expect(withCloud.teachingLevels).toEqual(levels);
+    expect(coachingReportSchema.parse(JSON.parse(JSON.stringify(withCloud))).teachingLevels).toEqual(levels);
+    expect(coachingReportSchema.parse({ ...raw, teachingLevels: [{ level: "high", status: "ready" }] }).teachingLevels).toEqual([]);
+    for (const teachingLevels of [[{ level: "none", status: "thinking" }], ["none"], { none: "ready" }]) {
       const parsed = coachingReportSchema.parse({ ...raw, teachingLevels });
       expect(parsed.teachingLevels).toBeUndefined();
       expect(parsed.teachingStatus).toBe("ready");
