@@ -8,6 +8,7 @@ import { clientFetch } from "@/lib/client-fetch";
 import { cn } from "@/lib/utils";
 import { drawBones, drawSkierFigure, fineBonesUnit, STANDARD_BONES, STANDARD_STYLE, type Figure, type Point } from "./skier-figure";
 import type { Ribbon, Shot, SkierFigure, SkierStage } from "./skier-stage";
+import { CommonProblems } from "./movement-explanations";
 
 const VIEWS = [
   { key: "front", zh: "正面", en: "Front", azimuth: 180, elevation: 9 },
@@ -336,6 +337,7 @@ export function StandardMotionViewer({ zh, initial }: { zh: boolean; initial: St
       {shown && <>
         <h2 className="text-lg font-semibold">{zh ? `${shown.level} 级 · ${shown.name.zh}` : `Level ${shown.level} · ${shown.name.en}`}</h2>
         <MotionStage key={shown.id} motion={shown} zh={zh} />
+        <CommonProblems key={`${shown.id}:problems`} motion={shown} zh={zh} />
         <MotionData motion={shown} zh={zh} />
       </>}
     </div>

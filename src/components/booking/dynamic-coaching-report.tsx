@@ -15,6 +15,8 @@ import { ReportConclusion, reportFocus } from "./report-conclusion";
 import { TurnStrip } from "./turn-strip";
 import { FilmingTips } from "./filming-tips";
 import { ThinkingLevelPicker } from "./thinking-level-picker";
+import { MovementExplanations } from "./movement-explanations";
+import { faultsFor } from "@/lib/freeski/technique-faults";
 import { DEFAULT_THINKING, THINKING_LEVELS, withoutOverallScore, type Scorecard, type ThinkingLevel } from "@/lib/freeski/scorecard";
 import { standardMotionId } from "@/lib/freeski/standard-motion";
 import { metricInsight, worstTurnFor } from "@/lib/freeski/metric-insight";
@@ -159,7 +161,8 @@ export function CoachingReportView({ base, zh, report, card, currentLevel = null
     : report.turns.find(turn => metaOf(turn.turnId)?.scored ?? true)?.turnId ?? null;
   // Keyframes and the explainer draw the examples the scorecard compared; name them the same way.
   const target = card ? referenceTarget(card) : null;
-  const ids = { summary: `report-summary-${base}`, player: `turn-player-${base}`, drills: `report-drills-${base}`, data: `report-data-${base}` };
+  const ids = { summary: `report-summary-${base}`, player: `turn-player-${base}`, explain: `report-explain-${base}`, drills: `report-drills-${base}`,
+    data: `report-data-${base}` };
   const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   const show = (turnId: string | null, metric: string | null) => {
     if (hasTurn(turnId)) setPicked(turnId);
@@ -172,9 +175,11 @@ export function CoachingReportView({ base, zh, report, card, currentLevel = null
   };
   const player = report.turns.length > 0;
   const drills = teaching && teaching.drills.length > 0 ? teaching : null;
+  const explained = card !== null && faultsFor(card).length > 0;
   const sections: [string, string][] = [];
   if (teaching || card) sections.push([ids.summary, zh ? "结论" : "Summary"]);
   if (player) sections.push([ids.player, zh ? "看问题" : "Watch"]);
+  if (explained) sections.push([ids.explain, zh ? "动作讲解" : "Explained"]);
   if (drills) sections.push([ids.drills, zh ? "怎么练" : "Practise"]);
   if (card) sections.push([ids.data, zh ? "数据" : "Data"]);
   const focused = focusMetric ? card?.metrics.find(metric => metric.key === focusMetric) : undefined;
@@ -204,11 +209,13 @@ export function CoachingReportView({ base, zh, report, card, currentLevel = null
     </nav>}
     {thinking && report.teachingLevels && card && <ThinkingLevelPicker value={thinking.value} shown={thinking.shown}
       levels={Object.fromEntries(report.teachingLevels.map(item => [item.level, item.status]))} zh={zh} onChange={thinking.onChange} />}
-    {(teaching || card) && <section id={ids.summary} className="scroll-mt-28" aria-label={zh ? "这次的结论" : "Summary"}>
+    {/* On a wide screen the player sits on the left beside the conclusion and practice; the explanations and data run full width. */}
+    <div className={cn("space-y-5", player && "lg:grid lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:items-start lg:gap-x-6 lg:gap-y-5 lg:space-y-0")}>
+    {(teaching || card) && <section id={ids.summary} className="scroll-mt-28 lg:col-start-2 lg:row-start-1" aria-label={zh ? "这次的结论" : "Summary"}>
       <ReportConclusion teaching={teaching} card={card} previous={previous} zh={zh} focus={focus} teachingPending={teachingPending}
         onShow={player ? show : undefined} />
     </section>}
-    {player && <section id={ids.player} className="scroll-mt-28 space-y-3" aria-label={zh ? "看问题：逐弯动态对比" : "Watch the turn: turn-by-turn comparison"}>
+    {player && <section id={ids.player} className="scroll-mt-28 space-y-3 lg:col-start-1 lg:row-span-3 lg:row-start-1" aria-label={zh ? "看问题：逐弯动态对比" : "Watch the turn: turn-by-turn comparison"}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold">{zh ? "看问题" : "Watch the turn"}{shown ? ` · ${numberedTurn(shown, zh)}` : ""}</h3>
         <p className="text-xs text-ink-3">{zh ? "按 FreeSki 的分段，宽度按用时" : "As FreeSki split the run; widths follow each turn's duration"}</p>
@@ -229,12 +236,17 @@ export function CoachingReportView({ base, zh, report, card, currentLevel = null
       {panel === "keyframes" && shown && <AnalysisKeyframes key={`${base}:${shown}:keyframes`} base={base} turnId={shown} zh={zh} target={target} showEmpty />}
       {panel === "explainer" && <AnalysisExplainer base={base} zh={zh} target={target} compact />}
     </section>}
-    {drills && <section id={ids.drills} className="scroll-mt-28 space-y-2" aria-label={zh ? "怎么练" : "How to practise"}>
+    {explained && card && <section id={ids.explain} className="scroll-mt-28 space-y-2 lg:col-span-2 lg:row-start-4" aria-label={zh ? "动作讲解" : "Your movements explained"}>
+      <h3 className="text-sm font-semibold">{zh ? "动作讲解" : "Your movements explained"}</h3>
+      <MovementExplanations card={card} zh={zh} motionId={standardMotionId(card)} durations={report.turns.map(turn => (turn.endMs - turn.startMs) / 1000)}
+        onShowMetric={player ? key => show(worstTurnFor(card, key), key) : undefined} />
+    </section>}
+    {drills && <section id={ids.drills} className="scroll-mt-28 space-y-2 lg:col-start-2 lg:row-start-2" aria-label={zh ? "怎么练" : "How to practise"}>
       <h3 className="text-sm font-semibold">{zh ? "怎么练" : "How to practise"}</h3>
       <DrillList teaching={drills} zh={zh} turnLabel={turnName} onSelectTurn={player ? turnId => show(turnId, null) : undefined}
         reviews={reviews.reviews} canReview={reviews.canReview} onReview={onReview} />
     </section>}
-    {teaching ? <details open={reviews.canReview || undefined} className="group rounded-xl border border-border bg-surface p-3">
+    {teaching ? <details open={reviews.canReview || undefined} className="group rounded-xl border border-border bg-surface p-3 lg:col-start-2 lg:row-start-3">
         <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between gap-2 text-sm font-semibold">
           {zh ? "完整讲解" : "Full explanation"}<ChevronRight className="size-4 shrink-0 text-ink-3 transition-transform group-open:rotate-90" aria-hidden />
         </summary>
@@ -242,8 +254,9 @@ export function CoachingReportView({ base, zh, report, card, currentLevel = null
           compact drills={false} reviews={reviews.reviews} canReview={reviews.canReview} onReview={onReview} /></div>
       </details>
       : !teachingPending && (card
-        ? <p className="text-sm text-ink-3">{zh ? "这次的动作解释没有生成，评分和逐弯对比仍可查看。" : "The explanation was not generated this time; scores and turn playback remain available."}</p>
-        : <ModelAssessment report={report} zh={zh} onSelectTurn={turnId => show(turnId, null)} />)}
+        ? <p className="text-sm text-ink-3 lg:col-start-2 lg:row-start-3">{zh ? "这次的动作解释没有生成，评分和逐弯对比仍可查看。" : "The explanation was not generated this time; scores and turn playback remain available."}</p>
+        : <div className="lg:col-start-2 lg:row-start-3"><ModelAssessment report={report} zh={zh} onSelectTurn={turnId => show(turnId, null)} /></div>)}
+    </div>
     {card && <section id={ids.data} className="scroll-mt-28 space-y-3" aria-label={zh ? "详细数据" : "All measurements"}>
       <h3 className="text-sm font-semibold">{zh ? `详细数据 · ${card.metrics.length} 项` : `All measurements · ${card.metrics.length}`}</h3>
       <MetricList card={card} zh={zh} previous={previous} selectedMetric={focusMetric} onSelectMetric={player ? selectMetric : undefined} />

@@ -52,8 +52,20 @@ describe("FreeSki report in reading order", () => {
 
   it("gives drills their own section instead of a second copy in the full explanation", () => {
     const html = render();
-    expect(html.split("曲棍球急停").length - 1).toBe(1);
+    // The movement explanations list the guide's drills for each problem; elsewhere a drill shows once.
+    const start = html.indexOf('aria-label="动作讲解"'), end = html.indexOf("</section>", start);
+    const outside = start < 0 ? html : html.slice(0, start) + html.slice(end);
+    expect(outside.split("曲棍球急停").length - 1).toBe(1);
     expect(html).toContain(">看第 4 弯</button>");
+  });
+
+  it("explains the movement the measurements fall short on, with the guide's drills", () => {
+    const html = render();
+    const section = html.slice(html.indexOf('aria-label="动作讲解"'));
+    expect(html).toContain(">动作讲解</button>");
+    expect(section).toContain("上身带转");
+    expect(section).toContain("旋转速率");
+    expect(section).toContain("曲棍球急停");
   });
 
   it("groups the measurements by where each one stands", () => {
