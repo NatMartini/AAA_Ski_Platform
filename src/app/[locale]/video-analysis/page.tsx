@@ -1,5 +1,5 @@
 import { setRequestLocale } from "next-intl/server";
-import { ArrowRight, CheckCircle2, ChevronDown, Clock3, Gift, Video } from "lucide-react";
+import { ArrowRight, CheckCircle2, ChevronDown, Clock3, Gift } from "lucide-react";
 import { Link } from "@/i18n/navigation";
 import { toLocale } from "@/i18n/routing";
 import { requireUserPage } from "@/lib/auth/require-user";
@@ -10,6 +10,8 @@ import { LESSON_ANALYSES } from "@/lib/video-analysis/quota";
 import { formatTorontoDate, formatTorontoTime } from "@/lib/time";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
+import { AnalysisDisclaimer, FreeSkiLogo, FreeSkiName } from "@/components/booking/freeski-brand";
+import { FREE_ANALYSES_PER_DAY } from "@/lib/video-analysis/tiers";
 import { VideoAnalysisPanel } from "@/components/booking/video-analysis-panel";
 import { AnalysisSourceSelector } from "@/components/booking/analysis-source-selector";
 import { AnalysisCreditPurchase } from "@/components/booking/analysis-credit-purchase";
@@ -74,9 +76,9 @@ export default async function VideoAnalysisPage({ params, searchParams }: PagePr
   return (
     <div className="space-y-6">
       <PageHeader
-        icon={<Video aria-hidden />}
+        icon={<FreeSkiLogo />}
         tone="video"
-        eyebrow={<>FreeSki · {zh ? "来自 Kevin 的个人项目" : "From Kevin’s personal project"}</>}
+        eyebrow={<><FreeSkiName /> · {zh ? "来自 Kevin 的个人项目" : "From Kevin’s personal project"}</>}
         title={<span className="flex flex-wrap items-center gap-x-3 gap-y-1">{zh ? "视频分析" : "Video analysis"}
           <span className="inline-flex items-baseline gap-1 rounded-full bg-cat-video-soft px-3 py-1 text-sm font-semibold text-cat-video">
             {unlimited ? <span data-testid="analysis-remaining">{zh ? "不限次数" : "Unlimited"}</span> : <>{zh ? "可分析" : ""}
@@ -86,19 +88,21 @@ export default async function VideoAnalysisPage({ params, searchParams }: PagePr
           : "Upload a skiing video and FreeSki compares it with CSIA demonstrations for scores, movement explanations and drills."}
         actions={coachView ? <Button asChild variant="secondary" size="sm"><Link href="/coach/video-analysis"><Gift aria-hidden />{zh ? "给学员发放次数" : "Issue credits to a student"}</Link></Button> : undefined}
       />
+      <AnalysisDisclaimer zh={zh} className="-mt-3" />
 
       <details className="group rounded-xl border border-border bg-surface text-sm" aria-label={zh ? "分析次数" : "Analysis credits"}>
         <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 text-ink-2" data-numeric>
-          {unlimited ? <span>{zh ? "教练账号，分析不限次数" : "Coach account: unlimited analyses"}</span>
-            : <span>{zh ? `共获得 ${quota.earned} 次` : `${quota.earned} received`}</span>}
+          {!unlimited && <span>{zh ? `共获得 ${quota.earned} 次` : `${quota.earned} received`}</span>}
           <span>{zh ? `已用 ${quota.used} 次` : `${quota.used} used`}</span>
           <span>{zh ? `分析中 ${quota.reserved} 次` : `${quota.reserved} in progress`}</span>
+          {quota.freeLimit !== null && <span>{zh ? `今天免费还剩 ${Math.max(0, quota.freeLimit - quota.freeToday)} 次` : `${Math.max(0, quota.freeLimit - quota.freeToday)} free left today`}</span>}
           <span className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-ink-3">{zh ? "怎么算" : "How it works"}
             <ChevronDown className="size-4 shrink-0 transition-transform group-open:rotate-180" aria-hidden /></span>
         </summary>
         <div className="space-y-2 border-t border-border px-4 py-3 text-xs leading-relaxed text-ink-2">
-          <p>{zh ? `注册送 3 次，每上完一节课再送 ${LESSON_ANALYSES} 次（一起上课、有账号的同伴各自也有），都直接进你的账户，什么时候用都行。教练也可以发放，或者微信购买。分析失败或无法评分不扣次数。`
-            : `You get 3 analyses on joining and ${LESSON_ANALYSES} more for every lesson you complete (each companion with an account gets their own), straight into your account to use any time. Coaches can issue more, or you can buy them by WeChat. A failed or ungradable analysis does not use a credit.`}</p>
+          <p>{zh ? `简单、标准两档免费（每天 ${FREE_ANALYSES_PER_DAY} 次），深度扣 0.5 次，完全扣 1 次。注册送 3 次，每上完一节课再送 ${LESSON_ANALYSES} 次；教练也可以发放，或者微信购买。分析失败不扣次数。`
+            : `Simple and standard are free (${FREE_ANALYSES_PER_DAY} a day); deep uses 0.5 and complete 1. You get 3 on joining and ${LESSON_ANALYSES} for every completed lesson; coaches can issue more, or buy them by WeChat. A failed analysis uses none.`}
+            {" "}<Link href="/video-analysis/guide#tiers" className="font-semibold text-accent hover:underline">{zh ? "详见使用指南" : "See the guide"}</Link></p>
           {!unlimited && <p className="text-ink-3" data-numeric>{zh
             ? `注册 ${quota.freeTotal} · 上课 ${quota.lessonCount} 节 × ${LESSON_ANALYSES} = ${quota.lessonTotal} · 教练发放 ${quota.grantTotal} · 购买 ${quota.paidTotal}`
             : `Joining ${quota.freeTotal} · ${quota.lessonCount} lessons × ${LESSON_ANALYSES} = ${quota.lessonTotal} · coach-issued ${quota.grantTotal} · bought ${quota.paidTotal}`}</p>}
@@ -121,7 +125,9 @@ export default async function VideoAnalysisPage({ params, searchParams }: PagePr
           bookingCode={selectedCourse?.code ?? "account"} bookedHours={selectedCourse?.hours ?? 0}
           completed={view.quota.active} isCustomer={selectedCourse ? selectedCourse.isCustomer : true}
           isOwnCoach={selectedCourse?.isOwnCoach ?? false} canUpload={view.canUpload}
-          initialVideos={view.videos} initialView={view} accountId={selectedCourse ? undefined : user.id} />
+          initialVideos={view.videos} initialView={view} accountId={selectedCourse ? undefined : user.id}
+          initialAnalyze={!selectedCourse && typeof query.analyze === "string" && view.videos.some(video => video.id === query.analyze)
+            ? { videoId: query.analyze, replacesJobId: typeof query.replaces === "string" ? query.replaces : null } : null} />
       </section>
 
       {purchases && purchaseCourse && <AnalysisCreditPurchase locale={loc} bookingCode={purchaseCourse.code} initialView={purchases} />}

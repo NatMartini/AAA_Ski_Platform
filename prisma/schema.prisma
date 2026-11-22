@@ -69,6 +69,7 @@ model User {
   accountAnalysisVideos     AccountAnalysisVideo[]
   accountAnalysisJobs       AccountAnalysisJob[] @relation("AccountAnalysisOwner")
   createdAccountAnalyses    AccountAnalysisJob[] @relation("AccountAnalysisCreator")
+  actionUpdateRuns          ActionUpdateRun[]
   videoReviewRequests       CoachVideoReviewRequest[] @relation("VideoReviewOwner")
   assignedVideoReviews      CoachVideoReviewRequest[] @relation("VideoReviewCoach")
   findingReviews        AnalysisFindingReview[] @relation("FindingReviewCoach")
@@ -596,6 +597,16 @@ model VideoAnalysisJob {
   createdById     String
   requestKey      String
   actionId        String
+  /// The analysis tier shown, and the costliest tier paid for (tiers of 2026-11-09); older analyses were full ones.
+  tier            String    @default("COMPLETE")
+  paidTier        String    @default("COMPLETE")
+  /// The tier whose outputs (explanation, key frames, explainer video) are all made; null while they are being made, so
+  /// the report appears only once the chosen tier is complete (owner's decision, 2026-11-09).
+  preparedTier     String?
+  prepareStartedAt DateTime?
+  preparedAt       DateTime?
+  /// The add-ons' latest states while they are made, for the progress line.
+  prepareState     Json?
   upstreamJobId   String?
   upstreamDeploymentId String?
   upstreamApiVersion Int?
@@ -700,6 +711,16 @@ model AccountAnalysisJob {
   createdById     String
   requestKey      String
   actionId        String
+  /// The analysis tier shown, and the costliest tier paid for (tiers of 2026-11-09); older analyses were full ones.
+  tier            String    @default("COMPLETE")
+  paidTier        String    @default("COMPLETE")
+  /// The tier whose outputs (explanation, key frames, explainer video) are all made; null while they are being made, so
+  /// the report appears only once the chosen tier is complete (owner's decision, 2026-11-09).
+  preparedTier     String?
+  prepareStartedAt DateTime?
+  preparedAt       DateTime?
+  /// The add-ons' latest states while they are made, for the progress line.
+  prepareState     Json?
   upstreamJobId   String?
   upstreamDeploymentId String?
   upstreamApiVersion Int?
@@ -969,4 +990,29 @@ model Waiver {
 
   @@index([coachId, season])
   @@index([participantId])
+}
+
+/// One press of "update the actions" in the admin area: the season's action list and the run that parses the
+/// demonstrations, samples them, generates every standard motion and rebuilds the recogniser.
+model ActionUpdateRun {
+  id            String    @id @default(cuid())
+  season        String
+  /// QUEUED | RUNNING | SUCCEEDED | FAILED | CANCELLED
+  status        String    @default("QUEUED")
+  /// The season's list as submitted: { season, from, to, guides, actions }.
+  list          Json
+  /// [{ key, status, detail, startedAt, finishedAt }] in order.
+  steps         Json
+  /// The last lines the steps printed.
+  log           String    @default("")
+  error         String?
+  requestedById String
+  heartbeatAt   DateTime?
+  createdAt     DateTime  @default(now())
+  startedAt     DateTime?
+  finishedAt    DateTime?
+
+  requestedBy User @relation(fields: [requestedById], references: [id], onDelete: Restrict)
+
+  @@index([status, createdAt])
 }

@@ -17,6 +17,7 @@
  */
 import { spawn, spawnSync } from "node:child_process";
 import net from "node:net";
+import { createServer } from "node:http";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -421,8 +422,9 @@ async function main() {
     if (process.env.DEV_LAN_TEST_PASSWORD !== undefined && process.env.DEV_LAN_TEST_PASSWORD.length < 12) {
       die("DEV_LAN_TEST_PASSWORD must contain at least 12 characters.");
     }
-    process.env.DEV_LAN_TEST_PASSWORD ??= randomBytes(12).toString("base64url");
+    // No password unless the owner sets one (owner's decision, 2026-11-15): on the LAN the site opens straight away.
   }
+  const lanPassword = lan ? process.env.DEV_LAN_TEST_PASSWORD : undefined;
   let port = requestedPort;
   while (await portOpen(host, port)) {
     if (process.env.PORT || port >= requestedPort + 10) {
@@ -439,11 +441,27 @@ async function main() {
   ok("enabled for this session — pick an account on the sign-in page");
   if (lan) {
     heading("LAN test access");
-    info(`address: ${base}/zh; username: ski; password: ${process.env.DEV_LAN_TEST_PASSWORD}`);
+    info(lanPassword ? `address: ${base}/zh; access password: ${lanPassword}`
+      : `address: ${base}/zh; open to every device on this network, no password (set DEV_LAN_TEST_PASSWORD to require one)`);
     const accessFile = path.join(ROOT, "storage", "lan-test-access.json");
     mkdirSync(path.dirname(accessFile), { recursive: true });
-    writeFileSync(accessFile, JSON.stringify({ base, username: "ski", password: process.env.DEV_LAN_TEST_PASSWORD,
+    writeFileSync(accessFile, JSON.stringify({ base, ...(lanPassword ? { username: "ski", password: lanPassword } : { password: null }),
       createdAt: new Date().toISOString() }, null, 2), { mode: 0o600 });
+    // The site itself listens only on the LAN address. A tool that starts this launcher and looks for it on
+    // localhost (the Claude desktop preview does, and stops a server that never answers there) finds this small
+    // page instead, which sends a browser on to the LAN address.
+    const pointer = `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${base}/zh">` +
+      `<title>AAA Ski LAN test</title><p>测试站在局域网地址上：<a href="${base}/zh">${base}/zh</a></p>`;
+    for (const loopback of ["127.0.0.1", "::1"]) {
+      const server = createServer((_, response) => {
+        response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+        response.end(pointer);
+      });
+      // A loopback address that cannot be used is only a missing convenience.
+      server.on("error", () => {});
+      server.listen(port, loopback);
+      server.unref();
+    }
   }
 
   const secret = process.env.AUTH_SECRET;
@@ -555,7 +573,7 @@ async function main() {
       void (async () => {
         const response = await fetch(`${base}/zh/sign-in`, {
           signal: AbortSignal.timeout(120_000),
-          headers: lan ? { Authorization: `Basic ${Buffer.from(`ski:${process.env.DEV_LAN_TEST_PASSWORD}`).toString("base64")}` } : {},
+          headers: lanPassword ? { Authorization: `Basic ${Buffer.from(`ski:${lanPassword}`).toString("base64")}` } : {},
         });
         if (!response.ok) {
           warn(`The sign-in page returned HTTP ${response.status}; check the server output.`);

@@ -34,6 +34,19 @@ describe("API write source checks", () => {
   it.each(["GET", "HEAD", "OPTIONS"])("leaves %s authentication to the route", (method) => {
     expect(isTrustedApiWrite(req({ origin: "https://evil.example" }, method), env)).toBe(true);
   });
+  it("treats the computer's own names for a local site as the same site, on the same port only", () => {
+    const local = { AUTH_URL: "http://localhost:3000" };
+    const at = (headers: Record<string, string>) => isTrustedApiWrite(req(headers, "POST", "http://127.0.0.1:3000/api/video-analysis/videos"), local);
+    expect(at({ origin: "http://127.0.0.1:3000" })).toBe(true);
+    expect(at({ origin: "http://[::1]:3000" })).toBe(true);
+    expect(at({ referer: "http://127.0.0.1:3000/zh/video-analysis" })).toBe(true);
+    for (const origin of ["http://127.0.0.1:3001", "https://127.0.0.1:3000", "http://192.168.1.20:3000", "http://localhost.evil.test:3000"]) expect(at({ origin })).toBe(false);
+    expect(isTrustedApiWrite(req({ origin: "http://127.0.0.1" }), { AUTH_URL: "http://localhost" })).toBe(true);
+  });
+  it("keeps a public site strict about local names", () => {
+    expect(isTrustedApiWrite(req({ origin: "http://localhost:3000" }), env)).toBe(false);
+    expect(isTrustedApiWrite(req({ origin: "http://127.0.0.1:3000" }), env)).toBe(false);
+  });
   it("does not trust a spoofed forwarded-host header", () => {
     expect(isTrustedApiWrite(req({ origin: "https://evil.example", "x-forwarded-host": "evil.example" }), env)).toBe(false);
   });

@@ -1,7 +1,7 @@
 import { createElement, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { coachingReportSchema, type CoachingReport } from "@/lib/freeski/report-v2";
+import { coachingReportSchema, shorterBeingWritten, type CoachingReport } from "@/lib/freeski/report-v2";
 import { scorecardSchema } from "@/lib/freeski/scorecard";
 import { sampleReport } from "@/lib/freeski/scorecard.fixtures";
 import { CoachingReportView } from "./dynamic-coaching-report";
@@ -107,18 +107,71 @@ describe("FreeSki report in reading order", () => {
     expect(html).not.toContain("二维数据观察");
   });
 
-  it("keeps the written explanation and offers the thinking levels while a deeper one is written", () => {
+  it("keeps an explanation on screen while the tier's own is still being written", () => {
     const written = parse().teaching!;
     const report = parse({ teaching: null, teachingStatus: "running",
       teachingLevels: [{ level: "none", status: "ready" }, { level: "xhigh", status: "running" }] });
-    const thinking = { value: "xhigh", shown: "none", onChange: vi.fn() };
-    const html = render(report, { written, thinking });
+    const html = render(report, { written, tier: "COMPLETE" });
     expect(html).toContain("最该练：</span>第4弯的收弯完成度只有 33.4 分");
     expect(html).not.toContain("动作解释生成中");
-    expect(html).toContain("正在用「当个事办」档写讲解");
-    expect(html.indexOf('aria-label="讲解深度"')).toBeLessThan(html.indexOf('aria-label="这次的结论"'));
-    // A deployment without thinking levels sends no list, and then none are offered.
-    expect(render(parse(), { thinking })).not.toContain('aria-label="讲解深度"');
+    expect(html).toContain("正在写这一档的讲解");
+  });
+
+  it("says so when a shorter explanation stands in for the tier's own that could not be written", () => {
+    const written = parse().teaching!;
+    const failed = parse({ teaching: null, teachingStatus: "failed", teachingLevels: [{ level: "low", status: "ready" }, { level: "xhigh", status: "failed" }] });
+    const html = render(failed, { written, tier: "COMPLETE" });
+    expect(html).toContain("这一档最细的讲解这次没有写出来，下面是较短的版本。");
+    expect(html).toContain("最该练：</span>第4弯的收弯完成度只有 33.4 分");
+    expect(html).not.toContain("正在写这一档的讲解");
+    // Its own explanation on screen: nothing to say.
+    expect(render(parse(), { tier: "COMPLETE" })).not.toContain("较短的版本");
+  });
+
+  it("waits for the shorter explanation being written in place of the tier's own that failed", () => {
+    const levels = (low: string, xhigh: string) => parse({ teaching: null, teachingStatus: "failed",
+      teachingLevels: [{ level: "low", status: low }, { level: "xhigh", status: xhigh }] });
+    for (const status of ["pending", "running"]) {
+      const html = render(levels(status, "failed"), { written: null, tier: "COMPLETE" });
+      expect(html).toContain("动作解释生成中");
+      expect(html).not.toContain("这次的动作解释没有生成");
+    }
+    // Nothing shorter in hand: the report says the explanation was not written.
+    expect(render(levels("failed", "failed"), { written: null, tier: "COMPLETE" })).toContain("这次的动作解释没有生成");
+    // A deeper explanation being written does not stand in for a standard report's own.
+    expect(render(levels("failed", "running"), { written: null, tier: "STANDARD" })).toContain("这次的动作解释没有生成");
+    expect(shorterBeingWritten(levels("running", "failed"), "xhigh")).toBe(true);
+    expect(shorterBeingWritten(levels("running", "failed"), "low")).toBe(false);
+    expect(shorterBeingWritten(levels("ready", "failed"), "xhigh")).toBe(false);
+    // The level's own explanation still being written is not a failure to stand in for.
+    expect(shorterBeingWritten(parse({ teaching: null, teachingStatus: "running", teachingLevels: [{ level: "low", status: "running" }] }), "xhigh")).toBe(false);
+  });
+
+  it("shows each tier what it includes and nothing of a costlier one", () => {
+    const simple = render(parse({ scorecard: null, turns: [] }), { card: null, tier: "SIMPLE" });
+    expect(simple).toContain('aria-label="这次的结论"');
+    for (const marker of ['aria-label="看问题：逐弯动态对比"', 'aria-label="动作讲解"', 'aria-label="详细数据"']) expect(simple).not.toContain(marker);
+    const standard = render(parse({ turns: [] }), { tier: "STANDARD" });
+    expect(standard).toContain('aria-label="详细数据"');
+    // Why each problem happens starts at deep (owner's decision, 2026-11-21).
+    expect(standard).not.toContain('aria-label="动作讲解"');
+    expect(standard).not.toContain('aria-label="看问题：逐弯动态对比"');
+    expect(standard).not.toContain("3D 动画讲解");
+    // A report still carrying turns from a costlier tier shows none of them at standard.
+    expect(render(parse(), { tier: "STANDARD" })).not.toContain('aria-label="看问题：逐弯动态对比"');
+    const deep = render(parse(), { tier: "DEEP" });
+    expect(deep).toContain('aria-label="看问题：逐弯动态对比"');
+    // The explanations' pictures load with the standard motion, so the 3D lessons are checked in the browser, not here.
+    expect(deep).toContain('aria-label="动作讲解"');
+    // The path is complete's.
+    expect(deep).not.toContain("滑行轨迹");
+    expect(render(parse(), { tier: "COMPLETE" })).toContain("滑行轨迹");
+  });
+
+  it("says plainly when a simple analysis has no written summary", () => {
+    const html = render(parse({ scorecard: null, turns: [], teaching: null, teachingStatus: "failed" }), { card: null, tier: "SIMPLE" });
+    expect(html).toContain("这次的文字讲解没有写出来");
+    expect(html).not.toContain("二维数据观察");
   });
 
   it("says a scorecard job's explanation was not written instead of showing the old observations", () => {

@@ -13,6 +13,8 @@ import { withAnalysisQueueReasons } from "./scheduling";
 import { purgeExpiredVideos } from "./retention";
 import { analysisParty, analysisQuota, AnalysisDomainError, ANALYSIS_LEASE_MINUTES,
   ANALYSIS_QUEUE_MINUTES, MAX_ANALYSIS_PURCHASE_QUANTITY } from "./quota";
+import { resultForTier, storedTier, type AnalysisTier } from "./tiers";
+import { isPreparing, preparationAfterTierChange, readPrepareState } from "./prepare";
 
 const include = { videos: { orderBy: { uploadedAt: "asc" as const } },
   analysisJobs: { orderBy: { createdAt: "desc" as const } },
@@ -23,9 +25,15 @@ const supportedVideo = (video: { contentType: string; bytes: number }) =>
 function readBooking(tx: Prisma.TransactionClient, id: string) {
   return tx.booking.findUnique({ where: { id }, include });
 }
-const jobDto = (job: AnalysisBooking["analysisJobs"][number]) => ({ id: job.id, videoId: job.videoId,
-  actionId: job.actionId, status: job.status, createdAt: job.createdAt, finishedAt: job.finishedAt,
-  result: job.result, errorCode: job.errorCode });
+const jobDto = (job: AnalysisBooking["analysisJobs"][number]) => {
+  const preparing = isPreparing(job), tier = storedTier(job.tier);
+  return { id: job.id, videoId: job.videoId, tier, paidTier: storedTier(job.paidTier), actionId: job.actionId, createdAt: job.createdAt, errorCode: job.errorCode,
+    // Until everything the tier shows is made, the analysis is still in progress and has no report.
+    status: preparing ? "RUNNING" : job.status, finishedAt: preparing ? null : job.finishedAt,
+    result: preparing ? null : resultForTier(job.result, tier),
+    ...(preparing ? { phase: "preparing" as const, prepare: readPrepareState(job.prepareState) } : {}) };
+};
+const busy = (job: { status: string; refundedAt: Date | null; preparedTier: string | null }) => ["QUEUED", "RUNNING"].includes(job.status) || isPreparing(job);
 const purchaseDto = (purchase: AnalysisBooking["analysisPurchases"][number]) => ({
   id: purchase.id, quantity: purchase.quantity, unitPriceCents: purchase.unitPriceCents,
   totalCents: purchase.totalCents, currency: purchase.currency, status: purchase.status,
@@ -75,12 +83,13 @@ export async function getVideoAnalysisState(code: string, user: ActiveUser) {
       videos: booking.videos.map((video) => ({ id: video.id, caption: video.caption, uploadedAt: video.uploadedAt,
         contentType: video.contentType, analysisSupported: supportedVideo(video),
         url: `/api/bookings/${code}/videos/${video.id}`, canDelete: (party.isCoach || (party.isCustomer && video.uploadedById === user.id)) &&
-          !booking.analysisJobs.some((job) => job.videoId === video.id && ["QUEUED", "RUNNING"].includes(job.status)) })),
+          !booking.analysisJobs.some((job) => job.videoId === video.id && busy(job)) })),
       jobs: booking.analysisJobs.map(jobDto), purchases: booking.analysisPurchases.map(purchaseDto),
       payment: { coachName: profile?.displayName ?? "", wechatEnabled: profile?.wechatPayEnabled ?? false,
         wechatId: profile?.wechatId ?? null,
         wechatQrUrl: profile?.wechatPayEnabled && profile.wechatPayQrKey ? `/api/files/qr/${booking.coachId}?kind=wechat` : null },
-      upstream: new Map(booking.analysisJobs.map((job) => [job.id,
+      // FreeSki's own job has finished once the tier's outputs are being made: nothing to ask it about.
+      upstream: new Map(booking.analysisJobs.filter((job) => !isPreparing(job)).map((job) => [job.id,
         { upstreamJobId: job.upstreamJobId, upstreamDeploymentId: job.upstreamDeploymentId }])),
     };
   }, "view");
@@ -93,13 +102,13 @@ export async function getVideoAnalysisState(code: string, user: ActiveUser) {
 }
 
 export async function requestVideoAnalysis(code: string, user: ActiveUser,
-  input: { videoId: string; actionId: string; requestKey: string }) {
+  input: { videoId: string; actionId: string; requestKey: string; tier: AnalysisTier }) {
   // Authorize and reuse retries before any upstream request. This first pass
   // is read-only; a failed catalog lookup must not alter the credit ledger.
   const prepared = await locked(code, user, async (_tx, booking) => {
     const existing = booking.analysisJobs.find((job) => job.requestKey === input.requestKey);
     if (existing) {
-      if (existing.videoId !== input.videoId || existing.actionId !== input.actionId) throw new AnalysisDomainError("request-conflict");
+      if (existing.videoId !== input.videoId || existing.actionId !== input.actionId || storedTier(existing.tier) !== input.tier) throw new AnalysisDomainError("request-conflict");
       return { kind: "existing" as const, reservation: { ok: true, job: jobDto(existing),
         quota: analysisQuota(booking, booking.analysisJobs, booking.analysisPurchases) } };
     }
@@ -115,7 +124,7 @@ export async function requestVideoAnalysis(code: string, user: ActiveUser,
     return { kind: "new" as const, storageKey: video.storageKey };
   }, "act", false);
   if (prepared.kind === "existing") {
-    await ensureBusinessAnalysisQueued("booking", prepared.reservation.job.id);
+    void ensureBusinessAnalysisQueued("booking", prepared.reservation.job.id).catch(() => {});
     return prepared.reservation;
   }
   const [actions, videoAvailable] = await Promise.all([
@@ -124,7 +133,7 @@ export async function requestVideoAnalysis(code: string, user: ActiveUser,
   const reservation = await locked(code, user, async (tx, booking) => {
     const existing = booking.analysisJobs.find((job) => job.requestKey === input.requestKey);
     if (existing) {
-      if (existing.videoId !== input.videoId || existing.actionId !== input.actionId) throw new AnalysisDomainError("request-conflict");
+      if (existing.videoId !== input.videoId || existing.actionId !== input.actionId || storedTier(existing.tier) !== input.tier) throw new AnalysisDomainError("request-conflict");
       return { ok: true, job: jobDto(existing), quota: analysisQuota(booking, booking.analysisJobs, booking.analysisPurchases) };
     }
     completed(booking);
@@ -137,14 +146,17 @@ export async function requestVideoAnalysis(code: string, user: ActiveUser,
     if (!supportedVideo(video)) throw new AnalysisDomainError("unsupported-video");
     const quota = analysisQuota(booking, booking.analysisJobs, booking.analysisPurchases);
     if (!analysisParty(booking, user).isCoach && quota.remaining < 1) throw new AnalysisDomainError("quota-exhausted");
+    // Lesson clips are the coach's to analyse, without limit: every tier is free here.
     const job = await tx.videoAnalysisJob.create({ data: { bookingId: booking.id, videoId: video.id,
-      createdById: user.id, requestKey: input.requestKey, actionId: input.actionId,
+      createdById: user.id, requestKey: input.requestKey, actionId: input.actionId, tier: input.tier, paidTier: input.tier,
       queuedExpiresAt: new Date(Date.now() + ANALYSIS_QUEUE_MINUTES * 60_000) } });
     return { ok: true, job: jobDto(job), quota: analysisQuota(booking, [...booking.analysisJobs, job], booking.analysisPurchases) };
   });
   // Commit quota/ownership first. Upstream submission immediately announces
   // FreeSki demand to the broker; an outage leaves this reservation queued.
-  await ensureBusinessAnalysisQueued("booking", reservation.job.id);
+  // The hand-off uploads the whole clip to FreeSki, which may be asleep, starting or busy, so the answer does not wait
+  // for it: the reservation is durable and the analysis worker retries the hand-off every few seconds until it lands.
+  void ensureBusinessAnalysisQueued("booking", reservation.job.id).catch(() => {});
   return reservation;
 }
 
@@ -282,6 +294,8 @@ export async function settleAnalysisJob(id: string, leaseToken: string,
       ...unsubmittedGuard }, data: usable ? {
       status: "SUCCEEDED", result: outcome.ok ? outcome.result as unknown as Prisma.InputJsonValue : Prisma.DbNull,
       finishedAt: now, leaseToken: null, leaseExpiresAt: null,
+      // Scored; the report appears once everything its tier shows has been made (prepare.ts).
+      preparedTier: null, prepareStartedAt: now, preparedAt: null, prepareState: Prisma.DbNull,
     } : { status: "FAILED", refundedAt: now, finishedAt: now, leaseToken: null, leaseExpiresAt: null,
       result: outcome.ok ? { ...outcome.result, gradingStatus: "unavailable", score: null, scoreKind: null,
         gradingReason: outcome.result.gradingReason ?? "score-unavailable" } as unknown as Prisma.InputJsonValue : Prisma.DbNull,
@@ -303,4 +317,15 @@ export async function recoverExpiredAnalysisJobs(bookingIds?: readonly string[])
     return (await expireJobs(tx, bookingId, now)).count;
   });
   return count;
+}
+
+/** The lesson's coach moves a lesson analysis to another tier; lesson analyses are the coach's and free at every tier. */
+export async function changeLessonAnalysisTier(code: string, jobId: string, user: ActiveUser, tier: AnalysisTier) {
+  return locked(code, user, async (tx, booking) => {
+    if (!analysisParty(booking, user).isCoach) throw new AnalysisDomainError("forbidden");
+    const job = booking.analysisJobs.find((candidate) => candidate.id === jobId);
+    if (!job || job.refundedAt || !["QUEUED", "RUNNING", "SUCCEEDED"].includes(job.status)) throw new AnalysisDomainError("not-found");
+    const updated = await tx.videoAnalysisJob.update({ where: { id: job.id }, data: { tier, paidTier: tier, ...preparationAfterTierChange(job, tier) } });
+    return { ok: true, job: jobDto(updated), charged: 0 };
+  }, "act", false);
 }

@@ -1,14 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bone, Pause, Play } from "lucide-react";
-import { bumpField, cameraAxes, decodeStandardMotion, motionBones, motionMarks, motionPointsAt, projectPoint, snowLevelAt, STANDARD_MOTION_GROUPS,
+import { Bone, Move3d, Pause, Play } from "lucide-react";
+import { bumpField, cameraAxes, decodeStandardMotion, motionBones, motionMarks, motionPointsAt, projectPoint, snowLevelAt, turnAdvance, turnOrigin,
   type CameraAxes, type StandardMotion, type StandardMotionId } from "@/lib/freeski/standard-motion";
+import type { MotionGroup } from "@/lib/season-update/season-list";
 import { clientFetch } from "@/lib/client-fetch";
 import { cn } from "@/lib/utils";
 import { drawBones, drawSkierFigure, fineBonesUnit, STANDARD_BONES, STANDARD_STYLE, type Figure, type Point } from "./skier-figure";
 import type { Ribbon, Shot, SkierFigure, SkierStage } from "./skier-stage";
 import { CommonProblems } from "./movement-explanations";
+import { useOrbit } from "./use-orbit";
 
 const VIEWS = [
   { key: "front", zh: "正面", en: "Front", azimuth: 180, elevation: 9 },
@@ -18,21 +20,6 @@ const VIEWS = [
 ] as const;
 const SPEEDS = [1, .5, .25] as const;
 const TRACK_TURNS = 5;
-
-/** Across and down the slope from one edge change to the next, for a right turn. */
-function turnAdvance(motion: StandardMotion) {
-  const centre = (points: Float64Array) => {
-    const { left_ankle: l, right_ankle: r } = motion.index;
-    return [(points[l * 3] + points[r * 3]) / 2, (points[l * 3 + 1] + points[r * 3 + 1]) / 2];
-  };
-  const a = centre(motionPointsAt(motion, 0)), b = centre(motionPointsAt(motion, 1));
-  return { across: b[0] - a[0], down: b[1] - a[1] };
-}
-
-/** Where turn number `n` starts on the slope. Odd turns are left turns, mirrored. */
-function turnOrigin(n: number, advance: { across: number; down: number }) {
-  return [((n % 2) + 2) % 2 === 1 ? advance.across : 0, n * advance.down, 0];
-}
 
 function motionFigure(motion: StandardMotion, points: Float64Array, axes: CameraAxes, toCanvas: (p: [number, number]) => Point, unit: number): Figure {
   const at = (name: string): Point | null => {
@@ -62,18 +49,19 @@ function skiRibbons(motion: StandardMotion, n: number, phase: number, advance: {
 const STAGE_FRAME_HEIGHT = 3.1;
 
 function MotionStage({ motion, zh }: { motion: StandardMotion; zh: boolean }) {
-  const [view, setView] = useState<(typeof VIEWS)[number]>(VIEWS[0]);
+  const boxRef = useRef<HTMLDivElement>(null);
+  // Any angle: the buttons are starting points, and a drag turns the camera from there.
+  const { orbit, live: view, moved, setOrbit } = useOrbit(boxRef, { azimuth: VIEWS[0].azimuth, elevation: VIEWS[0].elevation, zoom: 1 });
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(.5);
   const [playing, setPlaying] = useState(true);
   const [bones, setBones] = useState(true);
   const [mode, setMode] = useState<"loading" | "scene" | "flat">("loading");
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const boxRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<{ stage: SkierStage; figure: SkierFigure; project: typeof import("./skier-stage").shotToCanvas } | null>(null);
   const sliderRef = useRef<HTMLInputElement>(null);
   const clock = useRef(0);
-  const live = useRef({ view, speed, playing, bones, mode });
-  useEffect(() => { live.current = { view, speed, playing, bones, mode }; }, [view, speed, playing, bones, mode]);
+  const live = useRef({ speed, playing, bones, mode });
+  useEffect(() => { live.current = { speed, playing, bones, mode }; }, [speed, playing, bones, mode]);
   const drawn = useRef("");
   const advance = useMemo(() => turnAdvance(motion), [motion]);
 
@@ -99,7 +87,8 @@ function MotionStage({ motion, zh }: { motion: StandardMotion; zh: boolean }) {
     const ratio = window.devicePixelRatio || 1;
     const width = Math.round(canvas.clientWidth * ratio), height = Math.round(canvas.clientHeight * ratio);
     if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
-    const axes = cameraAxes({ azimuth: live.current.view.azimuth, elevation: live.current.view.elevation, slope: motion.motion.pitchDeg });
+    const camera = view.current, frameHeight = STAGE_FRAME_HEIGHT * camera.zoom;
+    const axes = cameraAxes({ azimuth: camera.azimuth, elevation: camera.elevation, slope: motion.motion.pitchDeg });
     const duration = motion.motion.durationSec;
     const n = Math.floor(seconds / duration), phase = seconds / duration - n, mirrored = n % 2 === 1;
     const origin = turnOrigin(n, advance);
@@ -115,7 +104,7 @@ function MotionStage({ motion, zh }: { motion: StandardMotion; zh: boolean }) {
     const scene = stageRef.current;
     if (scene?.stage.usable) {
       // Nothing moved, nothing to draw: a paused stage should not keep the graphics card busy.
-      const key = `${seconds}|${live.current.view.key}|${live.current.bones}|${width}x${height}`;
+      const key = `${seconds}|${camera.azimuth}|${camera.elevation}|${camera.zoom}|${live.current.bones}|${width}x${height}`;
       if (key === drawn.current) return;
       drawn.current = key;
       // The scene follows the hips across the slope; height stays true, so the snow stays at z = 0.
@@ -123,8 +112,8 @@ function MotionStage({ motion, zh }: { motion: StandardMotion; zh: boolean }) {
       const local = points.slice();
       for (let k = 0; k < motion.pointCount; k++) { local[k * 3] -= u; local[k * 3 + 1] -= v; }
       scene.figure.setPose(local, motion.index);
-      const below = STAGE_FRAME_HEIGHT * .05;
-      const shot: Shot = { rect: { x: 0, y: 0, width: 1, height: 1 }, axes, slopeDeg: motion.motion.pitchDeg, frameHeight: STAGE_FRAME_HEIGHT,
+      const below = frameHeight * .05;
+      const shot: Shot = { rect: { x: 0, y: 0, width: 1, height: 1 }, axes, slopeDeg: motion.motion.pitchDeg, frameHeight, distance: 8 * camera.zoom,
         focus: [-axes.up[0] * below, -axes.up[1] * below, hipZ - axes.up[2] * below], snowAt: [u, v], figures: [scene.figure],
         ribbons: skiRibbons(motion, n, phase, advance, u, v), groomed: !bumpField(motion), snowLevel: snowLevelAt(motion, phase), bumps: bumpField(motion) };
       scene.stage.render([shot]);
@@ -184,7 +173,7 @@ function MotionStage({ motion, zh }: { motion: StandardMotion; zh: boolean }) {
       motion.points.slice(5, 23).map(name => figure.at(name)), STANDARD_STYLE.bones, unit);
     context.fillStyle = "rgba(255, 255, 255, 0.82)";
     caption();
-  }, [motion, advance, zh]);
+  }, [motion, advance, zh, view]);
 
   useEffect(() => {
     let frame = 0, last = performance.now();
@@ -203,10 +192,14 @@ function MotionStage({ motion, zh }: { motion: StandardMotion; zh: boolean }) {
   }, [draw, motion]);
 
   return <div className="space-y-2">
-    <div ref={boxRef} className={cn("relative aspect-video overflow-hidden rounded-xl", mode === "flat" ? "bg-[#0d1524]" : "bg-[#e6edf5]", mode === "loading" && "animate-pulse")}>
+    <div ref={boxRef} tabIndex={0} aria-label={zh ? "标准动作，拖动可以转视角" : "The standard; drag to turn the view"}
+      className={cn("relative aspect-video cursor-grab touch-pan-y overflow-hidden rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-accent active:cursor-grabbing",
+        mode === "flat" ? "bg-[#0d1524]" : "bg-[#e6edf5]", mode === "loading" && "animate-pulse")}>
+      {mode === "scene" && !moved && <span className="pointer-events-none absolute right-2.5 top-2.5 flex items-center gap-1 rounded-full bg-black/35 px-2.5 py-1 text-[11px] font-medium text-white">
+        <Move3d className="size-3.5" aria-hidden />{zh ? "拖动转视角" : "Drag to turn"}</span>}
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" aria-label={zh ? `${motion.level} 级${motion.name.zh}的标准动作` : `Standard ${motion.name.en}, Level ${motion.level}`} />
     </div>
-    <input ref={sliderRef} type="range" min={0} max={1000} defaultValue={0} className="w-full accent-[var(--accent)]" aria-label={zh ? "两个弯里的位置" : "Position across two turns"}
+    <input ref={sliderRef} type="range" min={0} max={1000} defaultValue={0} className="h-9 w-full accent-[var(--accent)]" aria-label={zh ? "两个弯里的位置" : "Position across two turns"}
       onChange={event => { setPlaying(false); clock.current = Number(event.target.value) / 1000 * motion.motion.durationSec * 2; }} />
     <div className="flex flex-wrap items-center gap-2">
       <button type="button" onClick={() => setPlaying(value => !value)} aria-label={playing ? (zh ? "暂停" : "Pause") : (zh ? "播放" : "Play")}
@@ -214,8 +207,11 @@ function MotionStage({ motion, zh }: { motion: StandardMotion; zh: boolean }) {
         {playing ? <Pause className="size-4" aria-hidden /> : <Play className="size-4 translate-x-px" aria-hidden />}
       </button>
       <div role="group" aria-label={zh ? "观察角度" : "Viewing angle"} className="flex rounded-lg border border-border bg-surface-2 p-0.5">
-        {VIEWS.map(option => <button key={option.key} type="button" aria-pressed={view.key === option.key} onClick={() => setView(option)}
-          className={cn("min-h-8 rounded-md px-2.5 text-xs font-semibold", view.key === option.key ? "bg-surface text-ink shadow-[var(--shadow-sm)]" : "text-ink-3 hover:text-ink")}>{zh ? option.zh : option.en}</button>)}
+        {VIEWS.map(option => {
+          const on = Math.abs(orbit.azimuth - option.azimuth) < .5 && Math.abs(orbit.elevation - option.elevation) < .5;
+          return <button key={option.key} type="button" aria-pressed={on} onClick={() => setOrbit({ azimuth: option.azimuth, elevation: option.elevation, zoom: orbit.zoom })}
+            className={cn("min-h-8 rounded-md px-2.5 text-xs font-semibold", on ? "bg-surface text-ink shadow-[var(--shadow-sm)]" : "text-ink-3 hover:text-ink")}>{zh ? option.zh : option.en}</button>;
+        })}
       </div>
       <div role="group" aria-label={zh ? "播放速度" : "Playback speed"} className="flex rounded-lg border border-border bg-surface-2 p-0.5">
         {SPEEDS.map(value => <button key={value} type="button" aria-pressed={speed === value} onClick={() => setSpeed(value)}
@@ -297,7 +293,11 @@ function MotionData({ motion, zh }: { motion: StandardMotion; zh: boolean }) {
 }
 
 /** The generated standard motions: pick an action and level, watch it from any side, read its numbers. */
-export function StandardMotionViewer({ zh, initial }: { zh: boolean; initial: StandardMotionId }) {
+export function StandardMotionViewer({ zh, initial, groups, lessons = false }: { zh: boolean; initial: StandardMotionId;
+  /** The actions of the season, as its list names and orders them. */
+  groups: MotionGroup[];
+  /** Whether the common problems open as 3D lessons: for coaches; students get them in a complete-tier report. */
+  lessons?: boolean }) {
   const [id, setId] = useState<StandardMotionId>(initial);
   const [motion, setMotion] = useState<StandardMotion | null>(null);
   const [error, setError] = useState(false);
@@ -317,12 +317,12 @@ export function StandardMotionViewer({ zh, initial }: { zh: boolean; initial: St
     <label className="block space-y-1 text-sm font-medium lg:hidden">
       {zh ? "动作和级别" : "Action and level"}
       <select value={id} onChange={event => setId(event.target.value as StandardMotionId)} className="block min-h-11 w-full rounded-lg border border-border bg-surface px-3 text-base">
-        {STANDARD_MOTION_GROUPS.flatMap(group => group.levels.map(level => <option key={`${group.action}-l${level}`} value={`${group.action}-l${level}`}>
+        {groups.flatMap(group => group.levels.map(level => <option key={`${group.action}-l${level}`} value={`${group.action}-l${level}`}>
           {zh ? `${group.zh} · ${level} 级` : `${group.en} · Level ${level}`}</option>))}
       </select>
     </label>
     <nav aria-label={zh ? "动作和级别" : "Actions and levels"} className="hidden space-y-1 lg:sticky lg:top-24 lg:block lg:self-start">
-      {STANDARD_MOTION_GROUPS.map(group => <div key={group.action} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-surface-2">
+      {groups.map(group => <div key={group.action} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-surface-2">
         <span className="text-sm font-medium">{zh ? group.zh : group.en}</span>
         <span className="flex shrink-0 gap-1">{group.levels.map(level => {
           const value = `${group.action}-l${level}` as StandardMotionId;
@@ -337,7 +337,7 @@ export function StandardMotionViewer({ zh, initial }: { zh: boolean; initial: St
       {shown && <>
         <h2 className="text-lg font-semibold">{zh ? `${shown.level} 级 · ${shown.name.zh}` : `Level ${shown.level} · ${shown.name.en}`}</h2>
         <MotionStage key={shown.id} motion={shown} zh={zh} />
-        <CommonProblems key={`${shown.id}:problems`} motion={shown} zh={zh} />
+        <CommonProblems key={`${shown.id}:problems`} motion={shown} zh={zh} pictures={lessons ? "all" : "diagrams"} />
         <MotionData motion={shown} zh={zh} />
       </>}
     </div>

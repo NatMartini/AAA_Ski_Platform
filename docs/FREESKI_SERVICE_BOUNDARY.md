@@ -1,5 +1,13 @@
 # Ski Platform 与 FreeSki：独立项目及 API 消费设计
 
+## 分工更新（2026-11-12，社长决定）
+
+视频分析的全部展示归 FreeSki：上传到出报告的流程、报告、3D 对比和 3D 讲解、标准动作库、使用指南，以及以后的传感器采样模式和所有新的展示。滑雪平台只负责账号、课程、分析次数和档位的计费，并通过 API 把视频和请求发给 FreeSki；平台来的任务 FreeSki 不校验费用。
+
+- 平台现有的展示在 FreeSki 的新展示可用之前继续保留，之后换成进入 FreeSki 的入口。
+- 平台不再新增展示功能，新的展示需求转给 FreeSki。
+- 平台现有展示的逐块说明和待定事项见[移交清单](VIDEO_ANALYSIS_HANDOVER.md)。
+
 ## 当前状态（2026-10-26 下午，取代下文的部署说明）
 
 `J:\Freeski\FreeSkiclaude`是唯一的FreeSki主目录。早上退役了Codex做的冻结部署；下午FreeSki改为直接从源码运行自带的平台接口，由ModelCtrl按需启停。
@@ -12,6 +20,7 @@
 | 启动器 | 配置部署ID且未配置本地启动项时按“外部提供方”处理：只做健康检查，照常启动调度进程 |
 | ModelCtrl身份 | GPU与文字任务为`ski-platform` / `ski-platform-text`，roots已由ModelCtrl改为`J:\Freeski\FreeSkiclaude\server` |
 | 报告内容 | 按[报告接口约定v1.1](FREESKI_REPORT_CONTRACT.md)：评分卡、教学解释、关键帧、慢动作讲解视频，加原有逐弯动态骨架、参考库与导出 |
+| 雪季更新（2026-11-09） | 教练在「管理 → 动作列表」点“更新动作”。要用显卡和 FreeSki 环境的步骤（提取示范视频的姿态、重建评分标准、重建自动识别）由 FreeSki 自己用它的 ModelCtrl 身份完成，本站只调 `/api/aaa/season/*`（能力标记 `seasonRebuild`）。采样和生成是本仓库的 `scripts/standard-motion`，由后台调度进程作为子进程运行，用 `.env.local` 里的 `SEASON_PIPELINE_PYTHON` / `SEASON_PIPELINE_FREESKI_DIR`：只在服务器端读取，浏览器不能指定程序或路径，子进程不带本站的密钥。这些脚本直接读 FreeSki 源码目录里的示范姿态和评分代码，是“只通过 HTTP 消费”的一处明确例外，只用于这项构建。步骤见 [seasons/csia/README.md](../seasons/csia/README.md) |
 | 配置备份 | 切到8100前的`.env.local`在`storage/freeski/cutover-backup-20261026-8100/`；更早切到8000前的在`storage/freeski/cutover-backup-20261026/` |
 | 已退役 | Codex的冻结部署`ski-platform-integration-20261022`（目录在`J:\_FreeSki_cleanup_20261026\`）和本仓库的8000 wrapper（代码保留，不再使用） |
 

@@ -90,7 +90,9 @@ export function metricConfidence(card: Scorecard, metric: Metric): Confidence {
   const scored = counted.filter(turn => turn.metrics.some(entry => entry.key === metric.key && entry.score !== null));
   if (counted.length > 0 && scored.length < Math.max(3, counted.length / 2)) { reasons.push([`只在 ${scored.length} 个弯里测到`, `measured in only ${scored.length} turns`]); lower("low"); }
   else if (counted.length > 0 && counted.length < 5) { reasons.push(["可打分的弯较少", "few scorable turns"]); lower("medium"); }
-  if (card.calibration.matched_reference_count <= 1) { reasons.push(["只有 1 段示范可比", "only one demonstration to compare with"]); lower("medium"); }
+  // Score card 8 counts the demonstrations the standard was generated from.
+  if (card.calibration.matched_reference_count <= 1) { reasons.push(card.calibration.reference_kind === "generated_standard"
+    ? ["标准动作只由 1 段示范生成", "the standard comes from one demonstration"] : ["只有 1 段示范可比", "only one demonstration to compare with"]); lower("medium"); }
   if (card.quality === "insufficient") { reasons.push(["画面不足", "insufficient footage"]); lower("low"); }
   else if (card.quality_reasons.includes("camera_motion")) { reasons.push(["镜头晃动", "camera movement"]); lower("medium"); }
   if (card.quality_reasons.includes("low_pose_confidence") && metricInsight(metric.key)?.lines.some(([a]) => /(knee|ankle|hip)/.test(a)))

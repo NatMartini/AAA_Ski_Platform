@@ -19,6 +19,9 @@ import { comparableScorecards } from "@/lib/freeski/metric-insight";
 import { CoachVideoFeedback } from "@/components/booking/coach-video-feedback";
 import { JobNotes, analysisJobLabel, jobStatusBadge } from "@/components/booking/video-card";
 import type { VideoAnalysisView } from "@/components/booking/video-analysis-types";
+import { RecognitionNote } from "@/components/booking/recognition-note";
+import { ReportTierBar } from "@/components/booking/report-tier-bar";
+import { LEGACY_TIER, TIER_FEATURES } from "@/lib/video-analysis/tiers";
 
 /**
  * One analysis on its own page: the clip, when it was uploaded, submitted
@@ -48,13 +51,22 @@ export default async function AnalysisReportPage({ params, searchParams }: PageP
   const video = view.videos.find((candidate) => candidate.id === job.videoId) ?? null;
   // The student's previous finished analysis of the same action, when the same scoring produced both.
   const current = readAnalysisResult(job.result)?.scorecard ?? null;
+  // What FreeSki recognised, when the action was left to it.
+  const recognition = readAnalysisResult(job.result)?.actionRecognition ?? null;
   const previous = current ? view.jobs.filter((candidate) => candidate.id !== job.id && candidate.status === "SUCCEEDED" && candidate.actionId === job.actionId &&
       candidate.finishedAt && job.finishedAt && candidate.finishedAt < job.finishedAt)
     .sort((a, b) => b.finishedAt!.localeCompare(a.finishedAt!))
     .find((candidate) => { const card = readAnalysisResult(candidate.result)?.scorecard; return card ? comparableScorecards(current, card) : false; }) ?? null : null;
-  const label = analysisJobLabel(job.actionId, view.actions, zh);
+  const label = analysisJobLabel(job.actionId, view.actions, zh, job.result);
   const badge = jobStatusBadge(job.status, zh);
   const pending = job.status === "QUEUED" || job.status === "RUNNING";
+  // Scored, and still making what the tier shows: the report appears once all of it is ready.
+  const preparing = job.phase === "preparing";
+  const tier = job.tier ?? LEGACY_TIER;
+  // A personal analysis is its owner's to move between tiers; a lesson analysis its coach's.
+  const tierControl = job.status !== "FAILED" && job.paidTier ? { scope: lesson ? "booking" as const : "account" as const, jobId: job.id, paidTier: job.paidTier,
+    canChange: lesson ? Boolean(view.unlimited) && user.role !== "CUSTOMER" : true,
+    accountId: lesson ? null : view.accountId ?? null, unlimited: Boolean(view.unlimited), remainingHalves: view.quota.remainingHalves ?? null } : null;
   const back = lesson ? `/video-analysis?lesson=${encodeURIComponent(lesson)}#workspace` : "/video-analysis?source=account#workspace";
   const when = (value: string | null | undefined) => value ? formatTorontoShortDateTime(new Date(value), loc) : null;
   const finished = job.result !== null && job.result !== undefined && (job.status === "SUCCEEDED" || job.status === "FAILED");
@@ -87,12 +99,15 @@ export default async function AnalysisReportPage({ params, searchParams }: PageP
       {/* A turning ring until the server has finished; the page refreshes itself and shows the report. */}
       {pending && <div className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-8 text-center shadow-[var(--shadow-sm)]">
         <Spinner size="lg" className="flex-col gap-3 text-base font-semibold text-ink [&>svg]:text-cat-video"
-          label={job.status === "QUEUED" ? (zh ? "排队中，轮到就开始分析" : "Queued; the analysis starts when its turn comes") : (zh ? "正在分析这个视频" : "Analysing this video")} />
-        <p className="text-sm text-ink-3">{zh ? "分析完成后这里会自动显示报告，可以先离开，稍后再回来看。" : "The report appears here when the analysis is done; you can leave and come back."}</p>
-        <AnalysisProgress status={job.status} progress={job.progress} computeWait={job.computeWait} zh={zh} />
+          label={job.status === "QUEUED" ? (zh ? "排队中，轮到就开始分析" : "Queued; the analysis starts when its turn comes")
+            : preparing ? (zh ? "评分完成，正在生成这一档的全部内容" : "Scored; now making everything this tier shows")
+            : (zh ? "正在分析这个视频" : "Analysing this video")} />
+        <p className="text-sm text-ink-3">{zh ? "全部生成好之后这里会自动显示报告，可以先离开，稍后再回来看。" : "The report appears here once all of it is made; you can leave and come back."}</p>
+        <AnalysisProgress status={job.status} progress={job.progress} computeWait={job.computeWait} zh={zh}
+          outputs={preparing ? job.prepare ?? null : undefined} media={TIER_FEATURES[tier].media} />
       </div>}
-      <Link href={back} className="inline-flex min-h-9 items-center gap-1.5 text-sm font-semibold text-ink-2 hover:text-ink">
-        <ArrowLeft className="size-4" aria-hidden />{zh ? "返回视频库" : "Back to video library"}
+      <Link href={back} className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-ink-2 hover:text-ink">
+        <ArrowLeft className="size-4" aria-hidden />{zh ? "返回我的分析" : "Back to my analyses"}
       </Link>
       <PageHeader
         icon={<FileVideo aria-hidden />}
@@ -108,14 +123,18 @@ export default async function AnalysisReportPage({ params, searchParams }: PageP
         </>}
       />
 
+      {tierControl && <ReportTierBar tier={tier} control={tierControl} zh={zh} />}
+
       {/* While it runs the clip and its timeline lead; once finished the report does, so the conclusion is on the first screen. */}
       {!finished && clip}
       {finished && (
         <section className="space-y-3">
           <SectionHeading title={zh ? "分析报告" : "Analysis report"} />
+          {recognition && <RecognitionNote recognition={recognition} zh={zh} jobId={job.id} actionId={job.actionId ?? ""} videoId={video?.id ?? null}
+            tier={tier} accountId={lesson ? null : view.accountId ?? null} />}
           {previous && <p className="text-xs text-ink-3">{zh ? `和上一次（${when(previous.finishedAt)}）的同一动作分析对比。` : `Compared with your previous analysis of this action (${when(previous.finishedAt)}).`}</p>}
           <VideoAnalysisResult result={job.result} locale={loc} dynamicReportBase={`/api/video-analysis/reports/${lesson ? "booking" : "account"}/${job.id}`}
-            previousResult={previous?.result ?? null} expanded reviewHref={reviewHref} />
+            previousResult={previous?.result ?? null} expanded reviewHref={reviewHref} tier={tier} />
         </section>
       )}
       {finished && (

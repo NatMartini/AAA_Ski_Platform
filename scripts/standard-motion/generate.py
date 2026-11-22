@@ -2,6 +2,10 @@
 
     python scripts/standard-motion/extract_reference.py     # when FreeSki's gold corpus changes
     python scripts/standard-motion/generate.py [ids...]
+    python scripts/standard-motion/generate.py --season seasons/csia/2026-27.json --out <dir> --reference <file> --docs <file>
+
+The second form is what the site's "update the actions" run uses: the season's list picks and names the motions, and
+everything is written to a staging folder that the run checks before publishing.
 
 Each motion is a 3D skier (skier_model.py) whose character follows the guide's words (csia_specs.py),
 whose numbers are fitted to the demonstrations' median turn (fit_motion.py) and then checked and
@@ -31,7 +35,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 ROOT = HERE.parents[1]
 
-from csia_specs import CAT_TRACK, PITCH, SPECS, SPEED, Spec, spec_id  # noqa: E402
+from csia_specs import CAT_TRACK, PITCH, SPECS, SPEED, Spec, season_specs, spec_id  # noqa: E402
 from fit_motion import fit, load_reference, normalised_view  # noqa: E402
 from skier_model import BODY, Camera, INDEX, JOINTS, MIRROR, Motion, POINTS, build_turn, path_centre  # noqa: E402
 from tune_motion import tune  # noqa: E402
@@ -81,7 +85,7 @@ def round_list(values, digits=1):
     return [round(float(v), digits) for v in values]
 
 
-def generate(spec: Spec, reference: dict) -> dict:
+def generate(spec: Spec, reference: dict, server: Path = SERVER) -> dict:
     logging.disable(logging.CRITICAL)
     key = spec.reference or f"{spec.action}|{spec.level}|pass"
     group = reference["groups"][key]
@@ -89,7 +93,7 @@ def generate(spec: Spec, reference: dict) -> dict:
     motion = fit_size(motion, spec)
     camera = Camera(180., elevation, PITCH[spec.pitch])
     ignore = ("turn_tempo",) if spec.reference else ()
-    motion, filming, result = tune(motion, camera, spec.action, spec.level, group, SERVER, ignore)
+    motion, filming, result = tune(motion, camera, spec.action, spec.level, group, server, ignore)
     channels = {}
     build_turn(motion, CURVE_PHASES, channels=channels)
     frames = build_turn(motion, FRAME_PHASES)
@@ -125,11 +129,11 @@ def generate(spec: Spec, reference: dict) -> dict:
 
 
 def _job(args):
-    spec, reference = args
-    return generate(spec, reference)
+    spec, reference, server = args
+    return generate(spec, reference, server)
 
 
-def write_docs(items: list) -> None:
+def write_docs(items: list, path: Path = ROOT / "docs" / "STANDARD_MOTIONS.md") -> None:
     lines = ["# 标准动作数据", "",
              "`scripts/standard-motion/generate.py` 生成，不要手改。每个动作一份 `public/standard-motions/<动作>-l<级别>.json`，是一个三维滑雪者（人 + 雪板 + 雪杖）从换刃到换刃的一个右转，下一个弯是它的镜像。", "",
              "## 怎么来的", "",
@@ -164,26 +168,35 @@ def write_docs(items: list) -> None:
         for label, name in rows:
             lines.append(f"| {label} | " + " | ".join(str(c[name][i]) for i in (0, 5, 10, 15, 20)) + " |")
         lines.append("")
-    (ROOT / "docs" / "STANDARD_MOTIONS.md").write_text("\n".join(lines), encoding="utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("ids", nargs="*")
+    parser.add_argument("--season", type=Path, help="a season's action list: generate exactly its motions, under its names")
+    parser.add_argument("--out", type=Path, default=ROOT / "public" / "standard-motions")
+    parser.add_argument("--reference", type=Path, default=HERE / "reference" / "gold_turns.json")
+    parser.add_argument("--freeski", type=Path, default=SERVER)
+    parser.add_argument("--docs", type=Path, default=ROOT / "docs" / "STANDARD_MOTIONS.md")
+    parser.add_argument("--workers", type=int, default=6)
     args = parser.parse_args()
-    reference = load_reference()
-    out = ROOT / "public" / "standard-motions"
+    reference = load_reference(args.reference)
+    specs = season_specs(args.season) if args.season else SPECS
+    out = args.out
     out.mkdir(parents=True, exist_ok=True)
-    chosen = [s for s in SPECS if not args.ids or spec_id(s) in args.ids]
-    with ProcessPoolExecutor(max_workers=6) as pool:
-        for item in pool.map(_job, [(s, reference) for s in chosen]):
+    chosen = [s for s in specs if not args.ids or spec_id(s) in args.ids]
+    print("motions", len(chosen), flush=True)
+    with ProcessPoolExecutor(max_workers=max(1, args.workers)) as pool:
+        for item in pool.map(_job, [(s, reference, args.freeski) for s in chosen]):
             (out / f"{item['id']}.json").write_text(json.dumps(item, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
             v = item["verification"]
             print(item["id"].ljust(26), "overall", v["overall"], "shown", f"{v['shownInBand']}/{v['shownCount']}", "rms", v["fitRmsBodyHeights"], "T", item["motion"]["durationSec"], "W", item["motion"]["turnWidthM"], "v", item["motion"]["speedMs"], "seam", v["seamM"], flush=True)
-    items = [json.loads((out / f"{spec_id(s)}.json").read_text(encoding="utf-8")) for s in SPECS if (out / f"{spec_id(s)}.json").is_file()]
+    items = [json.loads((out / f"{spec_id(s)}.json").read_text(encoding="utf-8")) for s in specs if (out / f"{spec_id(s)}.json").is_file()]
     index = [{k: item[k] for k in ("id", "action", "level", "name")} | {"durationSec": item["motion"]["durationSec"], "overall": item["verification"]["overall"]} for item in items]
     (out / "index.json").write_text(json.dumps({"schema": "standard_motion_index.v1", "motions": index}, ensure_ascii=False), encoding="utf-8")
-    write_docs(items)
+    write_docs(items, args.docs)
     return 0
 
 

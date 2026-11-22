@@ -19,7 +19,7 @@ vi.mock("../freeski/adapter", () => ({ freeSkiServiceState: mocks.available, fre
 vi.mock("../freeski/dispatcher", () => ({ ensureBusinessAnalysisQueued: mocks.enqueue }));
 import { accountAnalysisQuota, attachAccountUpstreamJobId, claimAccountAnalysisJob, getAccountVideoAnalysisState,
   heartbeatAccountAnalysisJob, issueAccountAnalysisGrant, listAccountAnalysisGrants, lockedAccount,
-  recoverExpiredAccountAnalysisJobs, requestAccountAnalysis, settleAccountAnalysisJob } from "./account-service";
+  recoverExpiredAccountAnalysisJobs, requestAccountAnalysis, settleAccountAnalysisJob, changeAccountAnalysisTier } from "./account-service";
 
 const now = new Date("2026-10-08T17:00:00.000Z");
 const actor = (id: string, role: ActiveUser["role"] = "CUSTOMER"): ActiveUser => ({ id, role, email: `${id}@example.com`,
@@ -39,7 +39,8 @@ const video = (id = "video", accountId = "customer"): AccountAnalysisVideo => ({
   storageKey: `private/${accountId}/${id}.mp4`, uploadedById: accountId,
   caption: null, contentType: "video/mp4", bytes: 100, uploadedAt: now });
 const job = (changes: Partial<AccountAnalysisJob> = {}): AccountAnalysisJob => ({ id: "job", accountId: "customer",
-  videoId: "video", createdById: "customer", requestKey: "request", actionId: "parallel", upstreamJobId: null, upstreamDeploymentId: null, upstreamApiVersion: null,
+  videoId: "video", createdById: "customer", requestKey: "request", actionId: "parallel", tier: "COMPLETE", paidTier: "COMPLETE",
+  preparedTier: "COMPLETE", prepareStartedAt: null, preparedAt: null, prepareState: null, upstreamJobId: null, upstreamDeploymentId: null, upstreamApiVersion: null,
   status: "QUEUED", consumedAt: now, refundedAt: null, queuedExpiresAt: new Date(now.getTime() + 30 * 60_000),
   leaseToken: null, leaseExpiresAt: null, attempts: 0, startedAt: null, finishedAt: null, result: null,
   errorCode: null, createdAt: now, updatedAt: now, ...changes });
@@ -153,7 +154,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 const run = (requestKey = "request", user = customer, videoId = "video") => requestAccountAnalysis(user,
-  { videoId, actionId: "improvement:level2:parallel", requestKey, expectedAccountId: user.id });
+  { videoId, actionId: "improvement:level2:parallel", requestKey, expectedAccountId: user.id, tier: "COMPLETE" });
 const issue = (changes: Partial<Parameters<typeof issueAccountAnalysisGrant>[1]> = {}, user = coach) => issueAccountAnalysisGrant(user,
   { recipientEmail: "customer@example.com", quantity: 2, requestKey: "new-grant", expectedCoachId: user.id, ...changes });
 
@@ -218,17 +219,17 @@ describe("account FreeSki grant wallet", () => {
     const id = "certification:level2:short_turn";
     mocks.catalog.mockResolvedValue([{ ...action(id), pathType: "certification", level: "level2" }]);
     const reservation = await requestAccountAnalysis(customer, { videoId: "video", actionId: id,
-      requestKey: "cert", expectedAccountId: customer.id });
+      requestKey: "cert", expectedAccountId: customer.id, tier: "COMPLETE" });
     expect(jobs[0].actionId).toBe(id);
     expect(await claimAccountAnalysisJob(reservation.job.id)).toMatchObject({ actionId: id });
   });
 
   it("stores the skier's current level with an improvement request and refuses one without it", async () => {
-    await expect(requestAccountAnalysis(customer, { videoId: "video", actionId: "parallel", requestKey: "bare", expectedAccountId: customer.id }))
+    await expect(requestAccountAnalysis(customer, { videoId: "video", actionId: "parallel", requestKey: "bare", expectedAccountId: customer.id, tier: "COMPLETE" }))
       .rejects.toMatchObject({ reason: "unsupported-action" });
     expect(mocks.jobCreate).not.toHaveBeenCalled();
     const reservation = await requestAccountAnalysis(customer, { videoId: "video", actionId: "improvement:level4:parallel",
-      requestKey: "level", expectedAccountId: customer.id });
+      requestKey: "level", expectedAccountId: customer.id, tier: "COMPLETE" });
     expect(jobs[0].actionId).toBe("improvement:level4:parallel");
     expect(await claimAccountAnalysisJob(reservation.job.id)).toMatchObject({ actionId: "improvement:level4:parallel" });
   });
@@ -315,6 +316,17 @@ describe("account FreeSki grant wallet", () => {
     expect((await getAccountVideoAnalysisState(customer)).quota).toMatchObject({ reserved: 6, remaining: 0 });
   });
 
+  it("answers as soon as the analysis is reserved, without waiting for the clip to reach FreeSki", async () => {
+    // FreeSki asleep or busy: the hand-off never finishes while the student waits.
+    mocks.enqueue.mockReturnValue(new Promise(() => {}));
+    const reserved = await run();
+    expect(reserved.job.status).toBe("QUEUED");
+    expect(mocks.enqueue).toHaveBeenCalledWith("account", reserved.job.id);
+    // A failed hand-off is left to the worker's retries, not turned into an error for the student.
+    mocks.enqueue.mockRejectedValue(new Error("connect ENOBUFS"));
+    await expect(run("request-2")).resolves.toMatchObject({ ok: true });
+  });
+
   it("reuses identical analysis requests and rejects conflicting retries without spending", async () => {
     const [a, b] = await Promise.all([run(), run()]);
     expect(a.job.id).toBe(b.job.id);
@@ -325,7 +337,7 @@ describe("account FreeSki grant wallet", () => {
   });
 
   it("rejects an account-switch snapshot before any lock or request write", async () => {
-    await expect(requestAccountAnalysis(customer, { videoId: "video", actionId: "parallel", requestKey: "request", expectedAccountId: "other" }))
+    await expect(requestAccountAnalysis(customer, { videoId: "video", actionId: "parallel", requestKey: "request", expectedAccountId: "other", tier: "COMPLETE" }))
       .rejects.toMatchObject({ reason: "state-changed" });
     expect(mocks.lock).not.toHaveBeenCalled();
     expect(mocks.catalog).not.toHaveBeenCalled();
@@ -345,7 +357,7 @@ describe("account FreeSki grant wallet", () => {
   });
 
   it("rejects unknown actions, missing files and unavailable configuration without spending", async () => {
-    await expect(requestAccountAnalysis(customer, { videoId: "video", actionId: "invented", requestKey: "request", expectedAccountId: "customer" }))
+    await expect(requestAccountAnalysis(customer, { videoId: "video", actionId: "invented", requestKey: "request", expectedAccountId: "customer", tier: "COMPLETE" }))
       .rejects.toMatchObject({ reason: "unsupported-action" });
     mocks.configured.mockReturnValue(false);
     await expect(run()).rejects.toMatchObject({ reason: "service-not-configured" });
@@ -368,6 +380,114 @@ describe("account FreeSki grant wallet", () => {
     expect(mocks.scheduler).not.toHaveBeenCalled();
     expect(mocks.available).not.toHaveBeenCalled();
     expect(mocks.catalog).not.toHaveBeenCalled();
+  });
+});
+
+describe("analysis tiers", () => {
+  const at = (tier: "SIMPLE" | "STANDARD" | "DEEP" | "COMPLETE", requestKey: string, user = customer) => requestAccountAnalysis(user,
+    { videoId: "video", actionId: "improvement:level2:parallel", requestKey, expectedAccountId: user.id, tier });
+
+  it("charges half an analysis for deep, one for complete, and nothing for the free tiers", async () => {
+    grants = [];
+    await at("DEEP", "deep");
+    await at("COMPLETE", "complete");
+    await at("STANDARD", "standard");
+    await at("SIMPLE", "simple");
+    expect((await getAccountVideoAnalysisState(customer)).quota).toMatchObject({ reserved: 1.5, remaining: 1.5, freeToday: 2, freeLimit: 5 });
+    await at("DEEP", "deep-2");
+    await at("COMPLETE", "complete-2");
+    await expect(at("DEEP", "deep-3")).rejects.toMatchObject({ reason: "quota-exhausted" });
+    expect((await getAccountVideoAnalysisState(customer)).quota.remaining).toBe(0);
+  });
+
+  it("lets a student start five free analyses a day, and coaches as many as they like", async () => {
+    for (const key of ["a", "b", "c", "d", "e"]) await at("STANDARD", key);
+    await expect(at("SIMPLE", "f")).rejects.toMatchObject({ reason: "free-daily-limit" });
+    // A paid tier is still open, from the credits.
+    await at("DEEP", "paid");
+    vi.setSystemTime(new Date(now.getTime() + 24 * 60 * 60_000));
+    await at("SIMPLE", "tomorrow");
+    vi.setSystemTime(now);
+    // A coach has no daily allowance to count.
+    expect(accountAnalysisQuota([], jobs, { free: 0, unlimited: true })).toMatchObject({ unlimited: true, freeLimit: null, remaining: 0 });
+  });
+
+  it("charges the difference going up, never refunds going down, and lets a paid tier be chosen again for free", async () => {
+    grants = [];
+    const first = await at("STANDARD", "standard");
+    const change = (tier: "SIMPLE" | "STANDARD" | "DEEP" | "COMPLETE") => changeAccountAnalysisTier(customer, { jobId: first.job.id, tier, expectedAccountId: customer.id });
+    expect(await change("SIMPLE")).toMatchObject({ charged: 0, job: { tier: "SIMPLE", paidTier: "STANDARD" }, quota: { remaining: 3 } });
+    expect(await change("DEEP")).toMatchObject({ charged: .5, job: { tier: "DEEP", paidTier: "DEEP" }, quota: { remaining: 2.5 } });
+    expect(await change("COMPLETE")).toMatchObject({ charged: .5, job: { tier: "COMPLETE", paidTier: "COMPLETE" }, quota: { remaining: 2 } });
+    expect(await change("STANDARD")).toMatchObject({ charged: 0, job: { tier: "STANDARD", paidTier: "COMPLETE" }, quota: { remaining: 2 } });
+    expect(await change("COMPLETE")).toMatchObject({ charged: 0, job: { tier: "COMPLETE" }, quota: { remaining: 2 } });
+  });
+
+  it("refuses an upgrade without the credit for it and a change to another account's analysis", async () => {
+    grants = [];
+    for (const key of ["a", "b", "c"]) await at("COMPLETE", key);
+    const free = await at("STANDARD", "free");
+    await expect(changeAccountAnalysisTier(customer, { jobId: free.job.id, tier: "DEEP", expectedAccountId: customer.id })).rejects.toMatchObject({ reason: "quota-exhausted" });
+    expect(jobs.find((row) => row.id === free.job.id)).toMatchObject({ tier: "STANDARD", paidTier: "STANDARD" });
+    await expect(changeAccountAnalysisTier(customer, { jobId: free.job.id, tier: "DEEP", expectedAccountId: "other" })).rejects.toMatchObject({ reason: "state-changed" });
+    await expect(changeAccountAnalysisTier(customer, { jobId: "missing", tier: "SIMPLE", expectedAccountId: customer.id })).rejects.toMatchObject({ reason: "not-found" });
+  });
+});
+
+describe("correcting a recognised action", () => {
+  const recognised = (tier: "STANDARD" | "COMPLETE" = "COMPLETE") => job({ id: "recognised", actionId: "auto:improvement:level2", status: "SUCCEEDED", tier, paidTier: tier,
+    result: { ...result, actionId: "auto:improvement:level2" } as unknown as AccountAnalysisJob["result"] });
+
+  it("re-runs the clip as the chosen action, carrying what was paid over to the new run", async () => {
+    grants = [];
+    jobs = [recognised(), job({ id: "a", requestKey: "a", status: "SUCCEEDED" }), job({ id: "b", requestKey: "b", status: "SUCCEEDED" })];
+    // Three analyses spent: a fourth is refused, a correction is not.
+    await expect(requestAccountAnalysis(customer, { videoId: "video", actionId: "improvement:level2:short_turn", requestKey: "plain", expectedAccountId: customer.id, tier: "COMPLETE" }))
+      .rejects.toMatchObject({ reason: "quota-exhausted" });
+    const corrected = await requestAccountAnalysis(customer, { videoId: "video", actionId: "improvement:level2:short_turn", requestKey: "fix",
+      expectedAccountId: customer.id, tier: "COMPLETE", replacesJobId: "recognised" });
+    expect(corrected.job).toMatchObject({ actionId: "improvement:level2:short_turn", tier: "COMPLETE", paidTier: "COMPLETE" });
+    expect(jobs.find(row => row.id === "recognised")).toMatchObject({ errorCode: "replaced" });
+    expect(jobs.find(row => row.id === "recognised")?.refundedAt).not.toBeNull();
+    const state = await getAccountVideoAnalysisState(customer);
+    expect(state.quota.remaining).toBe(0);
+    // The replaced run leaves the list: its correction stands for it.
+    expect(state.jobs.map(row => row.id)).not.toContain("recognised");
+  });
+
+  it("gives nothing back when a paid recognised run is corrected at a free tier", async () => {
+    grants = [];
+    jobs = [recognised()];
+    const corrected = await requestAccountAnalysis(customer, { videoId: "video", actionId: "improvement:level2:short_turn", requestKey: "fix",
+      expectedAccountId: customer.id, tier: "SIMPLE", replacesJobId: "recognised" });
+    // Shown as simple, still paid as complete: the credit stays spent, and going back up is free.
+    expect(corrected.job).toMatchObject({ tier: "SIMPLE", paidTier: "COMPLETE" });
+    expect((await getAccountVideoAnalysisState(customer)).quota).toMatchObject({ remaining: 2, freeToday: 0 });
+  });
+
+  it("charges only the difference when the correction is at a costlier tier, and none of the day's free analyses", async () => {
+    grants = [];
+    jobs = [recognised("STANDARD"), ...["a", "b", "c", "d"].map(id => job({ id, requestKey: id, status: "SUCCEEDED", tier: "STANDARD", paidTier: "STANDARD" }))];
+    // Five free analyses today already: a correction at a free tier is still allowed.
+    const free = await requestAccountAnalysis(customer, { videoId: "video", actionId: "improvement:level2:short_turn", requestKey: "fix-free",
+      expectedAccountId: customer.id, tier: "STANDARD", replacesJobId: "recognised" });
+    expect(free.job).toMatchObject({ tier: "STANDARD", paidTier: "STANDARD" });
+    jobs = [recognised("STANDARD")];
+    const deep = await requestAccountAnalysis(customer, { videoId: "video", actionId: "improvement:level2:short_turn", requestKey: "fix-deep",
+      expectedAccountId: customer.id, tier: "DEEP", replacesJobId: "recognised" });
+    expect(deep.job).toMatchObject({ tier: "DEEP", paidTier: "DEEP" });
+    expect((await getAccountVideoAnalysisState(customer)).quota.remaining).toBe(2.5);
+  });
+
+  it("corrects only a recognised run of the same clip, once, and only with a chosen action", async () => {
+    jobs = [recognised("STANDARD"), job({ id: "chosen", requestKey: "chosen", status: "SUCCEEDED" })];
+    let key = 0;
+    const attempt = (replacesJobId: string, actionId = "improvement:level2:short_turn") => requestAccountAnalysis(customer,
+      { videoId: "video", actionId, requestKey: "fix-" + key++, expectedAccountId: customer.id, tier: "STANDARD", replacesJobId });
+    await expect(attempt("chosen")).rejects.toMatchObject({ reason: "not-replaceable" });
+    await expect(attempt("recognised", "auto:improvement:level2")).rejects.toMatchObject({ reason: "not-replaceable" });
+    await attempt("recognised");
+    await expect(attempt("recognised", "improvement:level2:bumps")).rejects.toMatchObject({ reason: "not-replaceable" });
   });
 });
 
@@ -449,10 +569,19 @@ describe("account reservations, leases and refunds", () => {
     expect(await attachAccountUpstreamJobId(claimed.id, claimed.leaseToken, "a".repeat(32))).toBe(true);
     expect(await settleAccountAnalysisJob(claimed.id, claimed.leaseToken, { ok: true, result })).toBe(true);
     expect(await settleAccountAnalysisJob(claimed.id, claimed.leaseToken, { ok: true, result })).toBe(false);
+    // Scored, with its tier's explanation still to be made: in progress for the student, without a result yet.
+    const completing = await getAccountVideoAnalysisState(customer);
+    expect(completing.quota).toMatchObject({ used: 0, reserved: 1, remaining: 5 });
+    expect(completing.jobs[0]).toMatchObject({ status: "RUNNING", phase: "preparing", result: null, finishedAt: null });
+    expect(completing.videos[0].canDelete).toBe(false);
+    jobs[0].preparedTier = jobs[0].tier;
     videos = [];
     jobs[0].videoId = null;
     jobs[0].result = null;
-    expect((await getAccountVideoAnalysisState(customer)).quota).toMatchObject({ used: 1, remaining: 5 });
+    const finished = await getAccountVideoAnalysisState(customer);
+    expect(finished.quota).toMatchObject({ used: 1, reserved: 0, remaining: 5 });
+    expect(finished.jobs[0]).toMatchObject({ status: "SUCCEEDED" });
+    expect(finished.jobs[0]).not.toHaveProperty("phase");
   });
 
   it.each(["failure", "ungradable", "invalid-score"])("refunds a %s outcome exactly once", async (condition) => {

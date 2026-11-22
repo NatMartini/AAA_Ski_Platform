@@ -53,7 +53,8 @@ describe("account FreeSki API boundaries", () => {
   it("preserves the account snapshot and never accepts a requested beneficiary override", async () => {
     const response = await walletPOST(post("/api/video-analysis", { ...analysisBody, accountId: "other", grantTotal: 999 }));
     expect(response.status).toBe(200);
-    expect(mocks.request).toHaveBeenCalledExactlyOnceWith(actor, analysisBody);
+    // A request without a tier gets the free standard analysis.
+    expect(mocks.request).toHaveBeenCalledExactlyOnceWith(actor, { ...analysisBody, tier: "STANDARD" });
   });
 
   it.each([undefined, "other"])("requires the current coach snapshot before reading grant logs (%s)", async (id) => {

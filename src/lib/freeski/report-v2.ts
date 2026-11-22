@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { addonStatusSchema, citedTeaching, referenceStatusSchema, scorecardSchema, teachingSchema, THINKING_LEVELS, thinkingLevelSchema } from "./scorecard";
+import { addonStatusSchema, citedTeaching, referenceStatusSchema, scorecardSchema, teachingSchema, THINKING_LEVELS, thinkingLevelSchema, type ThinkingLevel } from "./scorecard";
 
 const identifier = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$/);
 const text = z.string().max(2400);
@@ -106,6 +106,11 @@ export const turnManifestSchema = z.object({ version: z.literal(1), turnId: z.st
       Math.abs(phase.reference_times.at(-1)! - original.reference_start - original.reference_duration) <= epsilon;
   }, "Alignment is outside the source turn");
 export type CoachingReport = z.infer<typeof coachingReportSchema>;
+/** The explanation at `level` could not be written and a shorter one is being written in its place. */
+export function shorterBeingWritten(report: Pick<CoachingReport, "teachingStatus" | "teachingLevels">, level: ThinkingLevel) {
+  return report.teachingStatus === "failed" && !!report.teachingLevels?.some(item =>
+    (item.status === "pending" || item.status === "running") && THINKING_LEVELS.indexOf(item.level) < THINKING_LEVELS.indexOf(level));
+}
 export type TurnManifest = z.infer<typeof turnManifestSchema>;
 
 /** Reviewed phases are monotone visualization anchors; time warping never establishes tempo. */

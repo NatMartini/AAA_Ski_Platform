@@ -8,6 +8,7 @@ import type { StandardMotion, StandardMotionId } from "@/lib/freeski/standard-mo
 import { faultById, faultEvidence, faultsFor, faultsForAction, GUIDE_DRILLS, type Evidence, type Fault, type FaultId } from "@/lib/freeski/technique-faults";
 import { cn } from "@/lib/utils";
 import { TechniqueDiagram, useStandardMotion } from "./technique-diagrams";
+import { TechniqueLesson } from "./technique-lesson";
 
 /**
  * 动作讲解: each problem the score card points to, as a coach would explain it — what it looks like on the video,
@@ -37,17 +38,37 @@ function Drills({ fault, zh }: { fault: Fault; zh: boolean }) {
   </Block>;
 }
 
-/** One problem explained: shared by the report (with the student's evidence) and the motion library (without). */
-function FaultBody({ fault, zh, motion, evidence, causes, durations, onShowMetric, onOpen }: {
-  fault: Fault; zh: boolean; motion: StandardMotion | null; evidence?: Evidence[]; causes?: { fault: Fault; shows: boolean | null }[];
-  durations?: number[] | null; onShowMetric?: (key: string) => void; onOpen?: (id: FaultId) => void;
-}) {
-  return <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-    <div className="min-w-0 space-y-3">
-      {motion ? <TechniqueDiagram kind={fault.diagram} motion={motion} zh={zh} faultName={zh ? fault.zh : fault.en} durations={durations} />
-        : <div className="aspect-[4/3] w-full animate-pulse rounded-lg bg-surface-2" aria-label={zh ? "正在加载示意图" : "Loading the picture"} />}
+/** The 3D lesson, and the flat force pictures with their numbers as the other view (and where there is no 3D). */
+function Pictures({ fault, motion, zh, durations }: { fault: Fault; motion: StandardMotion; zh: boolean; durations?: number[] | null }) {
+  const [flat, setFlat] = useState(false);
+  const diagram = <TechniqueDiagram kind={fault.diagram} motion={motion} zh={zh} faultName={zh ? fault.zh : fault.en} durations={durations} />;
+  return <div className="space-y-2">
+    <div role="group" aria-label={zh ? "示意方式" : "Picture"} className="inline-flex rounded-lg border border-border bg-surface-2 p-0.5">
+      {([[false, zh ? "3D 动画讲解" : "3D lesson"], [true, zh ? "平面受力图" : "Force diagrams"]] as const).map(([value, label]) =>
+        <button key={label} type="button" aria-pressed={flat === value} onClick={() => setFlat(value)}
+          className={cn("min-h-8 rounded-md px-2.5 text-xs font-semibold", flat === value ? "bg-surface text-ink shadow-[var(--shadow-sm)]" : "text-ink-3 hover:text-ink")}>{label}</button>)}
     </div>
-    <div className="min-w-0 space-y-3 text-sm leading-relaxed">
+    {flat ? diagram : <TechniqueLesson fault={fault} motion={motion} zh={zh} fallback={diagram} />}
+  </div>;
+}
+
+/** One problem explained: shared by the report (with the student's evidence) and the motion library (without). */
+/** Which pictures a problem gets: the 3D lesson and the force diagrams, the diagrams alone, or none (text only). */
+export type ExplanationPictures = "all" | "diagrams" | "none";
+
+function FaultBody({ fault, zh, motion, evidence, causes, durations, onShowMetric, onOpen, pictures = "all" }: {
+  fault: Fault; zh: boolean; motion: StandardMotion | null; evidence?: Evidence[]; causes?: { fault: Fault; shows: boolean | null }[];
+  durations?: number[] | null; onShowMetric?: (key: string) => void; onOpen?: (id: FaultId) => void; pictures?: ExplanationPictures;
+}) {
+  // The picture across the card, the explanation in two columns under it.
+  return <div className="space-y-4">
+    {pictures !== "none" && <div className="min-w-0 max-w-4xl">
+      {!motion ? <div className="aspect-video w-full animate-pulse rounded-lg bg-surface-2" aria-label={zh ? "正在加载示意图" : "Loading the picture"} />
+        : pictures === "all" ? <Pictures fault={fault} motion={motion} zh={zh} durations={durations} />
+        : <TechniqueDiagram kind={fault.diagram} motion={motion} zh={zh} faultName={zh ? fault.zh : fault.en} durations={durations} />}
+    </div>}
+    <div className="grid gap-x-6 gap-y-3 text-sm leading-relaxed lg:grid-cols-2">
+    <div className="min-w-0 space-y-3">
       <Block title={zh ? "视频里看什么" : "What to look for"}><p className="text-ink-2">{zh ? fault.seeZh : fault.seeEn}</p></Block>
       {evidence && evidence.length > 0 && <Block title={zh ? "你的数据" : "Your measurements"}>
         <div className="flex flex-wrap gap-1.5">{evidence.map(({ metric, standing }) => {
@@ -66,11 +87,14 @@ function FaultBody({ fault, zh, motion, evidence, causes, durations, onShowMetri
         </li>)}</ul>
       </Block>}
       <Block title={zh ? "为什么，力是怎么变的" : "Why, and how the forces change"}><p className="text-ink-2">{zh ? fault.whyZh : fault.whyEn}</p></Block>
+    </div>
+    <div className="min-w-0 space-y-3">
       <Block title={zh ? "怎么改" : "What to do"}>
         <p className="text-ink-2">{zh ? fault.fixZh : fault.fixEn}</p>
         <p className="text-xs text-ink-3">{zh ? `CSIA 指南：${fault.criterionZh}（${fault.source}）` : `CSIA guide: ${fault.criterionEn} (${fault.source})`}</p>
       </Block>
       <Drills fault={fault} zh={zh} />
+    </div>
     </div>
   </div>;
 }
@@ -91,17 +115,17 @@ function FaultCard({ fault, zh, open, onToggle, headline, children }: {
 }
 
 /** The report's movement explanations: the problems the score card shows, worst first, one open at a time. */
-export function MovementExplanations({ card, zh, motionId, durations, onShowMetric }: {
+export function MovementExplanations({ card, zh, motionId, durations, onShowMetric, pictures = "all" }: {
   card: Scorecard; zh: boolean; motionId: StandardMotionId | null; durations?: number[] | null; onShowMetric?: (key: string) => void;
+  pictures?: ExplanationPictures;
 }) {
   const found = useMemo(() => faultsFor(card), [card]);
   const [open, setOpen] = useState<FaultId | null>(found[0]?.fault.id ?? null);
-  const motion = useStandardMotion(found.length > 0 ? motionId : null);
+  const motion = useStandardMotion(found.length > 0 && pictures !== "none" ? motionId : null);
   if (found.length === 0) return null;
   const listed = new Set(found.map(entry => entry.fault.id));
   return <div className="space-y-2">
-    <p className="text-xs text-ink-3">{zh ? "按你的数据里最需要改的排。图里绿色是标准动作，橙色是同一个人犯这个毛病的样子，力是按标准动作的弧线算的示意。"
-      : "Ordered by what your measurements most need. In the pictures green is the standard and orange the same skier with the fault; the forces are worked out for the standard's arc, as an illustration."}</p>
+    <p className="text-xs text-ink-3">{zh ? "按最需要改的排。" : "Most needed first."}</p>
     {found.map(({ fault, evidence }) => {
       const short = evidence.filter(item => item.standing === "short").map(item => zh ? item.metric.label_zh : item.metric.label_en);
       const causes = fault.causes?.map(id => {
@@ -110,15 +134,19 @@ export function MovementExplanations({ card, zh, motionId, durations, onShowMetr
       });
       return <FaultCard key={fault.id} fault={fault} zh={zh} open={open === fault.id} onToggle={() => setOpen(open === fault.id ? null : fault.id)}
         headline={short.length > 0 ? (zh ? `数据：${short.join("、")}` : `Measured: ${short.join(", ")}`) : undefined}>
-        <FaultBody fault={fault} zh={zh} motion={motion} evidence={evidence} causes={causes} durations={durations} onShowMetric={onShowMetric}
+        <FaultBody fault={fault} zh={zh} motion={motion} evidence={evidence} causes={causes} durations={durations} onShowMetric={onShowMetric} pictures={pictures}
           onOpen={id => listed.has(id) ? setOpen(id) : undefined} />
       </FaultCard>;
     })}
   </div>;
 }
 
-/** The motion library's common problems for the shown action and level, each with its picture drawn from this motion. */
-export function CommonProblems({ motion, zh }: { motion: StandardMotion; zh: boolean }) {
+/**
+ * The motion library's common problems for the shown action and level, each with its picture drawn from this motion.
+ * The 3D lessons belong to the complete tier's reports (owner's decision, 2026-11-09): here they are for coaches, and
+ * students get the force diagrams.
+ */
+export function CommonProblems({ motion, zh, pictures = "all" }: { motion: StandardMotion; zh: boolean; pictures?: ExplanationPictures }) {
   const faults = useMemo(() => faultsForAction(motion.action, motion.level), [motion]);
   const [open, setOpen] = useState<FaultId | null>(null);
   if (faults.length === 0) return null;
@@ -126,7 +154,8 @@ export function CommonProblems({ motion, zh }: { motion: StandardMotion; zh: boo
     <h3 className="text-sm font-semibold">{zh ? "常见问题" : "Common problems"} <span className="font-normal text-ink-3">{zh ? "按 CSIA 指南对这个动作的要求" : "for what the CSIA guide asks of this run"}</span></h3>
     {faults.map(fault => <FaultCard key={fault.id} fault={fault} zh={zh} open={open === fault.id} onToggle={() => setOpen(open === fault.id ? null : fault.id)}
       headline={zh ? fault.criterionZh : fault.criterionEn}>
-      <FaultBody fault={fault} zh={zh} motion={motion} />
+      <FaultBody fault={fault} zh={zh} motion={motion} pictures={pictures} />
     </FaultCard>)}
+    {pictures !== "all" && <p className="text-xs text-ink-3">{zh ? "每个问题的 3D 动画讲解包含在“完全”档的分析报告里。" : "The 3D animated lesson for each problem comes with a Complete-tier analysis report."}</p>}
   </section>;
 }

@@ -7,7 +7,9 @@ generator's assumptions: speed classes in SPEED, one cat track = CAT_TRACK metre
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+import json
+from pathlib import Path
 from typing import Optional
 
 CAT_TRACK = 4.5
@@ -113,3 +115,19 @@ SPECS = (
 
 def spec_id(spec: Spec) -> str:
     return f"{spec.action}-l{spec.level}"
+
+
+def season_specs(path) -> tuple:
+    """The specs of a season's action list (seasons/csia/<season>.json), in its order, with the list's own names and
+    guide references. An action and level without a spec here cannot be generated: the guide's words have to be
+    written into SPECS first."""
+    listed = json.loads(Path(path).read_text(encoding="utf-8"))["actions"]
+    known = {(spec.action, spec.level): spec for spec in SPECS}
+    missing = [f"{entry['action']}-l{entry['level']}" for entry in listed if (entry["action"], int(entry["level"])) not in known]
+    if missing:
+        raise SystemExit("No generation spec for: " + ", ".join(missing))
+    return tuple(replace(known[(entry["action"], int(entry["level"]))],
+                         name_zh=entry.get("zh") or known[(entry["action"], int(entry["level"]))].name_zh,
+                         name_en=entry.get("en") or known[(entry["action"], int(entry["level"]))].name_en,
+                         source=entry.get("guide") or known[(entry["action"], int(entry["level"]))].source)
+                 for entry in listed)

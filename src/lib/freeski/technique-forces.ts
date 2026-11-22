@@ -1,4 +1,4 @@
-import { motionPointsAt, snowLevelAt, type StandardMotion } from "./standard-motion";
+import { motionPointsAt, snowLevelAt, turnPointsAt, type StandardMotion } from "./standard-motion";
 
 /**
  * Pictures of the forces through a turn and of the common faults, for the movement explanations. Display only:
@@ -6,7 +6,7 @@ import { motionPointsAt, snowLevelAt, type StandardMotion } from "./standard-mot
  * textbook ones for a skier in balance on the standard's arc, not a measurement of the student.
  */
 
-type Vec = [number, number, number];
+export type Vec = [number, number, number];
 /** A point or vector in a picture's plane, in metres (or m/s² for a force per kilogram). */
 export type Flat = [number, number];
 export type Side = "left" | "right";
@@ -46,14 +46,14 @@ export function curveAt(motion: StandardMotion, name: string, phase: number): nu
   return curve[i] + (curve[i + 1] - curve[i]) * (position - i);
 }
 
-export type FaultVariant = "correct" | "upper_body" | "tipping_inside" | "inside_lag" | "flat_edges";
+export type FaultVariant = "correct" | "upper_body" | "tipping_inside" | "inside_lag" | "flat_edges" | "edge_lag" | "stiff";
 
 const UPPER = ["nose", "left_eye", "right_eye", "left_ear", "right_ear", "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
   "left_wrist", "right_wrist", "left_pole_tip", "right_pole_tip"];
 const FOOT = ["ankle", "bigtoe", "smalltoe", "heel", "ski_tip_a", "ski_tip_b", "ski_tail_a", "ski_tail_b"];
 const CORNERS = ["ski_tip_a", "ski_tip_b", "ski_tail_a", "ski_tail_b"];
-/** How far past the skis a leading upper body turns into the turn. */
-const LEAD = 12 * DEG;
+/** A leading upper body faces where the skis will point this share of a turn later, and this much past it. */
+const LEAD_TIME = .15, LEAD = 6 * DEG;
 
 /** Reads and writes named points of one frame. */
 function frameOf(motion: StandardMotion, points: Float64Array) {
@@ -73,6 +73,16 @@ function frameOf(motion: StandardMotion, points: Float64Array) {
 /** The side whose ski is on the outside of a turn: a right turn's outside ski is the left one. */
 export const outsideSide = (mirrored: boolean): Side => mirrored ? "right" : "left";
 
+/** Where a knee goes between a hip and an ankle that moved, keeping both bones' lengths and the way the knee was bent. */
+function solveKnee(hip: Vec, knee: Vec, ankle: Vec, newHip: Vec): Vec {
+  const thigh = Math.hypot(...sub(knee, hip)), shin = Math.hypot(...sub(ankle, knee));
+  const reach = sub(ankle, newHip), length = clamp(Math.hypot(...reach), Math.abs(thigh - shin) + 1e-4, thigh + shin - 1e-4), u = unit(reach);
+  const bend = sub(sub(knee, hip), scale(u, dot(sub(knee, hip), u)));
+  const n = Math.hypot(...bend) > 1e-6 ? unit(bend) : unit(cross(u, [1, 0, 0]));
+  const along = (thigh * thigh - shin * shin + length * length) / (2 * length);
+  return add(add(newHip, scale(u, along)), scale(n, Math.sqrt(Math.max(0, thigh * thigh - along * along))));
+}
+
 /** Lower or raise a set of points so the lowest of `corners` sits where it was. */
 function keepOnSnow(f: ReturnType<typeof frameOf>, names: string[], corners: string[], before: number) {
   const low = Math.min(...corners.map(name => f.get(name)[2]));
@@ -81,10 +91,12 @@ function keepOnSnow(f: ReturnType<typeof frameOf>, names: string[], corners: str
 
 /**
  * The standard at a phase of a right turn (`mirrored` for a left one), changed into a fault:
- * - upper_body: the shoulders and arms turn past where the skis point, into the turn, the hips part way;
+ * - upper_body: the shoulders and arms turn first, facing where the skis will point a little later and past it, the hips part way;
  * - tipping_inside: the upper body tilts in line with the legs, the hip angle into the turn gone;
  * - inside_lag: the inside lower leg stays more upright, its ski flatter than the outside one;
- * - flat_edges: the whole skier stands up toward the slope's perpendicular, the skis flatter.
+ * - flat_edges: the whole skier stands up toward the slope's perpendicular, the skis flatter;
+ * - edge_lag: through the edge change the new inside ski, the old outside one, stays on its old edge, catching up early in the turn;
+ * - stiff: the legs hardly flex or extend, the hips staying near their middle height.
  */
 export function variantPointsAt(motion: StandardMotion, phase: number, mirrored: boolean, variant: FaultVariant): Float64Array {
   const points = motionPointsAt(motion, phase, mirrored);
@@ -92,11 +104,14 @@ export function variantPointsAt(motion: StandardMotion, phase: number, mirrored:
   const f = frameOf(motion, points), h = f.travel(), pelvis = f.mid("left_hip", "right_hip");
   const outside = outsideSide(mirrored), inside = other(outside);
   if (variant === "upper_body") {
-    // The chest faces square to the shoulder line; the outside ski shows where the skis point.
+    // The chest faces square to the shoulder line. It turns ahead of the skis: toward where they will point a little
+    // later, in the next turn once this one ends, and past that into the turn.
     const shoulders = sub(f.get("right_shoulder"), f.get("left_shoulder"));
-    const facing: Vec = [-shoulders[1], shoulders[0], 0], ski = sub(f.get(`${outside}_ski_tip_a`), f.get(`${outside}_ski_tail_a`));
+    const ahead = phase + LEAD_TIME, laterMirrored = ahead > 1 ? !mirrored : mirrored;
+    const later = frameOf(motion, motionPointsAt(motion, ahead > 1 ? ahead - 1 : ahead, laterMirrored)).travel();
+    const facing: Vec = [-shoulders[1], shoulders[0], 0];
     // A right turn turns clockwise seen from above, so into it is a negative angle about the snow's normal.
-    const angle = angleAbout(facing, [ski[0], ski[1], 0], [0, 0, 1]) + (mirrored ? LEAD : -LEAD);
+    const angle = angleAbout(facing, later, [0, 0, 1]) + (laterMirrored ? LEAD : -LEAD);
     for (const name of UPPER) f.set(name, rotate(f.get(name), pelvis, [0, 0, 1], angle));
     for (const name of ["left_hip", "right_hip"]) f.set(name, rotate(f.get(name), pelvis, [0, 0, 1], angle * .5));
   } else if (variant === "tipping_inside") {
@@ -118,9 +133,40 @@ export function variantPointsAt(motion: StandardMotion, phase: number, mirrored:
     const angle = -.55 * angleAbout([0, 0, 1], sub(pelvis, f.mid("left_ankle", "right_ankle")), h);
     for (const name of all) f.set(name, rotate(f.get(name), base, h, angle));
     keepOnSnow(f, all, corners, before);
+  } else if (variant === "edge_lag") {
+    const fade = 1 - smooth(.1, .32, phase);
+    if (fade > 0) {
+      const earlier = frameOf(motion, turnPointsAt(motion, phase - EDGE_LAG, mirrored));
+      const tilt = (g: ReturnType<typeof frameOf>) => angleAbout([0, 0, -1], sub(g.get(`${inside}_ankle`), g.get(`${inside}_knee`)), h);
+      const knee = f.get(`${inside}_knee`), names = FOOT.map(part => `${inside}_${part}`), corners = CORNERS.map(part => `${inside}_${part}`);
+      const before = Math.min(...corners.map(name => f.get(name)[2]));
+      const angle = (tilt(earlier) - tilt(f)) * fade;
+      for (const name of names) f.set(name, rotate(f.get(name), knee, h, angle));
+      keepOnSnow(f, names, corners, before);
+    }
+  } else if (variant === "stiff") {
+    const curve = motion.curves.hipHeightM;
+    if (curve?.length) {
+      const middle = curve.reduce((sum, value) => sum + value, 0) / curve.length, height = curveAt(motion, "hipHeightM", phase);
+      // Move the upper body toward the middle height, as far as the legs reach, and bend the knees to suit.
+      let lift = (middle - height) * .75;
+      const reaches = (amount: number) => (["left", "right"] as const).every(side => {
+        const hip = f.get(`${side}_hip`), knee = f.get(`${side}_knee`), ankle = f.get(`${side}_ankle`);
+        return Math.hypot(...sub(ankle, add(hip, [0, 0, amount]))) < (Math.hypot(...sub(knee, hip)) + Math.hypot(...sub(ankle, knee))) * .995;
+      });
+      for (let i = 0; i < 12 && lift > 0 && !reaches(lift); i++) lift *= .7;
+      if (lift > 0 && !reaches(lift)) lift = 0;
+      const knees = (["left", "right"] as const).map(side => solveKnee(f.get(`${side}_hip`), f.get(`${side}_knee`), f.get(`${side}_ankle`), add(f.get(`${side}_hip`), [0, 0, lift])));
+      for (const name of [...UPPER, "left_hip", "right_hip"]) { const p = f.get(name); f.set(name, [p[0], p[1], p[2] + lift]); }
+      f.set("left_knee", knees[0]);
+      f.set("right_knee", knees[1]);
+    }
   }
   return points;
 }
+
+/** How long, as a share of a turn, the lagging ski stays on its old edge. */
+const EDGE_LAG = .14;
 
 // Shares of body mass by segment, each placed at the middle of its joints (a textbook split, rounded).
 const SEGMENTS: [string[], number][] = [
@@ -178,17 +224,16 @@ const STEP = .02;
 const PLATE = .22;
 
 /**
- * The standard (or a fault) at a phase seen from behind, with the forces. The push is the one a skier in balance needs
- * on the standard's arc, from where the balanced share puts it between the skis through the standard's centre of mass;
- * a fault keeps that push, since the arc is the same, so its own centre of mass moves where the push meets the snow.
+ * The balance at a phase: the push a skier in balance needs on the standard's arc, from where the balanced share puts it
+ * between the standard's skis through the standard's centre of mass, and where that push meets the snow for the pose shown.
+ * The plane square to the skis' travel has "across" (+ toward the skier's right) and "up" off the snow.
  */
-export function backView(motion: StandardMotion, phase: number, mirrored: boolean, variant: FaultVariant): BackView {
+function balance(motion: StandardMotion, phase: number, mirrored: boolean, variant: FaultVariant) {
   const correct = motionPointsAt(motion, phase, mirrored), c = frameOf(motion, correct);
   const points = variant === "correct" ? correct : variantPointsAt(motion, phase, mirrored, variant), f = frameOf(motion, points);
   const h = c.travel(), right: Vec = [h[1], -h[0], 0];
   const outside = outsideSide(mirrored), inside = other(outside), level = snowLevelAt(motion, phase);
   const origin = scale(add(c.ski("left"), c.ski("right")), .5);
-  // The plane square to the skis' travel: across, + to the skier's right, and up off the snow.
   const plane = (p: Vec): Flat => [dot(sub(p, origin), right), p[2] - level];
 
   const slope = motion.motion.pitchDeg * DEG;
@@ -207,8 +252,62 @@ export function backView(motion: StandardMotion, phase: number, mirrored: boolea
   const copAcross = normal > 0 ? com[0] - push[0] * com[1] / push[1] : (skis.left[0] + skis.right[0]) / 2;
   const width = skis[outside][0] - skis[inside][0] || 1e-6;
   const share = (copAcross - skis[inside][0]) / width, margin = .05 / Math.abs(width);
-  const holds = airborne ? "air" : share > 1 + margin ? "out" : share < -margin ? "in" : "on";
+  const holds: BackView["holds"] = airborne ? "air" : share > 1 + margin ? "out" : share < -margin ? "in" : "on";
   const onOutside = airborne ? 0 : clamp(share, 0, 1);
+  const load: Record<Side, number> = outside === "left" ? { left: onOutside, right: airborne ? 0 : 1 - onOutside } : { left: airborne ? 0 : 1 - onOutside, right: onOutside };
+  return { points, f, h, right, outside, inside, level, origin, plane, gravity, push, com, skis, copAcross, holds, load };
+}
+
+export type Forces3D = {
+  /** The centre of mass, and the centre of pressure where the push meets the snow, in the motion's slope coordinates. */
+  com: Vec; cop: Vec;
+  /** Per kilogram, m/s²: the snow's push, gravity, and the part of their sum toward the turn's centre. */
+  push: Vec; gravity: Vec; turning: Vec;
+  /** Each ski's middle, its share of the push, and the push it takes. */
+  skis: Record<Side, { centre: Vec; load: number; force: Vec }>;
+  outside: Side; holds: BackView["holds"];
+  /** Each ski's tilt off the snow, degrees. */
+  edge: Record<Side, number>;
+};
+
+/** The forces of `backView` in 3D, for the stage: the same balance, back in the motion's slope coordinates. */
+export function forces3D(motion: StandardMotion, phase: number, mirrored: boolean, variant: FaultVariant): Forces3D {
+  const b = balance(motion, phase, mirrored, variant);
+  const up: Vec = [0, 0, 1];
+  const vector = (v: Flat): Vec => add(scale(b.right, v[0]), scale(up, v[1]));
+  const point = (p: Flat): Vec => add([b.origin[0], b.origin[1], b.level], vector(p));
+  const push = vector(b.push);
+  const ski = (side: Side) => ({ centre: b.f.ski(side), load: b.load[side], force: scale(push, b.load[side]) });
+  const edge = (side: Side) => {
+    const a = b.f.get(`${side}_ski_tip_a`), c = b.f.get(`${side}_ski_tip_b`);
+    return Math.atan2(Math.abs(a[2] - c[2]), Math.hypot(a[0] - c[0], a[1] - c[1])) / DEG;
+  };
+  return { com: centreOfMass(motion, b.points), cop: point([b.copAcross, 0]), push, gravity: vector(b.gravity), turning: scale(b.right, b.push[0] + b.gravity[0]),
+    skis: { left: ski("left"), right: ski("right") }, outside: b.outside, holds: b.holds, edge: { left: edge("left"), right: edge("right") } };
+}
+
+/** Which way a pose's skis and chest point over the snow: radians from the fall line, + toward the skier's right. */
+export function headings(motion: StandardMotion, points: Float64Array) {
+  const f = frameOf(motion, points), t = f.travel(), shoulders = sub(f.get("right_shoulder"), f.get("left_shoulder"));
+  return { skis: Math.atan2(t[0], t[1]), chest: Math.atan2(-shoulders[1], shoulders[0]) };
+}
+
+const wrap = (angle: number) => Math.atan2(Math.sin(angle), Math.cos(angle));
+
+/** How fast the skis and the chest turn at a phase, radians a second (+ toward the skier's right), and the separation between them. */
+export function rotationAt(motion: StandardMotion, phase: number, mirrored: boolean, variant: FaultVariant) {
+  const at = clamp(phase, STEP, 1 - STEP), dt = 2 * STEP * motion.motion.durationSec;
+  const a = headings(motion, variantPointsAt(motion, at - STEP, mirrored, variant)), b = headings(motion, variantPointsAt(motion, at + STEP, mirrored, variant));
+  return { skis: wrap(b.skis - a.skis) / dt, chest: wrap(b.chest - a.chest) / dt, separation: topView(motion, phase, mirrored, variant).separation };
+}
+
+/**
+ * The standard (or a fault) at a phase seen from behind, with the forces. The push is the one a skier in balance needs
+ * on the standard's arc, from where the balanced share puts it between the skis through the standard's centre of mass;
+ * a fault keeps that push, since the arc is the same, so its own centre of mass moves where the push meets the snow.
+ */
+export function backView(motion: StandardMotion, phase: number, mirrored: boolean, variant: FaultVariant): BackView {
+  const { points, f, right, outside, plane, gravity, push, com, skis, copAcross, holds, load } = balance(motion, phase, mirrored, variant);
 
   // Turn the picture so gravity points straight down.
   const tilt = Math.atan2(gravity[0], -gravity[1]), cos = Math.cos(-tilt), sin = Math.sin(-tilt);
@@ -231,8 +330,7 @@ export function backView(motion: StandardMotion, phase: number, mirrored: boolea
   return {
     points: flat, com: turn(com), cop: turn([copAcross, 0]), gravity: turn(gravity), push: turn(push),
     turning: turn([push[0] + gravity[0], 0]),
-    skis: { left: plate("left"), right: plate("right") }, outside, holds,
-    load: outside === "left" ? { left: onOutside, right: airborne ? 0 : 1 - onOutside } : { left: airborne ? 0 : 1 - onOutside, right: onOutside },
+    skis: { left: plate("left"), right: plate("right") }, outside, holds, load,
     edge: { left: edge("left"), right: edge("right") },
     snow: { through: turn([0, 0]), along: turn([1, 0]) },
   };

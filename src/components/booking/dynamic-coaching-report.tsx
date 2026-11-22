@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { ChevronRight, Clapperboard, Images, Info, MessageCircle } from "lucide-react";
-import { coachingReportSchema, type CoachingReport } from "@/lib/freeski/report-v2";
+import { ChevronRight, Clapperboard, Images, Info, MessageCircle, Route } from "lucide-react";
+import { coachingReportSchema, shorterBeingWritten, type CoachingReport } from "@/lib/freeski/report-v2";
 import { CoachingWorkspace } from "./coaching-workspace";
 import { AnalysisTeaching, DrillList, type FindingReview } from "./analysis-teaching";
 import { AnalysisKeyframes } from "./analysis-keyframes";
@@ -14,10 +14,11 @@ import { TurnComparisonPlayer, type TurnMeta } from "./turn-comparison-player";
 import { ReportConclusion, reportFocus } from "./report-conclusion";
 import { TurnStrip } from "./turn-strip";
 import { FilmingTips } from "./filming-tips";
-import { ThinkingLevelPicker } from "./thinking-level-picker";
 import { MovementExplanations } from "./movement-explanations";
+import { RunTrackView } from "./run-track-view";
 import { faultsFor } from "@/lib/freeski/technique-faults";
-import { DEFAULT_THINKING, THINKING_LEVELS, withoutOverallScore, type Scorecard, type ThinkingLevel } from "@/lib/freeski/scorecard";
+import { THINKING_LEVELS, withoutOverallScore, type Scorecard, type ThinkingLevel } from "@/lib/freeski/scorecard";
+import { LEGACY_TIER, TIER_FEATURES, TIER_THINKING, type AnalysisTier, type TierFeatures } from "@/lib/video-analysis/tiers";
 import { standardMotionId } from "@/lib/freeski/standard-motion";
 import { metricInsight, worstTurnFor } from "@/lib/freeski/metric-insight";
 import type { FreeSkiCurrentLevel } from "@/lib/freeski/actions";
@@ -36,26 +37,27 @@ async function json(url: string, signal?: AbortSignal, onStarting?: () => void) 
 export type Reviews = { canReview: boolean; reviews: FindingReview[] };
 type Review = (key: string, verdict: "AGREE" | "DISAGREE" | null, note: string, metricKeys: string[]) => Promise<void>;
 type Written = NonNullable<CoachingReport["teaching"]>;
-/** The reader's thinking level for the explanation, and the level of the one on screen. */
-type Thinking = { value: ThinkingLevel; shown: ThinkingLevel | null; onChange: (level: ThinkingLevel) => void };
 
 /**
  * Loads the FreeSki report and shows it once read. `card` is the scorecard the job settled on; `previous` a
  * comparable earlier one for "since last time".
  */
-export function DynamicCoachingReport({ base, zh, card = null, currentLevel = null, previous = null, defaultOpen = false, reviewHref = null }: {
+export function DynamicCoachingReport({ base, zh, card = null, currentLevel = null, previous = null, defaultOpen = false, reviewHref = null,
+  tier = LEGACY_TIER }: {
   base: string; zh: boolean; card?: Scorecard | null; currentLevel?: FreeSkiCurrentLevel | null; previous?: Scorecard | null; defaultOpen?: boolean;
   /** Where the page offers a human coach review of this clip. */
   reviewHref?: string | null;
+  /** The analysis's tier: what the report shows and how deep its explanation is written. The page remounts this on a change. */
+  tier?: AnalysisTier;
 }) {
   const [open, setOpen] = useState(defaultOpen), [report, setReport] = useState<CoachingReport | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   // The idle FreeSki service stopped and is starting again; the report is asked for until it answers.
   const [starting, setStarting] = useState(false);
   const [reviews, setReviews] = useState<Reviews>({ canReview: false, reviews: [] });
-  // The thinking level asked for, and the explanation on screen with its level: that one stays while
-  // another level is being written. `chosen` is set once the depth is the reader's, not the default.
-  const [thinking, setThinking] = useState<ThinkingLevel>(DEFAULT_THINKING);
+  // The explanation depth asked for, the tier's own, and the explanation on screen with its level: that one stays while
+  // another level is being written. `chosen` is set once the depth is settled, not still the default.
+  const [thinking, setThinking] = useState<ThinkingLevel>(TIER_THINKING[tier]);
   const [written, setWritten] = useState<{ teaching: Written; level: ThinkingLevel } | null>(null);
   const chosen = useRef(false);
   // While the chosen level is written, an explanation already written at another level is shown once.
@@ -71,33 +73,36 @@ export function DynamicCoachingReport({ base, zh, card = null, currentLevel = nu
           json(`${base}/report${level === "none" ? "" : `?thinking=${level}`}`, controller.signal, onStarting).then(raw => coachingReportSchema.parse(raw));
         const value = await read(thinking, () => setStarting(true));
         if (controller.signal.aborted) return;
-        setReport(value); setUnavailable(false); setStarting(false);
-        if (value.teaching) setWritten({ teaching: value.teaching, level: thinking });
-        else if (!borrowed.current) {
-          // The deep default takes minutes to write: meanwhile show the deepest explanation already written.
-          borrowed.current = true;
+        // The tier's own explanation takes minutes to write and may fail: meanwhile, or in its place, show the
+        // deepest explanation already written. One still being written is borrowed on the look that finds it ready.
+        // It is read before the report is shown, so the report never says for a moment that there is none.
+        let stand: { teaching: Written; level: ThinkingLevel } | null = null;
+        if (!value.teaching && !borrowed.current) {
           const ready = value.teachingLevels?.filter(item => item.status === "ready").map(item => item.level) ?? [];
           const other = THINKING_LEVELS.filter(level => level !== thinking && ready.includes(level)).pop();
           const shown = other ? await read(other).catch(() => null) : null;
           if (controller.signal.aborted) return;
-          if (other && shown?.teaching) setWritten(current => current ?? { teaching: shown.teaching!, level: other });
+          if (other && shown?.teaching) { borrowed.current = true; stand = { teaching: shown.teaching, level: other }; }
         }
+        setReport(value); setUnavailable(false); setStarting(false);
+        if (value.teaching) setWritten({ teaching: value.teaching, level: thinking });
+        else if (stand) { const borrow = stand; setWritten(current => current ?? borrow); }
         // Opened afresh, show the deepest explanation already written; never start one unasked.
         const ready = value.teachingLevels?.filter(item => item.status === "ready").map(item => item.level) ?? [];
-        const deepest = THINKING_LEVELS.filter(level => ready.includes(level)).pop();
+        const deepest = THINKING_LEVELS.filter(level => ready.includes(level) && THINKING_LEVELS.indexOf(level) <= THINKING_LEVELS.indexOf(TIER_THINKING[tier])).pop();
         if (!chosen.current && deepest && THINKING_LEVELS.indexOf(deepest) > THINKING_LEVELS.indexOf(thinking)) {
           chosen.current = true; setThinking(deepest); return;
         }
         // The old observation text belongs to jobs without a scorecard; a scorecard job does not wait for it.
         const waiting = !value.scorecard && ["pending", "running", "retry_wait"].includes(value.modelStatus) ||
-          value.teachingStatus === "pending" || value.teachingStatus === "running" ||
+          value.teachingStatus === "pending" || value.teachingStatus === "running" || shorterBeingWritten(value, thinking) ||
           value.explainerStatus === "pending" || value.explainerStatus === "running";
         // A deep explanation can queue behind others and think for fifteen minutes, twice if its first answer is rejected.
         if (waiting && Date.now() - started < 45 * 60_000) timer = setTimeout(() => void load(), polls++ < 24 ? 5000 : 10_000);
       } catch { if (!controller.signal.aborted) { setReport(null); setUnavailable(true); setStarting(false); } }
     };
     void load(); return () => { controller.abort(); clearTimeout(timer); };
-  }, [base, open, thinking]);
+  }, [base, open, thinking, tier]);
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
@@ -109,7 +114,7 @@ export function DynamicCoachingReport({ base, zh, card = null, currentLevel = nu
       body: JSON.stringify(verdict ? { findingKey: key, verdict, note: note || undefined, metricKeys } : { findingKey: key }) });
     if (response.ok) setReviews(await response.json());
   }, [base]);
-  const scorecardBlock = card && <AnalysisScorecard card={card} zh={zh} currentLevel={currentLevel} previous={previous} />;
+  const scorecardBlock = card && TIER_FEATURES[tier].scores && <AnalysisScorecard card={card} zh={zh} currentLevel={currentLevel} previous={previous} />;
 
   return <div className="space-y-5">
     {!open && <button type="button" className="text-sm font-semibold text-accent underline underline-offset-4" onClick={() => setOpen(true)}>
@@ -121,15 +126,15 @@ export function DynamicCoachingReport({ base, zh, card = null, currentLevel = nu
         <Spinner className="text-sm text-ink-3" label={starting ? (zh ? "分析服务正在启动，请稍候…" : "The analysis service is starting. Please wait…")
           : zh ? "正在读取分析…" : "Loading analysis…"} />
         {scorecardBlock}
-      </> : <CoachingReportView base={base} zh={zh} report={report} card={card ?? report.scorecard} currentLevel={currentLevel} previous={previous}
-        reviews={reviews} onReview={review} reviewHref={reviewHref} written={written?.teaching ?? null}
-        thinking={{ value: thinking, shown: written?.level ?? null, onChange: level => { chosen.current = true; setThinking(level); } }} />)}
-    <CoachingWorkspace base={base} zh={zh} />
+      </> : <CoachingReportView base={base} zh={zh} report={report} card={TIER_FEATURES[tier].scores ? card ?? report.scorecard : null}
+        currentLevel={currentLevel} previous={previous} reviews={reviews} onReview={review} reviewHref={reviewHref} written={written?.teaching ?? null} tier={tier} />)}
+    {/* Annotations, references and exports work on the turn media, which start at the deep tier. */}
+    {TIER_FEATURES[tier].media && <CoachingWorkspace base={base} zh={zh} />}
   </div>;
 }
 
-function compared(target: ReferenceTarget, zh: boolean) {
-  const [nameZh, nameEn] = exampleName(target);
+function compared(target: ReferenceTarget, zh: boolean, card: Scorecard | null) {
+  const [nameZh, nameEn] = exampleName(target, card);
   return zh ? `对比${nameZh.startsWith("CSIA") ? " " : ""}${nameZh}` : `Compared with ${nameEn}`;
 }
 
@@ -145,21 +150,22 @@ function PanelButton({ open, onClick, children }: { open: boolean; onClick: () =
  * explanation on screen when the loader keeps one while another thinking level is written.
  */
 export function CoachingReportView({ base, zh, report, card, currentLevel = null, previous = null, reviews, onReview, reviewHref = null,
-  written, thinking = null }: {
+  written, tier = LEGACY_TIER }: {
   base: string; zh: boolean; report: CoachingReport; card: Scorecard | null; currentLevel?: FreeSkiCurrentLevel | null;
   previous?: Scorecard | null; reviews: Reviews; onReview?: Review; reviewHref?: string | null;
-  written?: Written | null; thinking?: Thinking | null;
+  written?: Written | null; tier?: AnalysisTier;
 }) {
+  const features: TierFeatures = TIER_FEATURES[tier];
   const source = written === undefined ? report.teaching : written;
   // The overall score is withheld on the site, so prose quoting it is hidden too.
   const teaching = source ? withoutOverallScore(source, card?.overall.score ?? null) : null;
-  // A deeper level being written is the picker's to report; with an explanation on screen nothing is pending.
-  const teachingPending = !teaching && (report.teachingStatus === "pending" || report.teachingStatus === "running");
+  // With an explanation on screen nothing is pending. Without one, the tier's own may still be coming, or a shorter one in its place.
+  const teachingPending = !teaching && (report.teachingStatus === "pending" || report.teachingStatus === "running" || shorterBeingWritten(report, TIER_THINKING[tier]));
   const focus = reportFocus(teaching, card);
   const [picked, setPicked] = useState<string | null>(null);
   // Undefined until the viewer chooses, so the conclusion's metric stays highlighted as the report fills in.
   const [metricChoice, setMetricChoice] = useState<string | null | undefined>(undefined);
-  const [panel, setPanel] = useState<"keyframes" | "explainer" | null>(null);
+  const [panel, setPanel] = useState<"keyframes" | "explainer" | "track" | null>(null);
   const [about, setAbout] = useState(false);
   const focusMetric = metricChoice === undefined ? focus.metric : metricChoice;
   const hasTurn = (turnId: string | null): turnId is string => !!turnId && report.turns.some(turn => turn.turnId === turnId);
@@ -186,9 +192,9 @@ export function CoachingReportView({ base, zh, report, card, currentLevel = null
     if (focusMetric === key) { setMetricChoice(null); return; }
     show(card ? worstTurnFor(card, key) : null, key);
   };
-  const player = report.turns.length > 0;
+  const player = features.media && report.turns.length > 0;
   const drills = teaching && teaching.drills.length > 0 ? teaching : null;
-  const explained = card !== null && faultsFor(card).length > 0;
+  const explained = features.explanations && card !== null && faultsFor(card).length > 0;
   const sections: [string, string][] = [];
   if (teaching || card) sections.push([ids.summary, zh ? "结论" : "Summary"]);
   if (player) sections.push([ids.player, zh ? "看问题" : "Watch"]);
@@ -197,13 +203,13 @@ export function CoachingReportView({ base, zh, report, card, currentLevel = null
   if (card) sections.push([ids.data, zh ? "数据" : "Data"]);
   const focused = focusMetric ? card?.metrics.find(metric => metric.key === focusMetric) : undefined;
   const insight = focused ? metricInsight(focused.key) : null;
-  const togglePanel = (name: "keyframes" | "explainer") => setPanel(panel === name ? null : name);
+  const togglePanel = (name: "keyframes" | "explainer" | "track") => setPanel(panel === name ? null : name);
 
   return <div className="space-y-5">
     <AnalysisProgress status="SUCCEEDED" teaching={teaching ? "ready" : report.teachingStatus} explainer={report.explainerStatus} zh={zh} compact />
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        {target && <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent">{compared(target, zh)}</span>}
+        {target && <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent">{compared(target, zh, card)}</span>}
         {card && <span className={cn("rounded-full border px-2.5 py-1 text-xs font-bold", QUALITY[card.quality][2])}>{QUALITY[card.quality][zh ? 0 : 1]}</span>}
         <button type="button" aria-expanded={about} onClick={() => setAbout(!about)}
           className="press inline-flex min-h-8 items-center gap-1.5 rounded-full border border-border px-2.5 text-xs font-semibold text-ink-2 hover:text-ink">
@@ -220,8 +226,11 @@ export function CoachingReportView({ base, zh, report, card, currentLevel = null
       {sections.map(([id, label]) => <button type="button" key={id} onClick={() => jump(id)}
         className="press min-h-8 shrink-0 rounded-full border border-border bg-surface px-3 text-xs font-semibold text-ink-2 hover:text-ink">{label}</button>)}
     </nav>}
-    {thinking && report.teachingLevels && card && <ThinkingLevelPicker value={thinking.value} shown={thinking.shown}
-      levels={Object.fromEntries(report.teachingLevels.map(item => [item.level, item.status]))} zh={zh} onChange={thinking.onChange} />}
+    {/* An explanation stays on screen while the tier's own, deeper one is written. */}
+    {written && report.teachingStatus === "failed" && <p className="text-xs text-ink-3">{zh ? "这一档最细的讲解这次没有写出来，下面是较短的版本。"
+      : "This tier's most detailed explanation could not be written this time; the shorter one is shown."}</p>}
+    {written && (report.teachingStatus === "pending" || report.teachingStatus === "running") && <Spinner className="text-xs text-ink-3"
+      label={zh ? "正在写这一档的讲解，写好后自动换上" : "This tier's explanation is being written; it replaces this one when ready"} />}
     {/* On a wide screen the player sits on the left beside the conclusion and practice; the explanations and data run full width. */}
     <div className={cn("space-y-5", player && "lg:grid lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:items-start lg:gap-x-6 lg:gap-y-5 lg:space-y-0")}>
     {(teaching || card) && <section id={ids.summary} className="scroll-mt-28 lg:col-start-2 lg:row-start-1" aria-label={zh ? "这次的结论" : "Summary"}>
@@ -245,13 +254,16 @@ export function CoachingReportView({ base, zh, report, card, currentLevel = null
         <PanelButton open={panel === "keyframes"} onClick={() => togglePanel("keyframes")}><Images aria-hidden />{zh ? "关键帧" : "Key frames"}</PanelButton>
         {report.explainerStatus && report.explainerStatus !== "unavailable" && <PanelButton open={panel === "explainer"} onClick={() => togglePanel("explainer")}>
           <Clapperboard aria-hidden />{zh ? "慢动作讲解" : "Slow-motion explainer"}</PanelButton>}
+        {features.track && report.turns.length >= 2 && <PanelButton open={panel === "track"} onClick={() => togglePanel("track")}><Route aria-hidden />{zh ? "滑行轨迹" : "Your path"}</PanelButton>}
       </div>
       {panel === "keyframes" && shown && <AnalysisKeyframes key={`${base}:${shown}:keyframes`} base={base} turnId={shown} zh={zh} target={target} showEmpty />}
       {panel === "explainer" && <AnalysisExplainer base={base} zh={zh} target={target} compact />}
+      {features.track && panel === "track" && <RunTrackView base={base} turns={report.turns} motionId={card ? standardMotionId(card) : null} zh={zh} />}
     </section>}
     {explained && card && <section id={ids.explain} className="scroll-mt-28 space-y-2 lg:col-span-2 lg:row-start-4" aria-label={zh ? "动作讲解" : "Your movements explained"}>
       <h3 className="text-sm font-semibold">{zh ? "动作讲解" : "Your movements explained"}</h3>
       <MovementExplanations card={card} zh={zh} motionId={standardMotionId(card)} durations={report.turns.map(turn => (turn.endMs - turn.startMs) / 1000)}
+        pictures={features.lessons ? "all" : features.diagrams ? "diagrams" : "none"}
         onShowMetric={player ? key => show(worstTurnFor(card, key), key) : undefined} />
     </section>}
     {drills && <section id={ids.drills} className="scroll-mt-28 space-y-2 lg:col-start-2 lg:row-start-2" aria-label={zh ? "怎么练" : "How to practise"}>
@@ -266,8 +278,11 @@ export function CoachingReportView({ base, zh, report, card, currentLevel = null
         <div className="mt-3"><AnalysisTeaching teaching={teaching} zh={zh} turnLabel={turnName} onSelectTurn={player ? turnId => show(turnId, null) : undefined}
           compact drills={false} reviews={reviews.reviews} canReview={reviews.canReview} onReview={onReview} /></div>
       </details>
-      : !teachingPending && (card
-        ? <p className="text-sm text-ink-3 lg:col-start-2 lg:row-start-3">{zh ? "这次的动作解释没有生成，评分和逐弯对比仍可查看。" : "The explanation was not generated this time; scores and turn playback remain available."}</p>
+      : !teachingPending && (!features.scores
+        ? <p className="rounded-xl border border-border bg-surface p-3 text-sm text-ink-2">{zh ? "这次的文字讲解没有写出来。可以把档位改成“标准”（同样免费），看每个弯的分数和按 CSIA 指南写的问题讲解。"
+          : "The written summary could not be produced this time. Change the tier to Standard (also free) for every turn's score and the CSIA-guide explanations."}</p>
+        : card
+        ? <p className="text-sm text-ink-3 lg:col-start-2 lg:row-start-3">{zh ? "这次的动作解释没有生成，评分和其余内容仍可查看。" : "The explanation was not generated this time; the scores and the rest remain available."}</p>
         : <div className="lg:col-start-2 lg:row-start-3"><ModelAssessment report={report} zh={zh} onSelectTurn={turnId => show(turnId, null)} /></div>)}
     </div>
     {card && <section id={ids.data} className="scroll-mt-28 space-y-3" aria-label={zh ? "详细数据" : "All measurements"}>

@@ -164,6 +164,26 @@ describe("broker driven business leases", () => {
     expect(deps.wake).toHaveBeenCalledOnce();
   });
 
+  it("keeps the provider awake and makes the tier outputs while a scored analysis is being completed", async () => {
+    const { dispatcher, deps } = harness();
+    vi.mocked(deps.list).mockResolvedValue([]);
+    deps.wake = vi.fn(async () => "ready");
+    const preparing = vi.fn(async () => 2), prepare = vi.fn(async () => 1);
+    Object.assign(deps, { preparing, prepare });
+    expect(await dispatcher.tick()).toEqual({ observed: 2, settled: 0 });
+    expect(deps.wake).toHaveBeenCalledOnce();
+    expect(prepare).toHaveBeenCalledOnce();
+    // Nothing left to complete: the provider is not asked for anything and may be stopped.
+    preparing.mockResolvedValue(0);
+    expect(await dispatcher.tick()).toEqual({ observed: 0, settled: 0 });
+    expect(deps.wake).toHaveBeenCalledOnce();
+    expect(prepare).toHaveBeenCalledOnce();
+    // A round that cannot reach the provider is tried again, not thrown at the dispatcher.
+    preparing.mockResolvedValue(1);
+    prepare.mockRejectedValue(new Error("offline"));
+    await expect(dispatcher.tick()).resolves.toEqual({ observed: 1, settled: 0 });
+  });
+
   it.each([
     ["accepted-deployment", null],
     ["accepted-deployment", "different-deployment"],

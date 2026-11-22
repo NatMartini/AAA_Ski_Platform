@@ -60,3 +60,14 @@ it("stops exported bytes after local permission is revoked",async()=>{
   mocks.request.mockResolvedValue(new Response(new Uint8Array([1,2,3]),{headers:{"Content-Type":"video/mp4","Content-Length":"3"}}));
   const response=await handleCoachingWorkspace(input("exports/"+"e".repeat(32)+"/file"));await expect(response.arrayBuffer()).rejects.toMatchObject({status:404});
 });
+it("opens only at the tiers that include the turn-by-turn media",async()=>{
+  for(const tier of ["SIMPLE","STANDARD"]){
+    mocks.account.mockResolvedValue({...row,tier});
+    await expect(handleCoachingWorkspace(input("workspace"))).rejects.toMatchObject({status:403,message:"tier-locked"});
+  }
+  expect(mocks.request).not.toHaveBeenCalled();
+  for(const tier of ["DEEP","COMPLETE"]){
+    mocks.account.mockResolvedValue({...row,tier});
+    expect((await handleCoachingWorkspace(input("workspace"))).status).toBe(200);
+  }
+});

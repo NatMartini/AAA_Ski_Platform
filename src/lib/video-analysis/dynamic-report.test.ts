@@ -198,3 +198,29 @@ it("proxies FreeSki's synthesized standard skeleton like any published pose, str
   expect(body.frame_count).toBe(1);
   expect(body).not.toHaveProperty("source_clips");
 });
+
+it("keeps a standard analysis to its scores and quick explanation, and turn media to deep and up", async () => {
+  mocks.account.mockResolvedValue({ ...row, tier: "STANDARD" });
+  await expect(readDynamicReport(input(["turns", "turn_1"]))).rejects.toMatchObject({ status: 403, code: "tier-locked" });
+  await expect(readDynamicReport(input(["assets", "user-pose"]))).rejects.toMatchObject({ status: 403 });
+  await expect(readDynamicReport({ ...input(["report"]), request: new Request("http://localhost/api/report?thinking=xhigh") }))
+    .rejects.toMatchObject({ status: 403, code: "tier-locked" });
+  expect(mocks.request).not.toHaveBeenCalled();
+  mocks.request.mockResolvedValueOnce(pinnedReport());
+  const body = await (await readDynamicReport({ ...input(["report"]), request: new Request("http://localhost/api/report?thinking=low") })).json();
+  expect(body.scorecard).not.toBeNull();
+  expect(body.turns).toEqual([]);
+  expect(body.explainerStatus).toBeNull();
+});
+
+it("gives a simple analysis its written conclusion alone, and a deep one the turn media", async () => {
+  mocks.account.mockResolvedValue({ ...row, tier: "SIMPLE" });
+  mocks.request.mockResolvedValueOnce(pinnedReport());
+  const simple = await (await readDynamicReport(input(["report"]))).json();
+  expect(simple.scorecard).toBeNull();
+  expect(simple.turns).toEqual([]);
+  mocks.account.mockResolvedValue({ ...row, tier: "DEEP" });
+  mocks.request.mockResolvedValueOnce(pinnedReport());
+  const deep = await (await readDynamicReport({ ...input(["report"]), request: new Request("http://localhost/api/report?thinking=xhigh") })).json();
+  expect(deep.turns).toEqual(sampleReport.turns);
+});

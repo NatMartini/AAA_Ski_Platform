@@ -5,12 +5,13 @@ import type { Locale } from "@/i18n/routing";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { FREESKI_CURRENT_LEVELS, getFreeSkiActionOption, parseFreeSkiActionId } from "@/lib/freeski/actions";
+import { FREESKI_CURRENT_LEVELS, getFreeSkiActionOption, parseFreeSkiActionId, actionName, AUTO_ACTION } from "@/lib/freeski/actions";
 import { formatTorontoDate, formatTorontoShortDateTime, torontoWallTimeToUtc } from "@/lib/time";
 import { seasonLastDay } from "@/lib/video-analysis/season";
 import { analysisReasonText, readAnalysisResult } from "./video-analysis-result";
 import { AnalysisProgress } from "./analysis-progress";
 import type { AnalysisJobView, AnalysisVideoView, VideoAnalysisView } from "./video-analysis-types";
+import { TIER_INFO } from "@/lib/video-analysis/tiers";
 
 // A job waiting for compute never times out; only a completed analysis uses its credit.
 export const COMPUTE_WAIT = {
@@ -39,10 +40,17 @@ export function jobStatusBadge(status: AnalysisJobView["status"] | null, zh: boo
   }
 }
 
-/** "平行式 · 目前 CSIA 2 级": the catalog action, its certification group and the skier's level. */
-export function analysisJobLabel(actionId: string | undefined, actions: VideoAnalysisView["actions"], zh: boolean): string | null {
+/**
+ * "平行式 · 目前 CSIA 2 级": the catalog action, its certification group and the skier's level. A recognised run is named
+ * by what FreeSki recognised, once it has.
+ */
+export function analysisJobLabel(actionId: string | undefined, actions: VideoAnalysisView["actions"], zh: boolean, result?: unknown): string | null {
   if (!actionId) return null;
   const selection = parseFreeSkiActionId(actionId);
+  if (selection?.actionName === AUTO_ACTION) {
+    const recognised = readAnalysisResult(result)?.actionRecognition;
+    return recognised ? `${actionName(recognised.action, recognised.level, zh)} · ${zh ? "自动识别" : "recognised"}` : (zh ? "自动识别动作" : "Action to be recognised");
+  }
   const action = actions.find((candidate) => candidate.id === selection?.catalogId) ?? getFreeSkiActionOption(actionId);
   if (!action) return null;
   const level = FREESKI_CURRENT_LEVELS.find((candidate) => candidate.id === selection?.currentLevel);
@@ -101,7 +109,7 @@ export function VideoCard({ video, jobs, locale, actions, reportHref, pdfHref, s
   const pending = status === "processing";
   const supported = video.analysisSupported ?? video.contentType !== "video/webm";
   const badge = jobStatusBadge(latest?.status ?? null, zh);
-  const label = analysisJobLabel(latest?.actionId, actions, zh);
+  const label = analysisJobLabel(latest?.actionId, actions, zh, latest?.result);
   const result = latest?.status === "FAILED" ? readAnalysisResult(latest.result) : null;
   const reason = analysisReasonText(result?.gradingReason ?? null, zh);
   const tips = (zh ? result?.coachingZh : result?.coachingEn)?.slice(0, 2) ?? [];
@@ -113,13 +121,15 @@ export function VideoCard({ video, jobs, locale, actions, reportHref, pdfHref, s
       <Badge tone={badge.tone} dot className="pointer-events-none absolute left-3 top-3 shadow-[var(--shadow-sm)]">{badge.label}</Badge>
       {pending && <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/55 text-white">
         <Spinner size="lg" className="flex-col gap-2 text-center text-sm font-semibold"
-          label={latest!.status === "QUEUED" ? (zh ? "排队中，轮到就开始" : "Queued; starts when its turn comes") : (zh ? "正在分析，完成后自动更新" : "Analysing; this updates when done")} />
+          label={latest!.status === "QUEUED" ? (zh ? "排队中，轮到就开始" : "Queued; starts when its turn comes")
+            : latest!.phase === "preparing" ? (zh ? "评分完成，正在生成讲解内容" : "Scored; making the explanation")
+            : (zh ? "正在分析，完成后自动更新" : "Analysing; this updates when done")} />
       </div>}
     </div>
     <div className="flex flex-1 flex-col gap-3 p-4">
       <div className="space-y-1">
         <h3 className="break-words font-semibold">{video.caption || (zh ? "未命名视频" : "Untitled video")}</h3>
-        {label && <p className="text-sm text-ink-2" data-job-label>{label}</p>}
+        {label && <p className="text-sm text-ink-2" data-job-label>{label}{latest?.tier && <span className="text-ink-3"> · {zh ? `${TIER_INFO[latest.tier].zh}档` : `${TIER_INFO[latest.tier].en} tier`}</span>}</p>}
         <p className="flex flex-wrap gap-x-1.5 text-xs text-ink-3">
           {video.uploadedAt && <span>{zh ? "上传" : "Uploaded"} {when(video.uploadedAt, locale)}</span>}
           {video.uploadedAt && <span title={zh ? "视频只保存一个雪季，分析报告一直保留" : "Videos are kept for one ski season; reports stay"}>
@@ -165,7 +175,7 @@ export function VideoCard({ video, jobs, locale, actions, reportHref, pdfHref, s
         <ul className="divide-y divide-border border-t border-border">
           {jobs.map((job) => {
             const jobBadge = jobStatusBadge(job.status, zh);
-            const jobLabel = analysisJobLabel(job.actionId, actions, zh);
+            const jobLabel = analysisJobLabel(job.actionId, actions, zh, job.result);
             return <li key={job.id} className="space-y-1 px-3 py-2 text-xs">
               <div className="flex flex-wrap items-center gap-2">
                 {jobLabel && <span className="font-semibold text-ink" data-job-label>{jobLabel}</span>}

@@ -1,0 +1,1066 @@
+{
+  "version": 2,
+  "deploymentId": "freeski-platform-8100",
+  "jobId": "0123456789abcdef0123456789abcdef",
+  "scorecard": {
+    "schema_version": "freeski_scorecard.v1",
+    "experimental": true,
+    "action": "demonstration_parallel",
+    "level": "level2",
+    "current_level": null,
+    "calibration": {
+      "scoring_version": "freeski-scorecard-8",
+      "calibration_id": "scal-5d268d8b019c3976",
+      "reference_generation": "standard-4e16be897ca73621",
+      "reference_clip_count": 38,
+      "matched_reference_count": 1,
+      "reference_target": "level2",
+      "reference_kind": "generated_standard",
+      "turn_cut": "edge_change.v1",
+      "standard": {
+        "id": "demonstration_parallel-l2",
+        "action": "demonstration_parallel",
+        "level": 2,
+        "source_reference": "demonstration_parallel|2|pass",
+        "source_clips": 1,
+        "source_turns": 25,
+        "other_level": false
+      },
+      "pass_demonstration": {
+        "score": 61.6,
+        "clips": 1,
+        "turns": 25
+      },
+      "standard_own": {
+        "score": 88.8,
+        "runs": 6
+      }
+    },
+    "quality": "approximate",
+    "quality_reasons": [
+      "few_turns",
+      "excluded_turns"
+    ],
+    "overall": {
+      "score": 65.4,
+      "aggregation": "middle_turns_mean",
+      "turns_used": 3,
+      "turns_total": 11,
+      "turns_excluded": 8
+    },
+    "metrics": [
+      {
+        "key": "parallel_skis",
+        "label_zh": "双板平行",
+        "label_en": "Parallel skis",
+        "measurement": "direct",
+        "presentation": "bar",
+        "score": 21.1,
+        "band": "below",
+        "position": null,
+        "target": null,
+        "weight": 0.2133,
+        "value": 61.8837,
+        "unit": "percent",
+        "reference": {
+          "p25": 81.5407,
+          "median": 84.7684,
+          "p75": 87.9961
+        }
+      },
+      {
+        "key": "turn_completion_direction",
+        "label_zh": "收弯方向",
+        "label_en": "Turn completion",
+        "measurement": "direct",
+        "presentation": "bar",
+        "score": 97.4,
+        "band": "above",
+        "position": null,
+        "target": null,
+        "weight": 0.1867,
+        "value": 94.2862,
+        "unit": "percent",
+        "reference": {
+          "p25": 24.6777,
+          "median": 46.9945,
+          "p75": 69.3113
+        }
+      },
+      {
+        "key": "turn_closure",
+        "label_zh": "收弯完成度",
+        "label_en": "Turn closure",
+        "measurement": "direct",
+        "presentation": "bar",
+        "score": 78.9,
+        "band": "within",
+        "position": null,
+        "target": null,
+        "weight": 0.16,
+        "value": 75.2425,
+        "unit": "percent",
+        "reference": {
+          "p25": 60.618,
+          "median": 90.932,
+          "p75": 121.246
+        }
+      },
+      {
+        "key": "rhythm_continuity",
+        "label_zh": "节奏连贯",
+        "label_en": "Rhythm continuity",
+        "measurement": "direct",
+        "presentation": "bar",
+        "score": 61.0,
+        "band": "within",
+        "position": null,
+        "target": null,
+        "weight": 0.1333,
+        "value": 15.5938,
+        "unit": "percent",
+        "reference": {
+          "p25": 9.0167,
+          "median": 27.9413,
+          "p75": 46.8659
+        }
+      },
+      {
+        "key": "upper_body_quiet_index",
+        "label_zh": "上身稳定",
+        "label_en": "Quiet upper body",
+        "measurement": "direct",
+        "presentation": "bar",
+        "score": 91.4,
+        "band": "within",
+        "position": null,
+        "target": null,
+        "weight": 0.1333,
+        "value": 16.592,
+        "unit": "percent",
+        "reference": {
+          "p25": 0.725,
+          "median": 13.0935,
+          "p75": 25.462
+        }
+      },
+      {
+        "key": "rotation_rate",
+        "label_zh": "旋转速率",
+        "label_en": "Rotation rate",
+        "measurement": "direct",
+        "presentation": "target",
+        "score": 91.1,
+        "band": "within",
+        "position": 52.3,
+        "target": {
+          "low": 36.8,
+          "high": 63.2
+        },
+        "weight": 0.1067,
+        "value": 48.4051,
+        "unit": "deg_per_s",
+        "reference": {
+          "p25": 31.5031,
+          "median": 45.9466,
+          "p75": 60.3901
+        }
+      },
+      {
+        "key": "turn_tempo",
+        "label_zh": "换弯节奏",
+        "label_en": "Turn tempo",
+        "measurement": "direct",
+        "presentation": "target",
+        "score": 0.0,
+        "band": "above",
+        "position": 99.2,
+        "target": {
+          "low": 36.8,
+          "high": 63.2
+        },
+        "weight": 0.0667,
+        "value": 58.0645,
+        "unit": "turns_per_min",
+        "reference": {
+          "p25": 18.5048,
+          "median": 23.3766,
+          "p75": 28.2484
+        }
+      },
+      {
+        "key": "edge_angle",
+        "label_zh": "立刃角度（估算）",
+        "label_en": "Edge angle (estimate)",
+        "measurement": "estimated",
+        "presentation": "bar",
+        "score": 63.6,
+        "band": "within",
+        "position": null,
+        "target": null,
+        "weight": 0.0,
+        "value": null,
+        "unit": null,
+        "reference": null
+      },
+      {
+        "key": "edge_change_sync",
+        "label_zh": "换刃同步（估算）",
+        "label_en": "Edge change timing (estimate)",
+        "measurement": "estimated",
+        "presentation": "bar",
+        "score": 100.0,
+        "band": "above",
+        "position": null,
+        "target": null,
+        "weight": 0.0,
+        "value": null,
+        "unit": null,
+        "reference": null
+      }
+    ],
+    "turns": [
+      {
+        "turn_id": "turn_0",
+        "start_ms": 0,
+        "end_ms": 1100,
+        "apex_ms": 533,
+        "direction": "left",
+        "role": "start",
+        "score": null,
+        "used_in_overall": false,
+        "evidence": {
+          "status": "insufficient",
+          "reasons": [
+            "subject_small"
+          ],
+          "reacquired": false
+        },
+        "metrics": [],
+        "camera_view": "unknown",
+        "camera_azimuth_deg": null
+      },
+      {
+        "turn_id": "turn_1",
+        "start_ms": 1100,
+        "end_ms": 2467,
+        "apex_ms": 1833,
+        "direction": "right",
+        "role": "middle",
+        "score": null,
+        "used_in_overall": false,
+        "evidence": {
+          "status": "insufficient",
+          "reasons": [
+            "subject_small"
+          ],
+          "reacquired": false
+        },
+        "metrics": [],
+        "camera_view": "front",
+        "camera_azimuth_deg": 190.0
+      },
+      {
+        "turn_id": "turn_2",
+        "start_ms": 2467,
+        "end_ms": 3733,
+        "apex_ms": 2967,
+        "direction": "left",
+        "role": "middle",
+        "score": null,
+        "used_in_overall": false,
+        "evidence": {
+          "status": "insufficient",
+          "reasons": [
+            "subject_small"
+          ],
+          "reacquired": false
+        },
+        "metrics": [],
+        "camera_view": "front",
+        "camera_azimuth_deg": 190.0
+      },
+      {
+        "turn_id": "turn_3",
+        "start_ms": 3733,
+        "end_ms": 4733,
+        "apex_ms": 4267,
+        "direction": "right",
+        "role": "middle",
+        "score": 64.4,
+        "used_in_overall": true,
+        "evidence": {
+          "status": "ok",
+          "reasons": [],
+          "reacquired": false
+        },
+        "metrics": [
+          {
+            "key": "parallel_skis",
+            "score": 0.0,
+            "band": "below"
+          },
+          {
+            "key": "turn_completion_direction",
+            "score": 92.2,
+            "band": "within"
+          },
+          {
+            "key": "turn_closure",
+            "score": 100.0,
+            "band": "within"
+          },
+          {
+            "key": "rhythm_continuity",
+            "score": 75.1,
+            "band": "within"
+          },
+          {
+            "key": "upper_body_quiet_index",
+            "score": 100.0,
+            "band": "within"
+          },
+          {
+            "key": "rotation_rate",
+            "score": 73.2,
+            "band": "below"
+          },
+          {
+            "key": "turn_tempo",
+            "score": 0.0,
+            "band": "above"
+          },
+          {
+            "key": "edge_angle",
+            "score": 67.1,
+            "band": "within"
+          }
+        ],
+        "camera_view": "front",
+        "camera_azimuth_deg": 185.0
+      },
+      {
+        "turn_id": "turn_4",
+        "start_ms": 4733,
+        "end_ms": 5767,
+        "apex_ms": 5167,
+        "direction": "left",
+        "role": "middle",
+        "score": 76.6,
+        "used_in_overall": true,
+        "evidence": {
+          "status": "ok",
+          "reasons": [],
+          "reacquired": false
+        },
+        "metrics": [
+          {
+            "key": "parallel_skis",
+            "score": 63.2,
+            "band": "within"
+          },
+          {
+            "key": "turn_completion_direction",
+            "score": 100.0,
+            "band": "above"
+          },
+          {
+            "key": "turn_closure",
+            "score": 72.7,
+            "band": "within"
+          },
+          {
+            "key": "rhythm_continuity",
+            "score": 66.0,
+            "band": "within"
+          },
+          {
+            "key": "upper_body_quiet_index",
+            "score": 100.0,
+            "band": "above"
+          },
+          {
+            "key": "rotation_rate",
+            "score": 100.0,
+            "band": "within"
+          },
+          {
+            "key": "turn_tempo",
+            "score": 0.0,
+            "band": "above"
+          },
+          {
+            "key": "edge_angle",
+            "score": 100.0,
+            "band": "within"
+          }
+        ],
+        "camera_view": "front",
+        "camera_azimuth_deg": 185.0
+      },
+      {
+        "turn_id": "turn_5",
+        "start_ms": 5767,
+        "end_ms": 6700,
+        "apex_ms": 6300,
+        "direction": "right",
+        "role": "middle",
+        "score": 55.1,
+        "used_in_overall": true,
+        "evidence": {
+          "status": "ok",
+          "reasons": [],
+          "reacquired": false
+        },
+        "metrics": [
+          {
+            "key": "parallel_skis",
+            "score": 0.0,
+            "band": "below"
+          },
+          {
+            "key": "turn_completion_direction",
+            "score": 100.0,
+            "band": "above"
+          },
+          {
+            "key": "turn_closure",
+            "score": 63.9,
+            "band": "within"
+          },
+          {
+            "key": "rhythm_continuity",
+            "score": 41.9,
+            "band": "below"
+          },
+          {
+            "key": "upper_body_quiet_index",
+            "score": 74.3,
+            "band": "within"
+          },
+          {
+            "key": "rotation_rate",
+            "score": 100.0,
+            "band": "within"
+          },
+          {
+            "key": "turn_tempo",
+            "score": 0.0,
+            "band": "above"
+          },
+          {
+            "key": "edge_angle",
+            "score": 23.8,
+            "band": "below"
+          },
+          {
+            "key": "edge_change_sync",
+            "score": 100.0,
+            "band": "above"
+          }
+        ],
+        "camera_view": "unknown",
+        "camera_azimuth_deg": null
+      },
+      {
+        "turn_id": "turn_6",
+        "start_ms": 6700,
+        "end_ms": 7233,
+        "apex_ms": 6833,
+        "direction": "left",
+        "role": "middle",
+        "score": null,
+        "used_in_overall": false,
+        "evidence": {
+          "status": "insufficient",
+          "reasons": [
+            "out_of_frame"
+          ],
+          "reacquired": false
+        },
+        "metrics": [],
+        "camera_view": "unknown",
+        "camera_azimuth_deg": null
+      },
+      {
+        "turn_id": "turn_7",
+        "start_ms": 7233,
+        "end_ms": 7900,
+        "apex_ms": 7667,
+        "direction": "right",
+        "role": "middle",
+        "score": null,
+        "used_in_overall": false,
+        "evidence": {
+          "status": "insufficient",
+          "reasons": [
+            "out_of_frame"
+          ],
+          "reacquired": false
+        },
+        "metrics": [],
+        "camera_view": "unknown",
+        "camera_azimuth_deg": null
+      },
+      {
+        "turn_id": "turn_8",
+        "start_ms": 7900,
+        "end_ms": 8233,
+        "apex_ms": 8233,
+        "direction": "left",
+        "role": "end",
+        "score": null,
+        "used_in_overall": false,
+        "evidence": {
+          "status": "insufficient",
+          "reasons": [
+            "subject_small",
+            "lower_body_hidden"
+          ],
+          "reacquired": false
+        },
+        "metrics": [],
+        "camera_view": "unknown",
+        "camera_azimuth_deg": null
+      },
+      {
+        "turn_id": "turn_9",
+        "start_ms": 8267,
+        "end_ms": 8667,
+        "apex_ms": 8533,
+        "direction": "left",
+        "role": "start",
+        "score": null,
+        "used_in_overall": false,
+        "evidence": {
+          "status": "insufficient",
+          "reasons": [
+            "subject_small",
+            "lower_body_hidden",
+            "discontinuity"
+          ],
+          "reacquired": false
+        },
+        "metrics": [],
+        "camera_view": "unknown",
+        "camera_azimuth_deg": null
+      },
+      {
+        "turn_id": "turn_10",
+        "start_ms": 8667,
+        "end_ms": 9233,
+        "apex_ms": 8933,
+        "direction": "right",
+        "role": "end",
+        "score": null,
+        "used_in_overall": false,
+        "evidence": {
+          "status": "insufficient",
+          "reasons": [
+            "subject_small",
+            "lower_body_hidden"
+          ],
+          "reacquired": false
+        },
+        "metrics": [],
+        "camera_view": "unknown",
+        "camera_azimuth_deg": null
+      }
+    ],
+    "unavailable_metrics": [],
+    "camera_view": "front"
+  },
+  "teachingStatus": "ready",
+  "teaching": {
+    "schema_version": "freeski_teaching.v1",
+    "experimental": true,
+    "mode": "reference_comparison",
+    "facts": [
+      {
+        "fact_id": "f_parallel_skis",
+        "metric_key": "parallel_skis",
+        "turn_id": null,
+        "label_zh": "双板平行",
+        "label_en": "Parallel skis",
+        "phase": null,
+        "time_sec": null,
+        "user_score": 21.1,
+        "reference_band": "below",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_turn_completion_direction",
+        "metric_key": "turn_completion_direction",
+        "turn_id": null,
+        "label_zh": "收弯方向",
+        "label_en": "Turn completion",
+        "phase": null,
+        "time_sec": null,
+        "user_score": 97.4,
+        "reference_band": "above",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_turn_closure",
+        "metric_key": "turn_closure",
+        "turn_id": null,
+        "label_zh": "收弯完成度",
+        "label_en": "Turn closure",
+        "phase": null,
+        "time_sec": null,
+        "user_score": 78.9,
+        "reference_band": "within",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_rhythm_continuity",
+        "metric_key": "rhythm_continuity",
+        "turn_id": null,
+        "label_zh": "节奏连贯",
+        "label_en": "Rhythm continuity",
+        "phase": null,
+        "time_sec": null,
+        "user_score": 61.0,
+        "reference_band": "within",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_upper_body_quiet_index",
+        "metric_key": "upper_body_quiet_index",
+        "turn_id": null,
+        "label_zh": "上身稳定",
+        "label_en": "Quiet upper body",
+        "phase": null,
+        "time_sec": null,
+        "user_score": 91.4,
+        "reference_band": "within",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_rotation_rate",
+        "metric_key": "rotation_rate",
+        "turn_id": null,
+        "label_zh": "旋转速率",
+        "label_en": "Rotation rate",
+        "phase": null,
+        "time_sec": null,
+        "user_score": 91.1,
+        "reference_band": "within",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_turn_tempo",
+        "metric_key": "turn_tempo",
+        "turn_id": null,
+        "label_zh": "换弯节奏",
+        "label_en": "Turn tempo",
+        "phase": null,
+        "time_sec": null,
+        "user_score": 0.0,
+        "reference_band": "above",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_edge_angle",
+        "metric_key": "edge_angle",
+        "turn_id": null,
+        "label_zh": "立刃角度（估算）",
+        "label_en": "Edge angle (estimate)",
+        "phase": null,
+        "time_sec": null,
+        "user_score": 63.6,
+        "reference_band": "within",
+        "measurement": "estimated"
+      },
+      {
+        "fact_id": "f_edge_change_sync",
+        "metric_key": "edge_change_sync",
+        "turn_id": null,
+        "label_zh": "换刃同步（估算）",
+        "label_en": "Edge change timing (estimate)",
+        "phase": null,
+        "time_sec": null,
+        "user_score": 100.0,
+        "reference_band": "above",
+        "measurement": "estimated"
+      },
+      {
+        "fact_id": "f_parallel_skis_turn_3",
+        "metric_key": "parallel_skis",
+        "turn_id": "turn_3",
+        "phase": null,
+        "label_zh": "双板平行",
+        "label_en": "Parallel skis",
+        "time_sec": 4.23,
+        "user_score": 0.0,
+        "reference_band": "below",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_parallel_skis_turn_4",
+        "metric_key": "parallel_skis",
+        "turn_id": "turn_4",
+        "phase": null,
+        "label_zh": "双板平行",
+        "label_en": "Parallel skis",
+        "time_sec": 5.25,
+        "user_score": 63.2,
+        "reference_band": "within",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_turn_completion_direction_turn_3",
+        "metric_key": "turn_completion_direction",
+        "turn_id": "turn_3",
+        "phase": null,
+        "label_zh": "收弯方向",
+        "label_en": "Turn completion",
+        "time_sec": 4.23,
+        "user_score": 92.2,
+        "reference_band": "within",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_turn_completion_direction_turn_5",
+        "metric_key": "turn_completion_direction",
+        "turn_id": "turn_5",
+        "phase": null,
+        "label_zh": "收弯方向",
+        "label_en": "Turn completion",
+        "time_sec": 6.23,
+        "user_score": 100.0,
+        "reference_band": "above",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_turn_closure_turn_5",
+        "metric_key": "turn_closure",
+        "turn_id": "turn_5",
+        "phase": null,
+        "label_zh": "收弯完成度",
+        "label_en": "Turn closure",
+        "time_sec": 6.23,
+        "user_score": 63.9,
+        "reference_band": "within",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_turn_closure_turn_3",
+        "metric_key": "turn_closure",
+        "turn_id": "turn_3",
+        "phase": null,
+        "label_zh": "收弯完成度",
+        "label_en": "Turn closure",
+        "time_sec": 4.23,
+        "user_score": 100.0,
+        "reference_band": "within",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_rhythm_continuity_turn_5",
+        "metric_key": "rhythm_continuity",
+        "turn_id": "turn_5",
+        "phase": null,
+        "label_zh": "节奏连贯",
+        "label_en": "Rhythm continuity",
+        "time_sec": 6.23,
+        "user_score": 41.9,
+        "reference_band": "below",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_rhythm_continuity_turn_3",
+        "metric_key": "rhythm_continuity",
+        "turn_id": "turn_3",
+        "phase": null,
+        "label_zh": "节奏连贯",
+        "label_en": "Rhythm continuity",
+        "time_sec": 4.23,
+        "user_score": 75.1,
+        "reference_band": "within",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_upper_body_quiet_index_turn_5",
+        "metric_key": "upper_body_quiet_index",
+        "turn_id": "turn_5",
+        "phase": null,
+        "label_zh": "上身稳定",
+        "label_en": "Quiet upper body",
+        "time_sec": 6.23,
+        "user_score": 74.3,
+        "reference_band": "within",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_upper_body_quiet_index_turn_4",
+        "metric_key": "upper_body_quiet_index",
+        "turn_id": "turn_4",
+        "phase": null,
+        "label_zh": "上身稳定",
+        "label_en": "Quiet upper body",
+        "time_sec": 5.25,
+        "user_score": 100.0,
+        "reference_band": "above",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_rotation_rate_turn_3",
+        "metric_key": "rotation_rate",
+        "turn_id": "turn_3",
+        "phase": null,
+        "label_zh": "旋转速率",
+        "label_en": "Rotation rate",
+        "time_sec": 4.23,
+        "user_score": 73.2,
+        "reference_band": "below",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_rotation_rate_turn_5",
+        "metric_key": "rotation_rate",
+        "turn_id": "turn_5",
+        "phase": null,
+        "label_zh": "旋转速率",
+        "label_en": "Rotation rate",
+        "time_sec": 6.23,
+        "user_score": 100.0,
+        "reference_band": "within",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_turn_tempo_turn_3",
+        "metric_key": "turn_tempo",
+        "turn_id": "turn_3",
+        "phase": null,
+        "label_zh": "换弯节奏",
+        "label_en": "Turn tempo",
+        "time_sec": 4.23,
+        "user_score": 0.0,
+        "reference_band": "above",
+        "measurement": "direct"
+      },
+      {
+        "fact_id": "f_turn_tempo_turn_5",
+        "metric_key": "turn_tempo",
+        "turn_id": "turn_5",
+        "phase": null,
+        "label_zh": "换弯节奏",
+        "label_en": "Turn tempo",
+        "time_sec": 6.23,
+        "user_score": 0.0,
+        "reference_band": "above",
+        "measurement": "direct"
+      }
+    ],
+    "summary_zh": "本次按 3 个中间弯与 CSIA 2 级标准动作逐项对比（试验性）。",
+    "summary_en": "Each metric was compared with the CSIA Level 2 standard motion over 3 middle turns (experimental).",
+    "strengths": [
+      {
+        "text_zh": "收弯方向与 CSIA 2 级标准动作接近（97.4 分）。对应 CSIA 要求：弯型圆滑，弯与弯连贯。指南描述：每个弯都画成圆弧，一个弯接着一个弯连续滑下。",
+        "text_en": "Turn completion is close to the CSIA Level 2 standard motion (97.4). CSIA criterion: Round, linked turns. The guide describes: Each turn is a round arc, and each turn flows into the next.",
+        "fact_ids": [
+          "f_turn_completion_direction"
+        ]
+      }
+    ],
+    "improvements": [
+      {
+        "text_zh": "第4弯的双板平行只有 0 分，和 CSIA 2 级标准动作相比低于标准动作范围。对应 CSIA 要求：弯的后半段双板并成平行（2 级入门平行弯）。指南建议：在弯中更早地让内侧脚变轻。",
+        "text_en": "Turn 4 scored 0 for parallel skis, below the standard's range compared with the CSIA Level 2 standard motion. CSIA criterion: Skis match below the fall line (Level 2 intro parallel). The guide suggests: Lighten the inside foot earlier in the turn.",
+        "fact_ids": [
+          "f_parallel_skis_turn_3"
+        ],
+        "turn_ids": [
+          "turn_3"
+        ],
+        "keyframe_ids": [
+          "kf_7457ca2cca3250c2c045e5bc5071a8de",
+          "kf_8c41510c49e0c57f061b0a5cce1f4c07",
+          "kf_faf340eb17eb4d8b9ddda3e13fee69a2"
+        ],
+        "priority": "primary"
+      }
+    ],
+    "drills": [
+      {
+        "drill_id": "rollerblade_turns",
+        "name_zh": "轮滑式转弯",
+        "name_en": "Rollerblade turns",
+        "why_zh": "针对第4弯的双板平行。对应 CSIA 要求：弯的后半段双板并成平行（2 级入门平行弯）。指南用它练习两板同时放刃，以及让内侧板更早并成平行，可以先在平地上练。",
+        "why_en": "For parallel skis in turn 4. CSIA criterion: Skis match below the fall line (Level 2 intro parallel). The guide uses it to practise releasing both edges together and matching the inside ski earlier; it can start on the flats.",
+        "fact_ids": [
+          "f_parallel_skis_turn_3"
+        ]
+      }
+    ],
+    "limitations_zh": [
+      "试验性结果：分数来自单机位二维视频与 CSIA 标准动作的对比，不是考官评分。标准动作由官方示范视频的骨架数据和考生指南生成，是理想的做法；官方通过示范自己对它也不是满分。",
+      "标为“估算”的指标是视频估算，只显示、不计分。",
+      "只对比视频能测量的 CSIA 考核要求。",
+      "讲解只引用 CSIA 指南的要求和改进建议；本级别没有对应要求的指标，引用最近的指南条目并注明级别和动作。",
+      "每个弯从一次换刃算到下一次换刃；第一次换刃之前和最后一次换刃之后的部分不是完整的弯，不计入、不讲解。"
+    ],
+    "limitations_en": [
+      "Experimental: scores compare a single-camera 2D video with the CSIA standard motion; this is not an examiner's mark. The standard motion is generated from the official demonstrations' skeleton data and the candidate guide; it is an ideal, and the official pass demonstration does not score full marks against it either.",
+      "Metrics marked as estimates are video estimates: shown, not scored.",
+      "Only the CSIA criteria a video can measure are compared.",
+      "Notes cite only the CSIA guides' criteria and development advice; a metric with no criterion at this level cites the nearest guide entry, with its level and action.",
+      "A turn runs from one edge change to the next; what comes before the first edge change and after the last is not a whole turn and is neither counted nor explained."
+    ],
+    "model": {
+      "model": "sample-handwritten",
+      "project": "ski-platform-text",
+      "prompt_version": "teaching-v12",
+      "thinking_level": "none"
+    }
+  },
+  "teachingReason": null,
+  "teachingLevels": [
+    {
+      "level": "none",
+      "status": "ready"
+    }
+  ],
+  "explainerStatus": "ready",
+  "measurementStatus": "ready",
+  "modelStatus": "unavailable",
+  "modelAssessment": null,
+  "modelError": "superseded-by-teaching",
+  "referenceAvailability": {},
+  "turnSegmentation": "edge_change",
+  "edgeChangesMs": [
+    1100,
+    2467,
+    3733,
+    4733,
+    5767,
+    6700,
+    7233,
+    7900,
+    8667
+  ],
+  "turns": [
+    {
+      "turnId": "turn_0",
+      "startMs": 0,
+      "endMs": 1100,
+      "edgeChangeMs": null,
+      "direction": "left",
+      "role": "start",
+      "apexMs": 533,
+      "referenceAvailable": false,
+      "comparisonReference": "not_available"
+    },
+    {
+      "turnId": "turn_1",
+      "startMs": 1100,
+      "endMs": 2467,
+      "edgeChangeMs": null,
+      "direction": "right",
+      "role": "middle",
+      "apexMs": 1833,
+      "referenceAvailable": false,
+      "comparisonReference": "not_available"
+    },
+    {
+      "turnId": "turn_2",
+      "startMs": 2467,
+      "endMs": 3733,
+      "edgeChangeMs": null,
+      "direction": "left",
+      "role": "middle",
+      "apexMs": 2967,
+      "referenceAvailable": false,
+      "comparisonReference": "not_available"
+    },
+    {
+      "turnId": "turn_3",
+      "startMs": 3733,
+      "endMs": 4733,
+      "edgeChangeMs": null,
+      "direction": "right",
+      "role": "middle",
+      "apexMs": 4267,
+      "referenceAvailable": false,
+      "comparisonReference": "not_available"
+    },
+    {
+      "turnId": "turn_4",
+      "startMs": 4733,
+      "endMs": 5767,
+      "edgeChangeMs": null,
+      "direction": "left",
+      "role": "middle",
+      "apexMs": 5167,
+      "referenceAvailable": false,
+      "comparisonReference": "not_available"
+    },
+    {
+      "turnId": "turn_5",
+      "startMs": 5767,
+      "endMs": 6700,
+      "edgeChangeMs": null,
+      "direction": "right",
+      "role": "middle",
+      "apexMs": 6300,
+      "referenceAvailable": false,
+      "comparisonReference": "not_available"
+    },
+    {
+      "turnId": "turn_6",
+      "startMs": 6700,
+      "endMs": 7233,
+      "edgeChangeMs": null,
+      "direction": "left",
+      "role": "middle",
+      "apexMs": 6833,
+      "referenceAvailable": false,
+      "comparisonReference": "not_available"
+    },
+    {
+      "turnId": "turn_7",
+      "startMs": 7233,
+      "endMs": 7900,
+      "edgeChangeMs": null,
+      "direction": "right",
+      "role": "middle",
+      "apexMs": 7667,
+      "referenceAvailable": false,
+      "comparisonReference": "not_available"
+    },
+    {
+      "turnId": "turn_8",
+      "startMs": 7900,
+      "endMs": 8233,
+      "edgeChangeMs": null,
+      "direction": "left",
+      "role": "end",
+      "referenceAvailable": false,
+      "comparisonReference": "not_available"
+    },
+    {
+      "turnId": "turn_9",
+      "startMs": 8267,
+      "endMs": 8667,
+      "edgeChangeMs": null,
+      "direction": "left",
+      "role": "start",
+      "apexMs": 8533,
+      "referenceAvailable": false,
+      "comparisonReference": "not_available"
+    },
+    {
+      "turnId": "turn_10",
+      "startMs": 8667,
+      "endMs": 9233,
+      "edgeChangeMs": null,
+      "direction": "right",
+      "role": "end",
+      "apexMs": 8933,
+      "referenceAvailable": false,
+      "comparisonReference": "not_available"
+    }
+  ],
+  "evidenceId": "ev_c8abad9d7ee62234fa3aaff467d4bd6007f594844743328be8c88061518a38e6"
+}

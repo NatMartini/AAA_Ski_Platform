@@ -1,3 +1,4 @@
+import { ANALYSIS_TIERS, DEFAULT_TIER } from "./tiers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireUser } from "../auth/require-user";
@@ -33,7 +34,9 @@ export async function analysisApi(req: Request, work: (user: ActiveUser) => Prom
 export async function analysisBody<T>(req: Request, schema: z.ZodType<T>): Promise<T> {
   return schema.parse(await readJsonBody(req));
 }
-export const requestAnalysisSchema = z.object({ videoId: z.string().min(1), actionId: z.string().min(1).max(80), requestKey: z.uuid() });
+export const requestAnalysisSchema = z.object({ videoId: z.string().min(1), actionId: z.string().min(1).max(80), requestKey: z.uuid(),
+  tier: z.enum(ANALYSIS_TIERS).default(DEFAULT_TIER), replacesJobId: z.string().min(1).max(128).optional() });
+export const tierChangeSchema = z.object({ tier: z.enum(ANALYSIS_TIERS), expectedAccountId: z.string().min(1).max(128).optional() });
 export const analysisPurchaseSchema = z.object({ quantity: z.number().int().min(1).max(50), requestKey: z.uuid(),
   expectedUnitPriceCents: z.number().int().min(1).max(1_000_000) });
 export const analysisPaymentSchema = z.object({ reference: z.string().trim().max(200).optional() });

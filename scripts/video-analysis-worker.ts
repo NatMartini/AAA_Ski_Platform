@@ -33,6 +33,11 @@ async function main() {
   // Videos are kept for one ski season; this clears the ones whose season has ended, hourly.
   let nextPurge = 0;
   const dispatcher = await createBusinessAnalysisDispatcher(jobId);
+  // "Update the actions" runs here too: a season build takes long and belongs with the background work, not in a web request.
+  const { createActionUpdateRunner, runnerDefaults } = await import("../src/lib/season-update/runner");
+  const { prismaRunnerStore } = await import("../src/lib/season-update/runner-store");
+  const { resolveKey } = await import("../src/lib/storage");
+  const seasonRunner = jobId || once ? null : createActionUpdateRunner(runnerDefaults(prismaRunnerStore(prisma), resolveKey("season-updates")));
   // A managed worker's unique marker may already contain a stop requested during imports.
   if (!ownerToken) rmSync(stopFile, { force: true });
   process.once("SIGINT", () => controller.abort());
@@ -52,6 +57,7 @@ async function main() {
         const removed = await purgeExpiredVideos().catch(() => 0);
         if (removed) console.log(`Deleted ${removed} video(s) from past ski seasons; their reports stay`);
       }
+      seasonRunner?.tick(controller.signal);
       try {
         const result = await dispatcher.tick(controller.signal);
         if (result.settled) console.log(`Analysis dispatcher settled ${result.settled} verified result(s)`);
@@ -68,6 +74,8 @@ async function main() {
   } finally {
     controller.abort();
     await monitor;
+    // The signal has ended any season build in hand; this waits for it to say so in the database.
+    await seasonRunner?.close();
     await dispatcher.close();
     await prisma.$disconnect();
   }

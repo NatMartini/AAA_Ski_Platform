@@ -2,7 +2,7 @@ import {createHash} from "node:crypto";
 import {createReadStream} from "node:fs";
 import {open, realpath, stat} from "node:fs/promises";
 import path from "node:path";
-import type {FreeSkiActionSelection} from "./actions";
+import {upstreamLevels, type FreeSkiActionSelection} from "./actions";
 
 export class ResumableUploadError extends Error {
   constructor(readonly reason: "invalid-video" | "invalid-response" | "unavailable" | "cancelled") {super(reason);}
@@ -38,10 +38,11 @@ export async function submitResumableVideo(input: {videoPath: string; maxBytes: 
   try {for await (const chunk of createReadStream(full,{signal:input.signal})) hash.update(chunk);}
   catch {failIfCancelled(); throw new ResumableUploadError("invalid-video");}
   failIfCancelled();
+  const levels = upstreamLevels(input.selection);
   const session = await json(await input.send("/api/integrations/v2/uploads", {method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({client_request_id:input.requestKey,file_name:`lesson${extension}`,total_bytes:original.size,sha256:hash.digest("hex"),
-      action_name:input.selection.actionName,skill_family:input.selection.skillFamily,path_type:input.selection.pathType,
-      level:input.selection.level,...(input.selection.currentLevel?{current_level:input.selection.currentLevel}:{}),rubric:"csia"})},input.signal));
+      action_name:input.selection.actionName,skill_family:input.selection.actionName==="auto"?null:input.selection.skillFamily,path_type:input.selection.pathType,
+      level:levels.level,...(levels.currentLevel?{current_level:levels.currentLevel}:{}),rubric:"csia"})},input.signal));
   const size = session.chunkSize, uploadId = session.uploadId, received = session.receivedChunks;
   if (session.version !== 2 || typeof uploadId !== "string" || !id.test(uploadId) || size !== 524288) throw new ResumableUploadError("invalid-response");
   if (session.state === "submitted" && typeof session.jobId === "string" && id.test(session.jobId)) return session.jobId;

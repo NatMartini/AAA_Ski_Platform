@@ -2,6 +2,7 @@ import { ChevronRight } from "lucide-react";
 import { turnNumber, type ReferenceStatus, type Scorecard } from "@/lib/freeski/scorecard";
 import type { FreeSkiCurrentLevel } from "@/lib/freeski/actions";
 import { metricConfidence, metricDelta, metricInsight, metricStanding, perTurnScores, worstTurnFor, type MetricStanding } from "@/lib/freeski/metric-insight";
+import { cn } from "@/lib/utils";
 
 type Metric = Scorecard["metrics"][number];
 
@@ -31,6 +32,11 @@ const BAND: Record<NonNullable<Metric["band"]>, [string, string]> = {
   below: ["低于示范常见范围", "Below the examples' usual range"],
   within: ["在示范常见范围内", "Within the examples' usual range"],
   above: ["高于示范常见范围", "Above the examples' usual range"],
+};
+const STANDARD_BAND: Record<NonNullable<Metric["band"]>, [string, string]> = {
+  below: ["低于标准动作范围", "Below the standard's range"],
+  within: ["在标准动作范围内", "Within the standard's range"],
+  above: ["高于标准动作范围", "Above the standard's range"],
 };
 const ROLE: Record<Scorecard["turns"][number]["role"], [string, string] | null> = {
   start: ["启动弯", "start turn"], middle: null, end: ["结束弯", "end turn"],
@@ -73,6 +79,14 @@ export function referenceNote(statuses: readonly ReferenceStatus[], zh: boolean,
   return `Orange is you; ${unique.length > 1 ? parts.map(part => `in some turns ${part}`).join(", ") : parts[0]}.`;
 }
 
+/** What v2 key frames and the explainer draw beside the student: the generated standard, e.g. "short_turn-l2". */
+export function standardNote(standardId: string, zh: boolean, partly: boolean): string {
+  const level = /-l([1-4])$/.exec(standardId)?.[1];
+  const name = level ? zh ? `CSIA ${level} 级标准动作` : `the CSIA level ${level} standard` : zh ? "标准动作" : "the standard";
+  return zh ? `画面旁边并排画你和${level ? " " : ""}${name}（按指南和示范生成，不是真人），按换刃和弯顶对齐${partly ? "；有的弯没有画标准动作" : ""}。`
+    : `Beside the video, you and ${name} (generated from the guide and demonstrations, not a real skier), aligned at the edge changes and apex${partly ? "; some turns show no standard" : ""}.`;
+}
+
 export type ReferenceTarget = NonNullable<Scorecard["calibration"]["reference_target"]>;
 
 /**
@@ -83,8 +97,15 @@ export function referenceTarget(card: Scorecard): ReferenceTarget | null {
   return card.calibration.reference_target !== undefined ? card.calibration.reference_target : card.level ?? "expert";
 }
 
-function comparedWith(target: ReferenceTarget | null, count: number, zh: boolean): string {
+function comparedWith(target: ReferenceTarget | null, count: number, zh: boolean, card?: Scorecard): string {
   const plural = count === 1 ? "" : "s";
+  if (target && card && comparesWithStandard(card)) {
+    const [nameZh, nameEn] = exampleName(target, card), standard = card.calibration.standard;
+    const clips = standard?.source_clips, turns = standard?.source_turns;
+    const made = clips ? zh ? `由 ${clips} 段官方示范${turns ? `、${turns} 个弯` : ""}生成` : `generated from ${clips} official demonstration${clips === 1 ? "" : "s"}${turns ? `, ${turns} turns` : ""}` : null;
+    const near = standard?.other_level ? zh ? "，这一级没有示范，参考相邻级别" : "; no demonstration at this level, so the nearest level's" : "";
+    return zh ? `对比 ${nameZh}${made ? `（${made}${near}）` : ""}` : `Compared with ${nameEn}${made ? ` (${made}${near})` : ""}`;
+  }
   switch (target) {
     case null: return zh ? "没有可对比的标准动作" : "No standard example to compare with";
     case "expert": return zh ? `对比 ${count} 段专家级示范` : `Compared with ${count} expert example${plural}`;
@@ -95,16 +116,23 @@ function comparedWith(target: ReferenceTarget | null, count: number, zh: boolean
   }
 }
 
-export function exampleName(target: ReferenceTarget): [string, string] {
+/** Score card 8 on: compared with the generated standard motion of the action and level, not with pass demonstrations. */
+export const comparesWithStandard = (card: Pick<Scorecard, "calibration"> | null | undefined) => card?.calibration.reference_kind === "generated_standard";
+
+export function exampleName(target: ReferenceTarget, card?: Pick<Scorecard, "calibration"> | null): [string, string] {
+  if (comparesWithStandard(card)) {
+    const level = card!.calibration.standard?.level ?? (/^level[1-4]$/.test(target) ? Number(target.slice(-1)) : null);
+    return level ? [`CSIA ${level} 级标准动作`, `the CSIA level ${level} standard`] : ["标准动作", "the standard"];
+  }
   const t = target.slice(-1);
   return target === "expert" ? ["专家示范", "expert examples"] : target === "advanced" ? ["进阶示范", "advanced examples"]
     : target === "all_pass_levels" ? ["各级通过示范", "pass examples across levels"] : [`CSIA ${t} 级通过示范`, `CSIA level ${t} pass examples`];
 }
 
 /** Names the example set for a skier who gave their level; the score is the distance to it. */
-function levelNote(level: FreeSkiCurrentLevel, target: ReferenceTarget, zh: boolean): string {
+function levelNote(level: FreeSkiCurrentLevel, target: ReferenceTarget, zh: boolean, card: Scorecard): string {
   const n = level.slice(-1);
-  const name = exampleName(target);
+  const name = exampleName(target, card);
   const gap = name[0].startsWith("CSIA") ? " " : "";
   if (zh) return `${level === "none" ? "你还没考 CSIA 级别" : `你目前是 CSIA ${n} 级`}，技术提升这次对比${gap}${name[0]}，分数表示离这个水平还有多远。`;
   return `${level === "none" ? "You have no CSIA level yet" : `You are currently CSIA level ${n}`}; this improvement analysis compares you with ${name[1]}, so scores show the distance to that standard.`;
@@ -138,7 +166,8 @@ function TurnSparkline({ card, metricKey, zh }: { card: Scorecard; metricKey: st
 function MetricFacts({ metric, card, zh }: { metric: Metric; card: Scorecard; zh: boolean }) {
   const label = zh ? metric.label_zh : metric.label_en;
   const value = metricValue(metric, metric.value, zh), reference = metricValue(metric, metric.reference?.median ?? null, zh);
-  const band = metric.band && BAND[metric.band][zh ? 0 : 1];
+  const standard = comparesWithStandard(card);
+  const band = metric.band && (standard ? STANDARD_BAND : BAND)[metric.band][zh ? 0 : 1];
   const confidence = metricConfidence(card, metric);
   const [confZh, confEn, confTone] = CONFIDENCE[confidence.level];
   const insight = metricInsight(metric.key);
@@ -155,7 +184,7 @@ function MetricFacts({ metric, card, zh }: { metric: Metric; card: Scorecard; zh
         style={{ width: `${metric.score}%` }} />}
     </div>}
     {(band || value) && <p className="text-xs text-ink-3">
-      {[band, value && (zh ? `你的：${value}` : `Yours: ${value}`), reference && (zh ? `示范：${reference}` : `Examples: ${reference}`)]
+      {[band, value && (zh ? `你的：${value}` : `Yours: ${value}`), reference && (zh ? `${standard ? "标准动作" : "示范"}：${reference}` : `${standard ? "Standard" : "Examples"}: ${reference}`)]
         .filter(Boolean).join(" · ")}</p>}
     {insight && <p className="text-xs leading-relaxed text-ink-2">{zh ? insight.zh : insight.en}</p>}
     <div className="flex flex-wrap items-center gap-2">
@@ -258,17 +287,51 @@ export function ComparisonNotes({ card, zh, currentLevel = null }: { card: Score
   const target = referenceTarget(card);
   const aboveLevel = currentLevel ? null : target === "expert" ? ["专家", "expert"] : target === "advanced" ? ["进阶", "advanced"] : null;
   return <>
-    <p className="text-xs text-ink-3">{comparedWith(target, card.calibration.matched_reference_count, zh)}{zh
+    <p className="text-xs text-ink-3">{comparedWith(target, card.calibration.matched_reference_count, zh, card)}{zh
       ? ` · ${card.overall.turns_used} 个中间弯${separateTurns ? "，启动弯和结束弯单独列出" : ""}`
       : ` · ${card.overall.turns_used} middle turns${separateTurns ? "; start and end turns are listed separately" : ""}`}</p>
-    {aboveLevel && <p className="text-xs text-ink-3">{zh
+    <PassReference card={card} zh={zh} />
+    {cameraViewNote(card, zh) && <p className="text-xs text-ink-3">{cameraViewNote(card, zh)}</p>}
+    {aboveLevel && target && comparesWithStandard(card) && <p className="text-xs text-ink-3">{zh
+      ? `技术提升按${exampleName(target, card)[0]}对比，分数表示离这个水平还有多远，还没到这个水平时普遍偏低。想和自己所在级别比，请选 CSIA 考证动作和级别。`
+      : `Improvement analyses compare with ${exampleName(target, card)[1]}, so scores show the distance to that level and run low below it. To compare with your own level, choose a CSIA certification action and level.`}</p>}
+    {aboveLevel && !comparesWithStandard(card) && <p className="text-xs text-ink-3">{zh
       ? `技术提升按${aboveLevel[0]}示范对比，分数表示离${aboveLevel[0]}水平还有多远，还没到这个水平时普遍偏低。想和自己所在级别的通过示范比，请选 CSIA 考证动作和级别。`
       : `Improvement analyses compare with ${aboveLevel[1]} examples, so scores show the distance to that level and run low below it. To compare with pass examples at your own level, choose a CSIA certification action and level.`}</p>}
-    {currentLevel && target && <p className="text-xs text-ink-3">{levelNote(currentLevel, target, zh)}</p>}
+    {currentLevel && target && <p className="text-xs text-ink-3">{levelNote(currentLevel, target, zh, card)}</p>}
     {card.quality_reasons.length > 0 && <ul className="list-disc space-y-1 pl-5 text-xs text-ink-3">
       {card.quality_reasons.map(reason => <li key={reason}>{(reason === "no_matching_reference" && card.level === null && target === "advanced"
         ? NO_EXPERT : REASONS[reason])[zh ? 0 : 1]}</li>)}</ul>}
   </>;
+}
+
+/** Where FreeSki reckons the camera stood, from fitting the standard to the turns. Shown only; it does not change a score. */
+const CAMERA_VIEW: Record<Exclude<NonNullable<Scorecard["camera_view"]>, "unknown">, [string, string]> = {
+  front: ["正面", "from the front"], rear: ["背面", "from behind"], left_side: ["左侧面", "from the left side"], right_side: ["右侧面", "from the right side"],
+  oblique_front_left: ["左前方", "from the front left"], oblique_front_right: ["右前方", "from the front right"],
+  oblique_rear_left: ["左后方", "from behind on the left"], oblique_rear_right: ["右后方", "from behind on the right"],
+};
+export function cameraViewNote(card: Pick<Scorecard, "camera_view">, zh: boolean): string | null {
+  const view = card.camera_view;
+  if (!view || view === "unknown") return null;
+  const [nameZh, nameEn] = CAMERA_VIEW[view];
+  // The scoring reference is filmed from the front and from behind; a side view is read less reliably.
+  const side = view === "left_side" || view === "right_side";
+  return zh ? `机位：${nameZh}（FreeSki 从画面估计）${side ? "。侧面拍的弯有些指标不准，下次尽量从正面或背面拍。" : "。"}`
+    : `Camera: ${nameEn} (FreeSki's estimate from the video)${side ? ". Some metrics are less reliable from the side; film from the front or behind next time." : "."}`;
+}
+
+/**
+ * What the official pass demonstrations score against the same standard by the same method: the score card 8 reference
+ * a student's turn scores are read against, since they no longer run near 100 for a pass.
+ */
+export function PassReference({ card, zh, className }: { card: Scorecard; zh: boolean; className?: string }) {
+  const pass = card.calibration.pass_demonstration, target = referenceTarget(card);
+  if (!comparesWithStandard(card) || !pass || pass.score === null || !target) return null;
+  const level = card.calibration.standard?.level ?? (/^level[1-4]$/.test(target) ? Number(target.slice(-1)) : null);
+  return <p className={cn("text-xs text-ink-3", className)}>{zh
+    ? `参照：${level ? `CSIA ${level} 级` : ""}官方通过示范按同样方法打分是 ${round(pass.score)} 分，你的弯分可以先和它比。`
+    : `For reference: the official ${level ? `CSIA level ${level} ` : ""}pass demonstration scores ${round(pass.score)} by the same method; read your turn scores against that.`}</p>;
 }
 
 const GROUPS: [MetricStanding, string, string][] = [
@@ -291,7 +354,7 @@ export function MetricList({ card, zh, previous = null, selectedMetric = null, o
   const metrics = [...card.metrics].sort((a, b) => b.weight - a.weight);
   return <div className="max-w-2xl space-y-4">
     {previous && <p className="text-xs text-ink-3">{PREVIOUS_NOTE[zh ? 0 : 1]}</p>}
-    {GROUPS.map(([standing, groupZh, groupEn]) => {
+    {GROUPS.map(([standing, groupZh, groupEn]) => standing === "good" && comparesWithStandard(card) ? [standing, "达到标准动作范围", "Within the standard's range"] as const : [standing, groupZh, groupEn] as const).map(([standing, groupZh, groupEn]) => {
       const group = metrics.filter(metric => metricStanding(metric) === standing);
       return group.length > 0 && <div key={standing} data-standing={standing}>
         <p className="text-xs font-semibold text-ink-3">{zh ? groupZh : groupEn}</p>

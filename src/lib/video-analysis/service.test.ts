@@ -45,7 +45,7 @@ function video(id = "video", owner = "buyer", contentType = "video/mp4"): Lesson
 }
 function job(overrides: Partial<VideoAnalysisJob> = {}): VideoAnalysisJob {
   return { id: "job", bookingId: "booking", videoId: "video", createdById: "buyer", requestKey: "request",
-    actionId: "parallel", upstreamJobId: null, upstreamDeploymentId: null, upstreamApiVersion: null, status: "QUEUED", consumedAt: now, refundedAt: null,
+    actionId: "parallel", tier: "COMPLETE", paidTier: "COMPLETE", preparedTier: "COMPLETE", prepareStartedAt: null, preparedAt: null, prepareState: null, upstreamJobId: null, upstreamDeploymentId: null, upstreamApiVersion: null, status: "QUEUED", consumedAt: now, refundedAt: null,
     queuedExpiresAt: new Date(now.getTime() + 30 * 60_000), leaseToken: null, leaseExpiresAt: null,
     attempts: 0, startedAt: null, finishedAt: null, result: null, errorCode: null, createdAt: now,
     updatedAt: now, ...overrides };
@@ -149,7 +149,7 @@ afterEach(() => vi.useRealTimers());
 
 // A lesson holds no student credits any more (owner's decision, 2026-11-07): its coach runs its analyses.
 const run = (requestKey = "request", actor = coach, videoId = "video") => requestVideoAnalysis("SKI-TEST", actor,
-  { videoId, actionId: "improvement:level2:parallel", requestKey });
+  { videoId, actionId: "improvement:level2:parallel", requestKey, tier: "COMPLETE" });
 const buy = (requestKey = "purchase-request", actor = buyer, quantity = 2, expectedUnitPriceCents = 700) =>
   createAnalysisPurchase("SKI-TEST", actor, { quantity, requestKey, expectedUnitPriceCents });
 const view = (actor = coach) => getVideoAnalysisState("SKI-TEST", actor);
@@ -216,16 +216,16 @@ describe("atomic shared credits and analysis access", () => {
   it("stores the certification path and level in the action identifier through worker claim", async () => {
     const id = "certification:level2:short_turn";
     mocks.catalog.mockResolvedValue([{ ...action(id), pathType: "certification", level: "level2" }]);
-    const reservation = await requestVideoAnalysis("SKI-TEST", coach, { videoId: "video", actionId: id, requestKey: "cert" });
+    const reservation = await requestVideoAnalysis("SKI-TEST", coach, { videoId: "video", actionId: id, requestKey: "cert", tier: "COMPLETE" });
     expect(booking.analysisJobs[0].actionId).toBe(id);
     expect(await claimAnalysisJob(reservation.job.id)).toMatchObject({ actionId: id });
   });
 
   it("stores the skier's current level with an improvement request and refuses one without it", async () => {
-    await expect(requestVideoAnalysis("SKI-TEST", coach, { videoId: "video", actionId: "parallel", requestKey: "bare" }))
+    await expect(requestVideoAnalysis("SKI-TEST", coach, { videoId: "video", actionId: "parallel", requestKey: "bare", tier: "COMPLETE" }))
       .rejects.toMatchObject({ reason: "unsupported-action" });
     expect(mocks.jobCreate).not.toHaveBeenCalled();
-    const reservation = await requestVideoAnalysis("SKI-TEST", coach, { videoId: "video", actionId: "improvement:none:parallel", requestKey: "level" });
+    const reservation = await requestVideoAnalysis("SKI-TEST", coach, { videoId: "video", actionId: "improvement:none:parallel", requestKey: "level", tier: "COMPLETE" });
     expect(booking.analysisJobs[0].actionId).toBe("improvement:none:parallel");
     expect(await claimAnalysisJob(reservation.job.id)).toMatchObject({ actionId: "improvement:none:parallel" });
   });
@@ -427,7 +427,12 @@ describe("worker leases, settlement and refunds", () => {
     expect(await settleAnalysisJob("job", "lease", { ok: true, result: {
       ...graded, gradingStatus: "unavailable", gradingReason: "score-unavailable", score: null, scoreKind: null, scorecard } })).toBe(true);
     expect(booking.analysisJobs[0]).toMatchObject({ status: "SUCCEEDED", refundedAt: null, result: { scorecard: { overall: { score: sampleScorecard.overall.score } } } });
-    expect((await view()).quota.used).toBe(1);
+    // Scored, with its tier's explanation still to be made: in progress, without a result yet.
+    const completing = await view();
+    expect(completing.quota).toMatchObject({ used: 0, reserved: 1 });
+    expect(completing.jobs[0]).toMatchObject({ status: "RUNNING", phase: "preparing", result: null });
+    booking.analysisJobs[0].preparedTier = booking.analysisJobs[0].tier;
+    expect((await view()).quota).toMatchObject({ used: 1, reserved: 0 });
   });
 
   it("refunds when the scorecard reports insufficient evidence", async () => {
@@ -442,6 +447,7 @@ describe("worker leases, settlement and refunds", () => {
   it("retains a real TECH zero as successful consumption, including after deleting the video", async () => {
     booking.analysisJobs.push(running());
     expect(await settleAnalysisJob("job", "lease", { ok: true, result: { ...graded, score: 0 } })).toBe(true);
+    booking.analysisJobs[0].preparedTier = booking.analysisJobs[0].tier;
     booking.analysisJobs[0].videoId = null;
     booking.analysisJobs[0].result = null;
     booking.videos = [];

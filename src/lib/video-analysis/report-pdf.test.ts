@@ -22,6 +22,15 @@ describe("the downloadable report", () => {
     expect(bytes.byteLength).toBeLessThan(400_000);
   });
 
+  it("leaves out why each problem happens where the tier has no explanations", async () => {
+    const input = { zh: false, actionId: "improvement:level2:parallel", caption: null, submittedAt: new Date("2026-10-28T18:00:00Z"),
+      finishedAt: null, result: { scorecard: sampleScorecard }, teaching: null };
+    // Text is drawn as glyphs, so the explanations show in the file's size rather than as searchable words.
+    const explained = await renderAnalysisReportPdf(input);
+    const plain = await renderAnalysisReportPdf({ ...input, explanations: false });
+    expect(plain.byteLength).toBeLessThan(explained.byteLength - 1000);
+  });
+
   it("still renders without a scorecard", async () => {
     const bytes = await renderAnalysisReportPdf({ zh: true, actionId: "improvement:level2:parallel", caption: null,
       submittedAt: new Date("2026-10-28T18:00:00Z"), finishedAt: null, result: null, teaching: null });

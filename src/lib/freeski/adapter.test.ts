@@ -164,6 +164,16 @@ describe("FreeSki server bridge safety", () => {
     expect((options?.body as FormData).get("async_mode")).toBe("true");
     for (const [, init] of fetcher.mock.calls) expect((init as RequestInit).redirect).toBe("error");
   });
+  it("sends an exam run left open its exam level, and a skier's run their own level", async () => {
+    const answer = fetcher.getMockImplementation()!;
+    fetcher.mockImplementation(async (url, init) => url.endsWith("/api/aaa/catalog")
+      ? json({ ...catalog, auto: { available: true, action: "auto", paths: ["certification", "improvement"] } }) : answer(url, init));
+    await submitFreeSkiAnalysis({ videoPath, actionId: "auto:certification:level2" });
+    await submitFreeSkiAnalysis({ videoPath, actionId: "auto:improvement:level2" });
+    const [exam, skier] = fetcher.mock.calls.filter(([url]) => url.endsWith("/api/analyze")).map(([, init]) => init?.body as FormData);
+    expect(["action_name", "path_type", "level", "current_level", "skill_family"].map(field => exam.get(field))).toEqual(["auto", "certification", "level2", null, null]);
+    expect(["action_name", "path_type", "level", "current_level"].map(field => skier.get(field))).toEqual(["auto", "improvement", null, "level2"]);
+  });
   it("submits a durable request key immediately without waiting for a broker slot", async () => {
     expect(await submitFreeSkiAnalysis({ videoPath, actionId: "parallel", requestKey: "aaa:account:durable-job" })).toBe(jobId);
     const submitted = fetcher.mock.calls.find(([url]) => url.endsWith("/api/analyze"));

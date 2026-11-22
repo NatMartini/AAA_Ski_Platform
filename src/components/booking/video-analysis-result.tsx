@@ -2,7 +2,9 @@ import type { Locale } from "@/i18n/routing";
 import { analysisResultUsable, scorecardSchema, type Scorecard } from "@/lib/freeski/scorecard";
 import { parseFreeSkiActionId, type FreeSkiCurrentLevel } from "@/lib/freeski/actions";
 import { DynamicCoachingReport } from "./dynamic-coaching-report";
+import { LEGACY_TIER, TIER_FEATURES, type AnalysisTier } from "@/lib/video-analysis/tiers";
 import { AnalysisScorecard } from "./analysis-scorecard";
+import { storedRecognitionSchema, type ActionRecognition } from "@/lib/freeski/action-recognition";
 
 type SafeAnalysisResult = {
   gradingStatus: "graded" | "unavailable";
@@ -16,7 +18,15 @@ type SafeAnalysisResult = {
   scorecard: Scorecard | null;
   /** The skier's level given with an improvement request; null when none was asked. */
   currentLevel: FreeSkiCurrentLevel | null;
+  /** What FreeSki recognised, when the action was left open. */
+  actionRecognition: ActionRecognition | null;
 };
+
+/** The level an improvement run was compared from. A recognised exam run only used it as a hint, so it has none. */
+function improvementLevel(actionId: unknown): FreeSkiCurrentLevel | null {
+  const selection = parseFreeSkiActionId(actionId);
+  return selection?.pathType === "improvement" ? selection.currentLevel : null;
+}
 
 export function readAnalysisResult(value: unknown): SafeAnalysisResult | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -36,7 +46,8 @@ export function readAnalysisResult(value: unknown): SafeAnalysisResult | null {
       return [{ key: metric.key, score: typeof metric.score === "number" && Number.isFinite(metric.score) && metric.score >= 0 && metric.score <= 100 ? metric.score : null }];
     }) : [],
     scorecard: scorecardSchema.safeParse(result.scorecard).data ?? null,
-    currentLevel: parseFreeSkiActionId(result.actionId)?.currentLevel ?? null,
+    currentLevel: improvementLevel(result.actionId),
+    actionRecognition: storedRecognitionSchema.safeParse(result.actionRecognition).data ?? null,
   };
 }
 
@@ -52,12 +63,14 @@ export function analysisReasonText(reason: string | null, zh: boolean): string |
   return reason && Object.hasOwn(REASONS, reason) ? REASONS[reason][zh ? 0 : 1] : null;
 }
 
-export function VideoAnalysisResult({ result: rawResult, locale, dynamicReportBase, previousResult = null, expanded = false, reviewHref = null }: {
+export function VideoAnalysisResult({ result: rawResult, locale, dynamicReportBase, previousResult = null, expanded = false, reviewHref = null,
+  tier = LEGACY_TIER }: {
   result: unknown; locale: Locale; dynamicReportBase?: string;
   /** The raw result of a comparable earlier analysis, for "since last time" deltas. */
   previousResult?: unknown; expanded?: boolean;
   /** Where the page offers a human coach review of this clip. */
   reviewHref?: string | null;
+  tier?: AnalysisTier;
 }) {
   const zh = locale === "zh";
   const result = readAnalysisResult(rawResult);
@@ -70,8 +83,10 @@ export function VideoAnalysisResult({ result: rawResult, locale, dynamicReportBa
   const coaching = comparison ? [] : zh ? result?.coachingZh : result?.coachingEn;
   // With a dynamic report the scorecard is rendered inside it, after the explanation and player.
   const dynamic = Boolean(dynamicReportBase);
+  // A simple analysis is its written conclusion: no scores to show or to miss.
+  const scored = TIER_FEATURES[tier].scores;
   return <div className="space-y-2 rounded-xl border border-border bg-surface-2 p-3">
-    {comparison ? !dynamic && <AnalysisScorecard card={card} zh={zh} currentLevel={result!.currentLevel} previous={previous} /> : <>
+    {!scored ? null : comparison ? !dynamic && <AnalysisScorecard card={card} zh={zh} currentLevel={result!.currentLevel} previous={previous} /> : <>
     <p className="text-sm font-semibold">{available ? <>{zh ? "技术评分" : "Technical score"}: <span className="font-display text-xl text-accent">{Number(result.score!.toFixed(1))}</span></>
       : zh ? "本次无法评分，不扣分析次数。" : "A score is unavailable for this analysis. No credit is used."}</p>
     {!available && <p className="text-xs text-ink-3">{zh ? "动作识别、有效滑行片段或评分条件不足时，不会显示为 0 分。可换一个更清晰、完整的片段重试。" : "An unrecognized action, insufficient usable turns or unmet scoring requirements is shown as unavailable. Try a clearer, complete clip."}</p>}
@@ -87,7 +102,7 @@ export function VideoAnalysisResult({ result: rawResult, locale, dynamicReportBa
     </>}
     {coaching && coaching.length > 0 && <ul className="space-y-1 text-sm leading-relaxed text-ink-2">{coaching.map((text, index) => <li key={index}>{text}</li>)}</ul>}
     {dynamicReportBase && <DynamicCoachingReport base={dynamicReportBase} zh={zh} card={comparison ? card : null} currentLevel={result?.currentLevel ?? null}
-      previous={previous} defaultOpen={expanded} reviewHref={reviewHref} />}
+      previous={previous} defaultOpen={expanded} reviewHref={reviewHref} tier={tier} key={tier} />}
   </div>;
 }
 

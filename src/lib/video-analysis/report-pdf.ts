@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { PDFDocument, rgb, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
+import { embedSubsetFont } from "../pdf-font";
 import { wrap } from "../waiver/render";
 import { getFreeSkiActionOption, FREESKI_CURRENT_LEVELS, parseFreeSkiActionId } from "../freeski/actions";
 import { metricStanding } from "../freeski/metric-insight";
@@ -34,6 +35,8 @@ export type ReportPdfInput = {
   /** The job's stored result: its scorecard is read from it. */
   result: unknown;
   teaching: Teaching | null;
+  /** Whether the tier explains why each problem happens (deep and up); older callers get the explanations. */
+  explanations?: boolean;
 };
 
 /** "CSIA 2 级 · 小回转 · 目前 CSIA 1 级", as the site names an analysis. */
@@ -93,7 +96,7 @@ export async function renderAnalysisReportPdf(input: ReportPdfInput): Promise<Ui
   })();
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
-  const font = await doc.embedFont(await fontBytes(), { subset: true });
+  const font = await embedSubsetFont(doc, await fontBytes());
   const title = analysisTitle(input.actionId, zh);
   doc.setTitle(`FreeSki · ${title}`);
   doc.setCreator("AAA Ski Platform");
@@ -133,7 +136,7 @@ export async function renderAnalysisReportPdf(input: ReportPdfInput): Promise<Ui
         standing === "good" ? GOOD : standing === "work" ? WORK : MUTED);
     }
 
-    const faults = faultsFor(card);
+    const faults = input.explanations === false ? [] : faultsFor(card);
     if (faults.length) {
       w.heading(zh ? "动作讲解" : "Your movements explained");
       faults.forEach(({ fault }, index) => {

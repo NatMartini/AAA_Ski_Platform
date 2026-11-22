@@ -2,7 +2,7 @@ import createIntlMiddleware from "next-intl/middleware";
 import { NextResponse, type NextRequest } from "next/server";
 import { routing } from "@/i18n/routing";
 import { isTrustedApiWrite } from "@/lib/request-origin";
-import { hasLanTestAccess, lanTestChallenge } from "@/lib/auth/lan-test-access";
+import { hasLanTestAccess, LAN_TEST_SIGN_IN_PATH, lanTestAccessEnabled, lanTestChallenge, lanTestSignIn } from "@/lib/auth/lan-test-access";
 
 /**
  * Next 16 renamed `middleware` to `proxy`, and it now runs on the Node runtime
@@ -22,8 +22,30 @@ import { hasLanTestAccess, lanTestChallenge } from "@/lib/auth/lan-test-access";
 
 const intlMiddleware = createIntlMiddleware(routing);
 
-export function proxy(request: NextRequest): NextResponse {
-  if (!hasLanTestAccess(request.headers)) return lanTestChallenge();
+/** Says in the server's log who met the LAN test gate, so a device that cannot get in can be told from one that never arrived. */
+function noteLanVisitor(request: NextRequest, what: string) {
+  const from = (request.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "an unknown address";
+  console.info(`[lan-test] ${from} ${what} (${(request.headers.get("user-agent") ?? "no user agent").slice(0, 90)})`);
+}
+
+/** The LAN test server's gate: the access form and its submission, then a refusal for anything without access. */
+function lanTestGate(request: NextRequest): NextResponse | Promise<NextResponse> | null {
+  if (!lanTestAccessEnabled()) return null;
+  if (request.nextUrl.pathname === LAN_TEST_SIGN_IN_PATH) {
+    return lanTestSignIn(request).then((response) => {
+      if (request.method === "POST") noteLanVisitor(request, response.status === 303 ? "passed the access form" : "entered a wrong access password");
+      return response;
+    });
+  }
+  if (hasLanTestAccess(request.headers)) return null;
+  const response = lanTestChallenge(request);
+  if (response.status === 200) noteLanVisitor(request, "was shown the access form");
+  return response;
+}
+
+export function proxy(request: NextRequest): NextResponse | Promise<NextResponse> {
+  const gate = lanTestGate(request);
+  if (gate) return gate;
   if (request.nextUrl.pathname === "/api" || request.nextUrl.pathname.startsWith("/api/")) {
     if (!isTrustedApiWrite(request)) {
       return NextResponse.json({ error: "untrusted-origin" }, { status: 403,

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
+import { embedSubsetFont } from "../pdf-font";
 import {
   clausesFor,
   ELECTRONIC_CONSENT,
@@ -84,7 +85,7 @@ export async function renderWaiverPdf(
 ): Promise<Buffer> {
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
-  const font = await doc.embedFont(await fontBytes(), { subset: true });
+  const font = await embedSubsetFont(doc, await fontBytes());
 
   doc.setTitle(`${TITLE.en} — ${input.bookingCode}`);
   doc.setSubject(`Waiver ${input.bookingCode}`);

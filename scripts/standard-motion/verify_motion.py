@@ -1,4 +1,4 @@
-"""Score a standard motion with FreeSki's own turn detector, metric code and score card.
+"""Score a standard motion with FreeSki's whole-turn cut, metric code and score card.
 
 A run of linked turns is filmed by a simulated camera the way the demonstrations were: from the
 front, following the skier with a lag, with the keypoint jitter measured on that group's gold poses.
@@ -39,10 +39,10 @@ def _freeski(server: Path):
         sys.path.insert(0, str(server))
     from engines import scorecard
     from engines.scoring_engine import _load_action_rubric
-    from engines.turn_detector import detect_turns
+    from engines.edge_change import edge_turns
     from rubrics.metric_polarity_loader import get_polarity_map
     from shared.config import METRIC_DEFINITIONS
-    return scorecard, detect_turns, {k: v.value for k, v in get_polarity_map().items()}, _load_action_rubric, METRIC_DEFINITIONS
+    return scorecard, edge_turns, {k: v.value for k, v in get_polarity_map().items()}, _load_action_rubric, METRIC_DEFINITIONS
 
 
 def _lagging(series: np.ndarray, tau: float, dt: float) -> np.ndarray:
@@ -83,9 +83,9 @@ def film(motion: Motion, camera: Camera, filming: Filming, turns: int = 14, seed
 def score_run(keypoints: np.ndarray, action: str, level: int, group: Mapping, server: Path,
               reference_key: Optional[str] = None) -> dict:
     """FreeSki's score card for the run's middle turns, against the group's distribution, with raw metric values."""
-    scorecard, detect_turns, polarity, load_rubric, definitions = _freeski(server)
-    turns = detect_turns(keypoints, fps=FPS, frame_width=1920)
-    middle = [t for t in turns if t.partial is None]
+    scorecard, edge_turns, polarity, load_rubric, definitions = _freeski(server)
+    # Whole turns, edge change to edge change: the cut the demonstrations were sampled on.
+    middle = edge_turns(keypoints, FPS)[0]
     times = np.arange(len(keypoints)) / FPS
     direct, estimated = scorecard.scoring_metrics(keypoints, times, middle, FPS)
     calibration = {"calibration_id": "standard-motion-check", "reference_generation": "gold-edge-change", "clips": [],

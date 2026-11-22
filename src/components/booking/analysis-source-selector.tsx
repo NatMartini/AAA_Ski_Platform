@@ -17,9 +17,9 @@ export function AnalysisSourceSelector({ locale, value, accountRemaining, accoun
       const source = event.target.value;
       router.replace(source === "account" ? "/video-analysis?source=account#workspace" : `/video-analysis?lesson=${encodeURIComponent(source)}#workspace`, { scroll: false });
     }}>
-      <option value="account">{accountUnlimited ? (zh ? "我的视频 · 不限次数" : "My videos · Unlimited")
-        : zh ? `我的视频 · 可用 ${accountRemaining} 次` : `My videos · ${accountRemaining} available`}</option>
-      {courses.map(course => <option key={course.code} value={course.code}>{zh ? "课程视频" : "Lesson videos"} · {course.label} · {zh ? `可用 ${course.remaining} 次` : `${course.remaining} available`}</option>)}
+      {/* The count is in the page's title already. */}
+      <option value="account">{accountUnlimited || !accountRemaining ? (zh ? "我的视频" : "My videos") : zh ? `我的视频 · 可用 ${accountRemaining} 次` : `My videos · ${accountRemaining} available`}</option>
+      {courses.map(course => <option key={course.code} value={course.code}>{zh ? "课程视频" : "Lesson videos"} · {course.label}</option>)}
     </Select>
   </div>;
 }

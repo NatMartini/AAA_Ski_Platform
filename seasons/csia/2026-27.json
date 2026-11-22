@@ -1,0 +1,32 @@
+{
+  "season": "2026-27",
+  "from": "2026-06-01",
+  "to": "2027-05-31",
+  "guides": [
+    { "level": 1, "file": "L1CG-EN.pdf", "edition": "L1CG-2026" },
+    { "level": 2, "file": "L2CG-EN.pdf", "edition": "L2CG-EN" },
+    { "level": 3, "file": "L3CG-EN.pdf", "edition": "L3CG-EN-26" },
+    { "level": 4, "file": "L4CG-EN-25.pdf", "edition": "L4CG-EN-25 / L4CG-EN-26" }
+  ],
+  "actions": [
+    { "level": 1, "action": "demonstration_parallel", "zh": "示范平行弯", "en": "Demonstration parallel", "guide": "L1CG-2026 p.33" },
+    { "level": 2, "action": "demonstration_parallel", "zh": "示范平行弯", "en": "Demonstration parallel", "guide": "L2CG-EN p.5" },
+    { "level": 2, "action": "intro_parallel", "zh": "入门平行弯", "en": "Intro to parallel", "guide": "L2CG-EN p.6" },
+    { "level": 2, "action": "free_run", "zh": "自由滑行", "en": "Free run", "guide": "L2CG-EN p.5" },
+    { "level": 2, "action": "short_turn", "zh": "小回转", "en": "Short turns", "guide": "L2CG-EN p.5" },
+    { "level": 3, "action": "demonstration_parallel", "zh": "示范平行弯", "en": "Demonstration parallel", "guide": "L3CG-EN-26 p.7" },
+    { "level": 3, "action": "short_turn", "zh": "小回转", "en": "Short turns", "guide": "L3CG-EN-26 p.7" },
+    { "level": 3, "action": "advanced_parallel", "zh": "进阶平行弯", "en": "Advanced parallel", "guide": "L3CG-EN-26 p.8" },
+    { "level": 3, "action": "bumps", "zh": "蘑菇地形", "en": "Bumps", "guide": "L3CG-EN-26 p.8" },
+    { "level": 3, "action": "braquage", "zh": "原地小弯", "en": "Braquage", "guide": "L3CG-EN-26 p.9" },
+    { "level": 3, "action": "hop_turn", "zh": "跳跃转弯", "en": "Edge to edge hop turn", "guide": "L3CG-EN-26 p.9" },
+    { "level": 4, "action": "demonstration_parallel", "zh": "示范平行弯", "en": "Demonstration parallel", "guide": "L4CG-EN-26 p.11" },
+    { "level": 4, "action": "short_turn", "zh": "小回转", "en": "Expert short radius", "guide": "L4CG-EN-26 p.11" },
+    { "level": 4, "action": "expert_parallel", "zh": "专家平行弯", "en": "Expert parallel", "guide": "L4CG-EN-26 p.11" },
+    { "level": 4, "action": "bumps", "zh": "蘑菇地形", "en": "Expert bumps", "guide": "L4CG-EN-26 p.12" },
+    { "level": 4, "action": "expert_all_terrain", "zh": "专家全地形", "en": "Expert all terrain", "guide": "L4CG-EN-26 p.12" },
+    { "level": 4, "action": "expert_corridor", "zh": "定宽走廊", "en": "Expert corridor", "guide": "L4CG-EN-26 p.13" },
+    { "level": 4, "action": "hop_turn", "zh": "跳跃转弯", "en": "Ski to ski hop turn", "guide": "L4CG-EN-26 p.13" },
+    { "level": 4, "action": "javelin", "zh": "标枪转弯", "en": "Javelin turns", "guide": "L4CG-EN-25 p.10" }
+  ]
+}

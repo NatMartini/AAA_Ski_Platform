@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { explainerSchema, isCurrentMedia, type Explainer } from "@/lib/freeski/scorecard";
 import { retryWhileStarting } from "@/lib/freeski/startup-retry";
 import { clientFetch } from "@/lib/client-fetch";
-import { referenceNote, type ReferenceTarget } from "./analysis-scorecard";
+import { referenceNote, standardNote, type ReferenceTarget } from "./analysis-scorecard";
 
 const KIND: Record<NonNullable<Explainer["segments"]>[number]["kind"], [string, string]> = {
   title: ["片头", "Intro"], realtime: ["原速", "Real time"], slow: ["慢动作", "Slow motion"],
@@ -58,7 +58,8 @@ export function AnalysisExplainer({ base, zh, target = null, compact = false }: 
       <p className="text-sm font-semibold">{zh ? "慢动作讲解" : "Slow-motion explainer"}</p>
       <span className="rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-bold text-ink-2">{zh ? "试验性" : "Experimental"}</span>
     </div>}
-    {statuses.length > 0 && <p className="text-xs text-ink-3">{referenceNote(statuses, zh, target)}
+    {explainer.standard && <p className="text-xs text-ink-3">{standardNote(explainer.standard.id, zh, Object.values(explainer.standard.turns).some(drawn => !drawn))}</p>}
+    {!explainer.standard && statuses.length > 0 && <p className="text-xs text-ink-3">{referenceNote(statuses, zh, target)}
       {overlaid && (zh ? "两副骨架按身高和髋部对齐叠放。" : " The skeletons are aligned by height and hips.")}</p>}
     <video ref={video} src={`${base}/assets/explainer`} controls playsInline preload="metadata"
       width={explainer.width} height={explainer.height} className="h-auto w-full rounded-lg bg-black"

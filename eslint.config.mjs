@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "tmp/**",
+    // Other sessions keep whole checkouts here, with their own build output.
+    ".claude/**",
     "next-env.d.ts",
   ]),
 ]);

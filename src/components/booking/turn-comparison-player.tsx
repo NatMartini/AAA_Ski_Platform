@@ -1,20 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bone, Pause, Play, Repeat, ScanSearch, StepBack, StepForward } from "lucide-react";
+import { Bone, Move3d, Pause, Play, Repeat, ScanSearch, StepBack, StepForward, Video } from "lucide-react";
 import { bodyHeight, decodeCompactPose, jointCenter, poseAt, poseFrameAt, referenceTimeAt, smoothPose, turnManifestSchema,
   type DecodedPose, type PoseSample, type TurnManifest } from "@/lib/freeski/report-v2";
 import type { ReferenceStatus } from "@/lib/freeski/scorecard";
 import { retryWhileStarting } from "@/lib/freeski/startup-retry";
 import { metricInsight } from "@/lib/freeski/metric-insight";
 import { bumpField, cameraAxes, decodeStandardMotion, fitView, motionMarks, motionPointsAt, pairedSkiDirections, phaseAt, skiLine, skiSplayLimit, smoothedFootVectors, snowLevelAt, standardPoseForTurn, turnPoint, viewName,
-  type FittedView, type StandardMotion, type StandardMotionId, type StandardPose, type TurnTiming } from "@/lib/freeski/standard-motion";
+  windowEdge, type FittedView, type StandardMotion, type StandardMotionId, type StandardPose, type TurnTiming } from "@/lib/freeski/standard-motion";
 import { liftedAt, liftedMarks, liftUserPose, type LiftedPose } from "@/lib/freeski/skier-lift";
 import { Link } from "@/i18n/navigation";
 import { clientFetch } from "@/lib/client-fetch";
 import { cn } from "@/lib/utils";
 import { drawBones, drawSkierFigure, fineBonesUnit, STANDARD_BONES, STANDARD_STYLE, USER_BONES, USER_STYLE, type Figure, type FigureStyle, type Point } from "./skier-figure";
 import type { Ribbon, Shot, SkierFigure, SkierStage } from "./skier-stage";
+import { useOrbit } from "./use-orbit";
 
 const USER_COLOR = "#ff9f1c";
 const STANDARD_COLOR = "#2fd17a";
@@ -322,6 +323,8 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLCanvasElement>(null);
   const stageBoxRef = useRef<HTMLDivElement>(null);
+  // The 3D skiers start under the camera that filmed the turn; a drag walks round them.
+  const { live: orbit, moved, setOrbit } = useOrbit(stageBoxRef, { azimuth: 0, elevation: 9, zoom: 1 });
   const scene = useRef<Scene3D | null>(null);
   const sceneDrawn = useRef("");
   const headRef = useRef<HTMLDivElement>(null);
@@ -350,10 +353,8 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
       ]);
       if (controller.signal.aborted) return;
       const userPose = smoothPose(decodeCompactPose(user));
-      // FreeSki's window may run from one turn's deepest lean to the next, with the edge change inside: its own
-      // measurement when it found exactly one, otherwise the fit finds where the student changed edges.
-      const measured = manifest.edgeChangeMs !== null && manifest.edgeChangeMs !== undefined
-        && manifest.edgeChangeMs > manifest.startMs && manifest.edgeChangeMs < manifest.endMs ? manifest.edgeChangeMs / 1000 : null;
+      // Where the student changed edges: the window's start from score card 8 on, else FreeSki's measurement or the fit's.
+      const measured = windowEdge(manifest);
       const bounds = { start: manifest.startMs / 1000, end: manifest.endMs / 1000, apex: manifest.apexMs === undefined ? null : manifest.apexMs / 1000,
         role: manifest.role ?? metaRole, edge: measured };
       const motion = rawMotion ? decodeStandardMotion(rawMotion) : null;
@@ -378,6 +379,9 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
     return () => controller.abort();
   }, [base, turnId, motionId, metaRole]);
 
+  const filmed = data?.view?.camera;
+  const toFilmed = useCallback(() => { if (filmed) setOrbit({ azimuth: filmed.azimuth, elevation: filmed.elevation, zoom: 1 }); }, [filmed, setOrbit]);
+  useEffect(() => { toFilmed(); }, [toFilmed]);
   const start = data ? data.manifest.startMs / 1000 : 0, end = data ? data.manifest.endMs / 1000 : 0;
   const hasVideo = Boolean(data?.manifest.background) && !videoError;
   useEffect(() => {
@@ -423,16 +427,17 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
     const { lift, liftMotion, view, timing, motion } = data!;
     if (!lift || !liftMotion || !view) return;
     // Nothing moved, nothing to draw: a paused stage should not keep the graphics card busy.
-    const key = `${time}|${settings.current.layout}|${settings.current.bones}|${settings.current.focusMetric}|${canvas.width}x${canvas.height}`;
+    const camera = orbit.current;
+    const key = `${time}|${settings.current.layout}|${settings.current.bones}|${settings.current.focusMetric}|${canvas.width}x${canvas.height}|${camera.azimuth}|${camera.elevation}|${camera.zoom}`;
     if (key === sceneDrawn.current) return;
     sceneDrawn.current = key;
-    const axes = cameraAxes(view.camera);
+    const axes = cameraAxes({ azimuth: camera.azimuth, elevation: camera.elevation, slope: view.camera.slope });
     const student = liftedAt(lift, time);
     const userHips = hipsOf(student.points, lift.index);
     world.user.setPose(student.points, lift.index);
-    const below = SCENE_FRAME_HEIGHT * .05;
+    const frameHeight = SCENE_FRAME_HEIGHT * camera.zoom, below = frameHeight * .05;
     const aimAt = (hipZ: number): [number, number, number] => [-axes.up[0] * below, -axes.up[1] * below, hipZ - axes.up[2] * below];
-    const base = { axes, slopeDeg: view.camera.slope, frameHeight: SCENE_FRAME_HEIGHT };
+    const base = { axes, slopeDeg: view.camera.slope, frameHeight, distance: 8 * camera.zoom };
     const userRibbons: Ribbon[] = liftedMarks(lift, time, student.snowAt).map(points => ({ points, alpha: .75 }));
     let standardPoints: Float64Array | null = null, snowAt: [number, number] = [0, 0], standardRibbons: Ribbon[] = [];
     if (motion) {
@@ -485,7 +490,7 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
     }
     if (show) drawFigureBones(context, data!.user, userSample, USER_BONES, ratio);
     if (focus?.lines.length) drawFocus(context, data!.user, userSample, identity, focus.lines, FOCUS_COLOR, 4 * ratio);
-  }, [data]);
+  }, [data, orbit]);
 
   const drawStage = useCallback((time: number) => {
     const canvas = stageRef.current;
@@ -758,7 +763,14 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
         <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
         <span className="pointer-events-none absolute left-3 top-3 rounded-full bg-black/55 px-2.5 py-1 text-xs font-semibold text-white">{zh ? "你的滑行" : "Your run"}</span>
       </div>}
-      <div ref={stageBoxRef} className={cn("relative aspect-video overflow-hidden rounded-xl", stageMode === "flat" ? "bg-[#0d1524]" : "bg-[#e6edf5]", stageMode === "loading" && "animate-pulse")}>
+      <div ref={stageBoxRef} tabIndex={stageMode === "scene" ? 0 : undefined}
+        className={cn("relative aspect-video overflow-hidden rounded-xl", stageMode === "scene" && "cursor-grab touch-pan-y outline-none focus-visible:ring-2 focus-visible:ring-accent active:cursor-grabbing",
+          stageMode === "flat" ? "bg-[#0d1524]" : "bg-[#e6edf5]", stageMode === "loading" && "animate-pulse")}>
+        {stageMode === "scene" && (moved
+          ? <button type="button" onClick={toFilmed} className="press absolute bottom-3 right-3 z-10 flex min-h-8 items-center gap-1.5 rounded-full bg-black/55 px-2.5 text-xs font-semibold text-white">
+            <Video className="size-3.5" aria-hidden />{zh ? "回到拍摄机位" : "Back to the filming angle"}</button>
+          : <span className="pointer-events-none absolute bottom-3 right-3 flex items-center gap-1 rounded-full bg-black/35 px-2.5 py-1 text-[11px] font-medium text-white">
+            <Move3d className="size-3.5" aria-hidden />{zh ? "拖动转视角" : "Drag to turn"}</span>)}
         <canvas ref={stageRef} className="absolute inset-0 h-full w-full" aria-label={zh ? "你与标准动作的人物、雪板和骨架对比" : "You against the standard: body, skis and skeleton"} />
         {focusMetric && metricInsight(focusMetric) && <span className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-black/50 px-2.5 py-1 text-xs font-semibold text-white">
           {zh ? "白线：这项指标看的身体线" : "White: the body lines this metric measures"}</span>}
@@ -824,7 +836,13 @@ export function TurnComparisonPlayer({ base, turnId, zh, comparison, meta, focus
       </div>
     </div>
 
-    <p className="text-xs leading-relaxed text-ink-3">{comparisonLabel} {data.lift && (zh ? "橙色人物按视频里的骨架还原：上下左右来自视频，前后深度和雪板是推算的。" : "The orange skier is rebuilt from the skeleton in your video: across and up come from the video, depth and skis are estimated.")} {zh ? "画面对比会受拍摄角度影响，不代表考官评分。" : "Camera angle affects this comparison, and it is not an examiner's assessment."}
-      {generated && data.motion && <Link href={{ pathname: "/video-analysis/standards", query: { motion: data.motion.id } }} className="ml-1 font-semibold text-accent underline underline-offset-2">{zh ? "看这个动作的完整标准" : "See the full standard"}</Link>}</p>
+    <details className="group text-xs leading-relaxed text-ink-3">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-2 gap-y-1">
+        <span>{zh ? "橙色是你（从视频还原），绿色是标准动作。" : "Orange is you (rebuilt from the video), green the standard."}</span>
+        <span className="font-semibold text-accent">{zh ? "这个对比怎么来的" : "How this is matched"}</span>
+      </summary>
+      <p className="mt-1">{comparisonLabel} {data.lift && (zh ? "橙色人物按视频里的骨架还原：上下左右来自视频，前后深度和雪板是推算的。" : "The orange skier is rebuilt from the skeleton in your video: across and up come from the video, depth and skis are estimated.")} {zh ? "画面对比会受拍摄角度影响，不代表考官评分。" : "Camera angle affects this comparison, and it is not an examiner's assessment."}
+        {generated && data.motion && <Link href={{ pathname: "/video-analysis/standards", query: { motion: data.motion.id } }} className="ml-1 font-semibold text-accent underline underline-offset-2">{zh ? "看这个动作的完整标准" : "See the full standard"}</Link>}</p>
+    </details>
   </div>;
 }

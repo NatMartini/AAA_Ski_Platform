@@ -1,3 +1,5 @@
+import type { AnalysisTier } from "@/lib/video-analysis/tiers";
+
 export type AnalysisJobView = {
   id: string;
   videoId: string | null;
@@ -12,7 +14,14 @@ export type AnalysisJobView = {
   computeWait?: "compute_offline" | "waiting_for_compute" | null;
   /** How far a running analysis has got, 0 to 1, when FreeSki reports it. */
   progress?: number | null;
+  /** The analysis tier shown, and the costliest one paid for. */
+  tier?: AnalysisTier;
+  paidTier?: AnalysisTier;
+  /** Scored, and still making what its tier shows: in progress (status RUNNING) until all of it is ready. */
+  phase?: "preparing";
+  prepare?: { teaching: AddonState | null; explainer: AddonState | null; keyframes: { ready: number; total: number } | null } | null;
 };
+type AddonState = "pending" | "running" | "ready" | "unavailable" | "failed";
 
 export type AnalysisVideoView = {
   id: string;
@@ -49,7 +58,9 @@ export type AnalysisActionView = {
 export type VideoAnalysisView = {
   ok: true;
   accountId?: string;
-  quota: { active: boolean; unlimited?: boolean; freeTotal: number; paidTotal: number; grantTotal?: number; reserved: number; used: number; remaining: number };
+  quota: { active: boolean; unlimited?: boolean; freeTotal: number; paidTotal: number; grantTotal?: number; reserved: number; used: number; remaining: number;
+    /** In half analyses; free analyses started today and the day's allowance (none for coaches). */
+    remainingHalves?: number; freeToday?: number; freeLimit?: number | null };
   /** The viewer analyses without limit: a coach or administrator, on their own clips or their lesson's. */
   unlimited?: boolean;
   grants?: { id: string; quantity: number; note: string | null; createdAt: string; coach: { name: string | null } }[];

@@ -11,8 +11,13 @@ import { BookingRow } from "@/components/booking/booking-row";
 import { setupGaps } from "@/lib/coach";
 import { formatMoney } from "@/lib/pricing";
 import { toLocale } from "@/i18n/routing";
-import { toDateKey, addDaysToDateKey, torontoWallTimeToUtc } from "@/lib/time";
-import { CalendarDays, CheckCircle2, ChevronRight, LayoutDashboard, TriangleAlert, UserRoundPlus, Video } from "lucide-react";
+import { toDateKey, addDaysToDateKey, isDateKey, torontoWallTimeToUtc } from "@/lib/time";
+import { wallMinutes, weekStartOf } from "@/lib/week-schedule";
+import { requestedSkillLabel } from "@/lib/custom-skills";
+import { levelLabel } from "@/lib/skills";
+import { lessonTypeLabel } from "@/lib/lesson-types";
+import { TodayLessons, WeekSchedule, type ScheduleLesson } from "@/components/coach/week-schedule";
+import { CheckCircle2, ChevronRight, LayoutDashboard, TriangleAlert, UserRoundPlus, Video } from "lucide-react";
 
 const GAP_COPY = {
   zh: {
@@ -33,6 +38,7 @@ const GAP_COPY = {
 
 export default async function CoachTodayPage({
   params,
+  searchParams,
 }: PageProps<"/[locale]/coach">) {
   const { locale } = await params;
   setRequestLocale(locale);
@@ -43,11 +49,19 @@ export default async function CoachTodayPage({
   const loc = toLocale(locale);
   const zh = loc === "zh";
 
-  const todayKey = toDateKey(new Date());
-  const todayStart = torontoWallTimeToUtc(todayKey, 0);
-  const afterTomorrow = torontoWallTimeToUtc(addDaysToDateKey(todayKey, 2), 0);
+  const now = new Date();
+  const todayKey = toDateKey(now);
+  const thisWeek = weekStartOf(todayKey);
+  // ?week= shows another week's timetable; today's lessons and the rest of the page stay on today.
+  const requestedWeek = (await searchParams).week;
+  const weekStart = typeof requestedWeek === "string" && isDateKey(requestedWeek) ? weekStartOf(requestedWeek) : thisWeek;
+  const weekEnd = addDaysToDateKey(weekStart, 6);
+  const weekFrom = torontoWallTimeToUtc(weekStart, 0);
+  const weekTo = torontoWallTimeToUtc(addDaysToDateKey(weekStart, 7), 0);
+  const afterThisWeek = torontoWallTimeToUtc(addDaysToDateKey(thisWeek, 7), 0);
+  const lessonStatuses: ("CONFIRMED" | "PENDING_PAYMENT_REVIEW")[] = ["CONFIRMED", "PENDING_PAYMENT_REVIEW"];
 
-  const [profile, todays, upcoming, needsAttention, packagesToCheck, analysisPayments, endedLessons] = await Promise.all([
+  const [profile, week, upcoming, needsAttention, packagesToCheck, analysisPayments, endedLessons, todayRows] = await Promise.all([
     prisma.coachProfile.findUnique({
       where: { userId: user.id },
       include: { rates: true },
@@ -55,17 +69,17 @@ export default async function CoachTodayPage({
     prisma.booking.findMany({
       where: {
         coachId: user.id,
-        status: { in: ["CONFIRMED", "PENDING_PAYMENT_REVIEW"] },
+        status: { in: lessonStatuses },
         startAt: {
-          gte: todayStart,
-          lt: afterTomorrow,
+          gte: weekFrom,
+          lt: weekTo,
         },
       },
       include: { resort: true, participant: true },
       orderBy: { startAt: "asc" },
     }),
     prisma.booking.findMany({
-      where: { coachId: user.id, status: "CONFIRMED", startAt: { gte: afterTomorrow } },
+      where: { coachId: user.id, status: "CONFIRMED", startAt: { gte: afterThisWeek } },
       include: { resort: true, participant: true },
       orderBy: { startAt: "asc" },
       take: 5,
@@ -93,11 +107,31 @@ export default async function CoachTodayPage({
       select: { id: true, code: true, participantNameSnapshot: true },
       orderBy: { lessonEndAt: "desc" }, take: 10,
     }),
+    prisma.booking.findMany({
+      where: { coachId: user.id, status: { in: lessonStatuses },
+        startAt: { gte: torontoWallTimeToUtc(todayKey, 0), lt: torontoWallTimeToUtc(addDaysToDateKey(todayKey, 1), 0) } },
+      include: { resort: true, participant: true },
+      orderBy: { startAt: "asc" },
+    }),
   ]);
 
   const gaps = profile ? setupGaps(profile) : [];
   const attentionCount = needsAttention.length + (packagesToCheck > 0 ? 1 : 0) + analysisPayments.length + endedLessons.length;
-  const row = (b: (typeof todays)[number]) => (
+  const toLesson = (b: (typeof week)[number]): ScheduleLesson => ({
+    id: b.id, code: b.code, start: b.lessonStartAt, end: b.lessonEndAt,
+    student: b.participantNameSnapshot ?? b.participant?.fullName ?? b.inviteName ?? "—",
+    headcount: b.headcount, resort: zh ? b.resort.nameZh : b.resort.nameEn, lessonType: b.lessonType,
+    pending: b.status === "PENDING_PAYMENT_REVIEW",
+    skills: b.requestedSkills.map((key) => requestedSkillLabel(key, loc, b.requestedSkillsSnapshot)),
+    level: b.studentLevel ? levelLabel(b.studentLevel, loc) : null,
+    notes: b.notes?.trim() || null,
+  });
+  const lessons = week.map(toLesson);
+  const nowMinutes = wallMinutes(now);
+  const todays = todayRows.map(toLesson).filter((lesson) => toDateKey(lesson.start) === todayKey).map((lesson) => ({
+    ...lesson, from: wallMinutes(lesson.start), to: toDateKey(lesson.end) === todayKey ? wallMinutes(lesson.end) : 24 * 60,
+  }));
+  const row = (b: (typeof upcoming)[number]) => (
     <BookingRow
       key={b.id}
       locale={loc}
@@ -123,7 +157,7 @@ export default async function CoachTodayPage({
       <PageHeader
         icon={<LayoutDashboard aria-hidden />}
         title={zh ? `你好，${user.name ?? user.email}` : `Hello, ${user.name ?? user.email}`}
-        description={zh ? "今明两天的课程、需要你处理的事项和常用入口。" : "Today's and tomorrow's lessons, items waiting on you and shortcuts."}
+        description={zh ? "今天的课、本周课表、需要你处理的事项和常用入口。" : "Today's lessons, this week's timetable, items waiting on you and shortcuts."}
         actions={<>
           <Button asChild><Link href="/coach/bookings/new"><UserRoundPlus aria-hidden />{t("newBooking")}</Link></Button>
           <Button asChild variant="secondary"><Link href="/video-analysis"><Video aria-hidden />{zh ? "视频分析" : "Video analysis"}</Link></Button>
@@ -150,28 +184,37 @@ export default async function CoachTodayPage({
       )}
 
       <div className="grid grid-cols-3 gap-3">
-        <StatTile label={zh ? "今明两天" : "Today & tomorrow"} value={String(todays.length)} sub={zh ? "节课" : "lessons"} />
+        <StatTile label={zh ? "今天" : "Today"} value={String(todays.length)} sub={zh ? "节课" : "lessons"} />
         <StatTile label={zh ? "待处理" : "Needs attention"} value={String(attentionCount)} sub={zh ? "项" : "items"} />
-        <StatTile label={zh ? "之后的课程" : "Later"} value={String(upcoming.length)} sub={zh ? "节（最多显示 5 节）" : "lessons (up to 5 shown)"} />
+        <StatTile label={zh ? "本周之后" : "After this week"} value={String(upcoming.length)} sub={zh ? "节（最多显示 5 节）" : "lessons (up to 5 shown)"} />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <div className="space-y-6">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="min-w-0 space-y-6">
           <section className="space-y-3">
-            <SectionHeading title={t("today")} />
-            {todays.length === 0 ? (
-              <EmptyState icon={<CalendarDays aria-hidden />} title={zh ? "今明两天没有课。" : "Nothing scheduled today or tomorrow."} />
-            ) : (
-              <div className="space-y-2">{todays.map(row)}</div>
-            )}
+            <SectionHeading title={zh ? "今天的课" : "Today's lessons"} />
+            <TodayLessons lessons={todays} nowMinutes={nowMinutes} zh={zh} typeLabel={(type) => lessonTypeLabel(type, loc)} />
+          </section>
+
+          <section className="space-y-3">
+            <SectionHeading
+              title={weekStart === thisWeek ? (zh ? "本周课表" : "This week")
+                : `${zh ? "课表 " : "Week of "}${Number(weekStart.slice(5, 7))}/${Number(weekStart.slice(8, 10))}–${Number(weekEnd.slice(5, 7))}/${Number(weekEnd.slice(8, 10))}`}
+              actions={
+                <div className="flex flex-wrap items-center justify-end gap-1 text-sm font-semibold">
+                  <Link href={`/coach?week=${addDaysToDateKey(weekStart, -7)}`} scroll={false} className="rounded-lg px-2 py-1 text-ink-2 hover:bg-surface-2 hover:text-ink">{zh ? "‹ 上一周" : "‹ Previous"}</Link>
+                  {weekStart !== thisWeek && <Link href="/coach" scroll={false} className="rounded-lg px-2 py-1 text-accent hover:bg-surface-2">{zh ? "本周" : "This week"}</Link>}
+                  <Link href={`/coach?week=${addDaysToDateKey(weekStart, 7)}`} scroll={false} className="rounded-lg px-2 py-1 text-ink-2 hover:bg-surface-2 hover:text-ink">{zh ? "下一周 ›" : "Next ›"}</Link>
+                  <Link href="/coach/schedule" className="ml-1 hidden text-accent hover:underline sm:inline">{zh ? "完整课表" : "Full schedule"}</Link>
+                </div>
+              }
+            />
+            <WeekSchedule lessons={lessons} weekStart={weekStart} todayKey={todayKey} nowMinutes={nowMinutes} zh={zh} />
           </section>
 
           {upcoming.length > 0 && (
             <section className="space-y-3">
-              <SectionHeading
-                title={zh ? "接下来的课程" : "Upcoming lessons"}
-                actions={<Link href="/coach/schedule" className="text-sm font-semibold text-accent hover:underline">{zh ? "查看完整课表" : "View full schedule"}</Link>}
-              />
+              <SectionHeading title={zh ? "本周之后的课程" : "After this week"} />
               <div className="space-y-2">{upcoming.map(row)}</div>
             </section>
           )}

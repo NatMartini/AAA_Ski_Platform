@@ -17,8 +17,10 @@ import { Camera, Check, ChevronRight, CircleAlert, Film, Loader2, MessageSquareT
 import { CoachVideoFeedback } from "./coach-video-feedback";
 import { VideoCard, analysisJobLabel, jobStatusBadge, videoStatus, type VideoStatus } from "./video-card";
 import type { AnalysisJobView, AnalysisPurchaseView, AnalysisVideoView, VideoAnalysisView } from "./video-analysis-types";
-import { FREESKI_CURRENT_LEVELS, parseFreeSkiActionId, submittedFreeSkiActionId, type FreeSkiCurrentLevel } from "@/lib/freeski/actions";
+import { FREESKI_CURRENT_LEVELS, isExamRecognition, parseFreeSkiActionId, submittedFreeSkiActionId, type FreeSkiCurrentLevel } from "@/lib/freeski/actions";
 import { FILMING_GUIDE, filmingWarnings, readVideoMetadata, type FilmingWarning, type VideoMeta } from "@/lib/video-analysis/precheck";
+import { DEFAULT_TIER, TIER_HALVES, type AnalysisTier } from "@/lib/video-analysis/tiers";
+import { TierPicker } from "./analysis-tier-picker";
 
 type Filter = "all" | VideoStatus;
 
@@ -28,10 +30,12 @@ type Filter = "all" | VideoStatus;
  * and choosing what to analyse happen in dialogs, and each finished analysis
  * opens on its own report page.
  */
-export function VideoAnalysisPanel({ locale, bookingCode, completed, isCustomer, isOwnCoach, canUpload, initialVideos, initialView, accountId }: {
+export function VideoAnalysisPanel({ locale, bookingCode, completed, isCustomer, isOwnCoach, canUpload, initialVideos, initialView, accountId, initialAnalyze = null }: {
   locale: Locale;
   bookingCode: string;
   bookedHours: number;
+  /** Opens the analyse dialog for a clip, correcting a recognised analysis of it when `replacesJobId` is set. */
+  initialAnalyze?: { videoId: string; replacesJobId?: string | null } | null;
   completed: boolean;
   isCustomer: boolean;
   isOwnCoach: boolean;
@@ -46,6 +50,8 @@ export function VideoAnalysisPanel({ locale, bookingCode, completed, isCustomer,
   const [view, setView] = useState<VideoAnalysisView | null>(initialView ?? null);
   const [caption, setCaption] = useState("");
   const [actionId, setActionId] = useState("");
+  // A recognised analysis being corrected: its credit is handed back as the new one is taken.
+  const [replacesJobId, setReplacesJobId] = useState<string | null>(initialAnalyze?.replacesJobId ?? null);
   const [currentLevel, setCurrentLevel] = useState<FreeSkiCurrentLevel | "">("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +63,8 @@ export function VideoAnalysisPanel({ locale, bookingCode, completed, isCustomer,
   // A chosen file whose pre-check raised warnings waits here until the student decides.
   const [checked, setChecked] = useState<{ file: File; meta: VideoMeta; warnings: FilmingWarning[] } | null>(null);
   const [checking, setChecking] = useState(false);
-  const [analyzeVideoId, setAnalyzeVideoId] = useState<string | null>(null);
+  const [analyzeVideoId, setAnalyzeVideoId] = useState<string | null>(initialAnalyze?.videoId ?? null);
+  const [tier, setTier] = useState<AnalysisTier>(DEFAULT_TIER);
   const fileRef = useRef<HTMLInputElement>(null);
   const requestKeys = useRef(new Map<string, string>());
   const refreshVersion = useRef(0);
@@ -120,6 +127,10 @@ export function VideoAnalysisPanel({ locale, bookingCode, completed, isCustomer,
     if (code === "purchase-not-configured") return zh ? "教练尚未设置额外分析价格或微信收款方式，请联系教练。" : "The coach has not configured extra analysis pricing or WeChat payment. Contact your coach.";
     if (code === "price-changed") return zh ? "分析价格已变化，已刷新最新价格。请核对后重新生成订单。" : "The analysis price changed. The latest price has been refreshed; check it before creating another order.";
     if (code === "state-changed") return zh ? "付款订单已更新，已刷新当前状态。请重新核对后再审核。" : "The payment order changed. Its current status has been refreshed; check it again before reviewing.";
+    if (code === "not-replaceable") return zh ? "这次分析不能再改动作了，请重新选动作分析。" : "That analysis can no longer be corrected; analyse the clip again instead.";
+    if (code === "free-daily-limit") return zh ? "今天的免费分析次数用完了，可以选深度或完全档，或者明天再来。" : "Today's free analyses are used up. Choose deep or complete, or come back tomorrow.";
+    if (code === "invalid-tier") return zh ? "请选择分析档位。" : "Choose an analysis tier.";
+    if (code === "untrusted-origin") return zh ? "这个网页的地址和网站地址不一致，服务器没有接受这次提交。请从网站地址重新打开后再试。" : "This page's address does not match the site's, so the server refused the request. Open the site from its own address and try again.";
     return zh ? "操作未完成，请刷新检查当前状态后重试。" : "The action could not be completed. Refresh to check its current status before retrying.";
   }
 
@@ -178,7 +189,8 @@ export function VideoAnalysisPanel({ locale, bookingCode, completed, isCustomer,
       const data = await response.json().catch(() => ({})) as { error?: string; id?: string };
       if (!response.ok) {
         setError(failure(data.error));
-        if (response.status === 401 || response.status === 403 || (personal && data.error === "state-changed")) {
+        // A request refused for where it came from says nothing about who is signed in.
+        if (response.status === 401 || (response.status === 403 && data.error !== "untrusted-origin") || (personal && data.error === "state-changed")) {
           setSessionChanged(true);
           setView(null);
           router.refresh();
@@ -200,15 +212,22 @@ export function VideoAnalysisPanel({ locale, bookingCode, completed, isCustomer,
   }
 
   async function analyze(videoId: string) {
+    const actionId = chosenAction;
     if (!actionId) { setError(zh ? "请先选择视频中的练习动作。" : "Choose the action shown in the video first."); return; }
     if (!view?.actions.some((action) => action.id === actionId && action.available === true)) {
       setError(failure("unsupported-action"));
       return;
     }
     const submitted = submittedFreeSkiActionId(actionId, currentLevel || null);
-    if (!submitted) { setError(zh ? "请先选择你目前的 CSIA 级别。" : "Choose your current CSIA level first."); return; }
-    const operation = `analyze:${videoId}:${submitted}`;
-    if (await mutate(operation, base, { videoId, actionId: submitted, requestKey: requestKey(operation), ...(accountId ? { expectedAccountId: accountId } : {}) })) {
+    if (!submitted) {
+      setError(isExamRecognition(parseFreeSkiActionId(actionId)) ? (zh ? "请先选择要考的 CSIA 级别。" : "Choose the CSIA level you are going for first.")
+        : zh ? "请先选择你目前的 CSIA 级别。" : "Choose your current CSIA level first.");
+      return;
+    }
+    const operation = `analyze:${videoId}:${submitted}:${tier}`;
+    if (await mutate(operation, base, { videoId, actionId: submitted, tier, requestKey: requestKey(operation), ...(accountId ? { expectedAccountId: accountId } : {}),
+      ...(replacesJobId ? { replacesJobId } : {}) })) {
+      setReplacesJobId(null);
       setAnalyzeVideoId(null);
       setFilter("all");
       setMessage(zh ? "已提交分析，完成后这里会自动更新。" : "Analysis submitted. This page updates when it finishes.");
@@ -241,20 +260,25 @@ export function VideoAnalysisPanel({ locale, bookingCode, completed, isCustomer,
   // Opening the analyse dialog for a clip; the dialog then requires an action (and level).
   const ready = Boolean(canAct && view?.canAnalyze && active && serviceReady && anyActionAvailable);
   const canStart = ready && !busy;
-  const selectedActionAvailable = view?.actions.some((action) => action.id === actionId && action.available === true) ?? false;
-  const needsLevel = selectedActionAvailable && parseFreeSkiActionId(actionId)?.pathType === "improvement";
-  const canRun = Boolean(canStart && analyzeVideoId && selectedActionAvailable && (!needsLevel || currentLevel));
-  const parallelAvailable = view?.actions.some((action) => action.id === "parallel" && action.pathType === "improvement" && action.available === true) ?? false;
+  const autoOption = replacesJobId ? null : view?.actions.find((action) => action.id === "auto:improvement" && action.available === true) ?? null;
+  const chosenAction = actionId || autoOption?.id || "";
+  const selectedActionAvailable = view?.actions.some((action) => action.id === chosenAction && action.available === true) ?? false;
+  const chosenSelection = parseFreeSkiActionId(chosenAction);
+  // Improvement compares one level up; a recognised run uses the level to pick what to compare with.
+  const needsLevel = selectedActionAvailable && (chosenSelection?.pathType === "improvement" || chosenSelection?.actionName === "auto");
+  // An exam run left open is recognised among one exam's runs: the level asked for is the exam's.
+  const examLevel = isExamRecognition(chosenSelection);
+  const levelChosen = examLevel && currentLevel === "none" ? "" : currentLevel;
+  // The chosen tier must be open: a free one within today's allowance, a paid one with the credits for it.
+  const freeOpen = view?.quota.freeLimit === null || view?.quota.freeLimit === undefined || (view.quota.freeToday ?? 0) < view.quota.freeLimit;
+  const tierAllowed = Boolean(view?.unlimited) || (TIER_HALVES[tier] === 0 ? freeOpen : (view?.quota.remainingHalves ?? 0) >= TIER_HALVES[tier]);
+  const canRun = Boolean(canStart && analyzeVideoId && selectedActionAvailable && (!needsLevel || levelChosen) && tierAllowed);
   const uploadAllowed = canUpload && (view?.canUpload ?? true);
-  const beginnerStages = [
-    { zh: "犁式滑行 / 停止", en: "Snowplow gliding / stopping" },
-    { zh: "连续犁式转弯", en: "Linked snowplow turns" },
-    { zh: "半犁式并腿", en: "Wedge-to-parallel" },
-    { zh: "平行式转弯", en: "Parallel turns" },
-  ];
   const actionGroups = new Map<string, { label: string; actions: VideoAnalysisView["actions"][number][] }>();
   for (const action of view?.actions ?? []) {
-    const key = `${action.pathType}:${action.level ?? ""}`;
+    // A correction names the action itself.
+    if (replacesJobId && action.id.startsWith("auto:")) continue;
+    const key = action.id.startsWith("auto:") ? "auto" : `${action.pathType}:${action.level ?? ""}`;
     if (!actionGroups.has(key)) actionGroups.set(key, { label: zh ? action.groupZh : action.groupEn, actions: [] });
     actionGroups.get(key)!.actions.push(action);
   }
@@ -273,10 +297,6 @@ export function VideoAnalysisPanel({ locale, bookingCode, completed, isCustomer,
         {!personal && (view?.unlimited
           ? <p className="text-sm text-ink-2">{zh ? `你是本课教练：分析不限次数${active ? "" : "，课程完成后才能分析"}。` : `As this lesson's coach you analyse without limit${active ? "" : ", once the lesson is completed"}.`}</p>
           : <p className="text-sm text-ink-2">{zh ? "这节课的视频由教练上传和分析，你随时能看；你自己的视频在“我的分析”里分析，用账户里的次数。" : "Your coach uploads and analyses this lesson's videos for you to watch; analyse your own videos under My analyses with your account's credits."}</p>)}
-        {personal && (view ? <p className="text-sm text-ink-3" data-numeric>{view.unlimited
-            ? (zh ? `不限次数 · 分析中 ${view.quota.reserved} 次` : `Unlimited · ${view.quota.reserved} in progress`)
-            : zh ? `可用 ${view.quota.remaining} 次 · 分析中 ${view.quota.reserved} 次` : `${view.quota.remaining} available · ${view.quota.reserved} in progress`}</p>
-          : <p className="text-sm text-ink-3">{zh ? "正在读取可用次数…" : "Loading available credits…"}</p>)}
         {personal && !view?.canUpload && <p className="text-sm text-ink-2">{zh ? "联系教练发放次数后，即可上传和分析视频。" : "Contact your coach for credits to start uploading and analysing clips."}</p>}
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -329,7 +349,7 @@ export function VideoAnalysisPanel({ locale, bookingCode, completed, isCustomer,
         const jobBadge = jobStatusBadge(job.status, zh);
         return <li key={job.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
           <span className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold">{analysisJobLabel(job.actionId, view?.actions ?? [], zh) ?? (zh ? "分析" : "Analysis")}</span>
+            <span className="font-semibold">{analysisJobLabel(job.actionId, view?.actions ?? [], zh, job.result) ?? (zh ? "分析" : "Analysis")}</span>
             <Badge tone={jobBadge.tone}>{jobBadge.label}</Badge>
             <span className="text-xs text-ink-3">{formatTorontoShortDateTime(new Date(job.createdAt), locale)}</span>
           </span>
@@ -344,13 +364,15 @@ export function VideoAnalysisPanel({ locale, bookingCode, completed, isCustomer,
     </div>}
 
     {uploadAllowed && <Dialog open={uploadOpen} onClose={() => { setUploadOpen(false); setChecked(null); }} closeLabel={zh ? "关闭" : "Close"} title={uploadLabel}
-      description={zh ? "第 1 步：选视频。上传后接着选视频里的动作，就开始分析。MP4、MOV 可分析，WebM 只能观看；每个文件最大 200MB。" : "Step 1: choose the video. After it uploads, choose the action shown and the analysis starts. MP4 and MOV can be analysed; WebM can only be viewed. 200MB per file."}>
-      <Hint>{zh ? "视频保存到这个雪季结束（5 月 31 日）后自动删除；分析报告一直保留，也可以下载 PDF。" : "Videos are kept until the ski season ends (May 31) and then deleted; analysis reports stay and can be downloaded as PDF."}</Hint>
-      <Hint>{personal ? (zh ? "个人视频和报告默认仅你本人可见，可逐个授权教练人工点评。分析失败或无法评分不扣次数。" : "Personal videos and reports are visible only to you unless you authorize a coach review for a clip. Failed or ungradable analyses do not use a credit.") : (zh ? "视频及结果仅本订单学员和当前本课教练可见。额度由本订单共享，不按人数增加。" : "Videos and results are visible to this booking's student and current lesson coach. Credits are shared by this booking and do not multiply with group size.")}</Hint>
-      <section aria-label={zh ? "拍摄指南" : "Filming guide"} className="space-y-2 rounded-xl border border-border bg-surface-2 p-3.5">
-        <p className="flex items-center gap-2 text-sm font-semibold"><Camera className="size-4 text-cat-video" aria-hidden />{zh ? "怎么拍分析才准" : "How to film for an accurate analysis"}</p>
-        <ol className="list-decimal space-y-1 pl-5 text-sm text-ink-2">{FILMING_GUIDE.map((rule, index) => <li key={index}>{zh ? rule.zh : rule.en}</li>)}</ol>
-      </section>
+      description={zh ? "MP4 或 MOV，最大 200MB；上传后选动作和分析档位。" : "MP4 or MOV, up to 200MB; then choose the action and the tier."}>
+      <Hint>{personal ? (zh ? "只有你自己能看，视频保存到 5 月 31 日，报告一直保留。" : "Only you can see it; the video is kept until May 31, the report for good.")
+        : (zh ? "只有本课学员和教练能看，视频保存到 5 月 31 日。" : "Only this lesson's students and coach can see it; kept until May 31.")}
+        {" "}<Link href="/video-analysis/guide#keeping" className="font-semibold text-accent hover:underline">{zh ? "详见使用指南" : "More in the guide"}</Link></Hint>
+      <details aria-label={zh ? "拍摄指南" : "Filming guide"} className="group rounded-xl border border-border bg-surface-2">
+        <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 px-3.5 text-sm font-semibold"><Camera className="size-4 text-cat-video" aria-hidden />{zh ? "怎么拍分析才准" : "How to film for an accurate analysis"}
+          <ChevronRight className="ml-auto size-4 text-ink-3 transition-transform group-open:rotate-90" aria-hidden /></summary>
+        <ol className="list-decimal space-y-1 border-t border-border px-3.5 py-2.5 pl-8 text-sm text-ink-2">{FILMING_GUIDE.map((rule, index) => <li key={index}>{zh ? rule.zh : rule.en}</li>)}</ol>
+      </details>
       {checked ? <div role="status" className="space-y-3 rounded-xl border border-amber-border bg-amber-bg p-3.5">
         <p className="text-sm font-semibold text-amber">{zh ? "这段视频可能分析不准" : "This clip may not analyse well"}</p>
         <p className="text-xs text-ink-2">{checked.file.name}{checked.meta.durationSec !== null ? ` · ${checked.meta.durationSec.toFixed(0)} s` : ""}{checked.meta.width && checked.meta.height ? ` · ${checked.meta.width}×${checked.meta.height}` : ""}</p>
@@ -369,40 +391,38 @@ export function VideoAnalysisPanel({ locale, bookingCode, completed, isCustomer,
       </div>
     </Dialog>}
 
-    {canAct && <Dialog open={analyzeVideoId !== null} onClose={() => setAnalyzeVideoId(null)} closeLabel={zh ? "关闭" : "Close"}
-      title={zh ? "第 2 步：选动作，开始分析" : "Step 2: choose the action and start"}
+    {canAct && <Dialog open={analyzeVideoId !== null} onClose={() => { setAnalyzeVideoId(null); setReplacesJobId(null); }} closeLabel={zh ? "关闭" : "Close"}
+      title={zh ? "开始分析" : "Start the analysis"}
       description={analyzeVideo ? `${analyzeVideo.caption || (zh ? "未命名视频" : "Untitled video")}` : undefined}>
-      <section aria-labelledby={`analysis-learning-path-${bookingCode}`} className="space-y-3 rounded-xl border border-border bg-surface-2 p-3.5">
-        <h3 id={`analysis-learning-path-${bookingCode}`} className="text-sm font-semibold">{zh ? "从新手到平行式" : "From first turns to parallel"}</h3>
-        <ol className="grid gap-2 sm:grid-cols-2">
-          {beginnerStages.map((stage, index) => <li key={stage.en} className="space-y-0.5 rounded-lg border border-border bg-surface p-2.5">
-            <p className="text-sm font-semibold"><span className="mr-2 text-accent">{index + 1}</span>{zh ? stage.zh : stage.en}</p>
-            <p className="text-xs text-ink-3">{index < 3 ? zh ? "暂未开放分析" : "Analysis not available yet" : !view ? zh ? "正在读取开放状态…" : "Checking availability…" : parallelAvailable ? zh ? "技术提升 · 已开放" : "Improvement · Available" : zh ? "暂未开放分析" : "Analysis not available yet"}</p>
-          </li>)}
-        </ol>
-        <Hint>{zh ? `FreeSki 当前可评分的新手进阶动作从平行式转弯开始。前三阶段暂未开放自动分析，${personal ? "个人视频可以先上传保留，仍仅你本人可见" : "课程视频仍可上传给教练查看"}。请按视频里实际做出的动作选择。` : `FreeSki's currently supported beginner progression starts at parallel turns. Automated analysis is not available for the first three stages; ${personal ? "you can upload personal clips to keep them, visible only to you" : "lesson clips can still be uploaded for your coach to review"}. Choose the movement actually shown.`}</Hint>
-        {parallelAvailable && <Button variant="secondary" size="sm" disabled={Boolean(busy) || !hasSupportedVideo || !serviceReady} onClick={() => setActionId("parallel")}>
-          {selectedActionAvailable && actionId === "parallel" ? <Check aria-hidden /> : <Wand2 aria-hidden />}{selectedActionAvailable && actionId === "parallel" ? zh ? "已选择平行式转弯" : "Parallel turns selected" : zh ? "选择平行式转弯分析" : "Choose parallel-turn analysis"}
-        </Button>}
-      </section>
       {view?.actions.length ? <div className="space-y-2">
-        <Label htmlFor={`analysis-action-${bookingCode}`}>{zh ? "视频中的练习动作" : "Action shown in the video"}</Label>
-        <Select id={`analysis-action-${bookingCode}`} value={selectedActionAvailable ? actionId : ""} disabled={Boolean(busy) || !hasSupportedVideo || !anyActionAvailable} onChange={(event) => setActionId(event.target.value)}>
-          <option value="">{zh ? "请选择动作" : "Choose an action"}</option>
+        <Label htmlFor={`analysis-action-${bookingCode}`}>{zh ? "1. 视频里的动作" : "1. The action in the video"}</Label>
+        <Select id={`analysis-action-${bookingCode}`} value={selectedActionAvailable ? chosenAction : ""} disabled={Boolean(busy) || !hasSupportedVideo || !anyActionAvailable} onChange={(event) => setActionId(event.target.value)}>
+          {!autoOption && <option value="">{zh ? "请选择动作" : "Choose an action"}</option>}
           {[...actionGroups.entries()].map(([key, group]) => <optgroup key={key} label={group.label}>
             {group.actions.map((action) => <option key={action.id} value={action.id} disabled={action.available !== true}>{zh ? action.labelZh : action.labelEn}{action.available !== true ? zh ? "（暂未开放）" : " (Not available)" : ""}</option>)}
           </optgroup>)}
         </Select>
-        <Hint>{zh ? "动作与开放状态同步自 FreeSki。日常练习请选择「技术提升」；CSIA 考证动作供备考学员使用。" : "Actions and availability are synced from FreeSki. Choose Improvement for everyday practice; CSIA certification actions are for exam preparation."}</Hint>
-        {needsLevel && <div className="space-y-2 pt-2">
-          <Label htmlFor={`analysis-level-${bookingCode}`}>{zh ? "你目前的 CSIA 级别" : "Your current CSIA level"}</Label>
-          <Select id={`analysis-level-${bookingCode}`} value={currentLevel} disabled={Boolean(busy)} onChange={(event) => setCurrentLevel(event.target.value as FreeSkiCurrentLevel | "")}>
+        <Hint>{replacesJobId ? (zh ? "改正自动识别：按你选的动作重新分析这段视频，上一次的次数会退回。" : "Correcting the recognition: this clip is analysed again as the action you choose, and the earlier credit is handed back.")
+          : chosenSelection?.actionName === "auto" ? (zh ? "不选动作时由 FreeSki 自动识别，报告里会写识别结果，认错了可以改。" : "Without a choice FreeSki recognises the action; the report says what it found, and you can correct it.")
+          : (zh ? "日常练习选「技术提升」，备考选对应级别的考证动作。" : "Choose Improvement for everyday practice, or the certification action you are preparing for.")}</Hint>
+        {needsLevel && <div className="space-y-2 pt-1">
+          <Label htmlFor={`analysis-level-${bookingCode}`}>{examLevel ? (zh ? "你要考的 CSIA 级别" : "The CSIA level you are going for") : zh ? "你目前的 CSIA 级别" : "Your current CSIA level"}</Label>
+          <Select id={`analysis-level-${bookingCode}`} value={levelChosen} disabled={Boolean(busy)} onChange={(event) => setCurrentLevel(event.target.value as FreeSkiCurrentLevel | "")}>
             <option value="">{zh ? "请选择级别" : "Choose a level"}</option>
-            {FREESKI_CURRENT_LEVELS.map((level) => <option key={level.id} value={level.id}>{zh ? level.labelZh : level.labelEn}</option>)}
+            {FREESKI_CURRENT_LEVELS.filter((level) => !examLevel || level.id !== "none").map((level) => <option key={level.id} value={level.id}>{zh ? level.labelZh : level.labelEn}</option>)}
           </Select>
-          <Hint>{zh ? "技术提升和高你一级的 CSIA 通过示范对比：还没考级对比 1 级，1 级对比 2 级，依此类推；4 级对比专家示范。报告里会写明实际对比的示范。" : "Improvement compares you with CSIA pass examples one level above yours: no level compares with Level 1, Level 1 with Level 2, and so on; Level 4 compares with expert examples. The report states which examples were used."}</Hint>
+          <Hint>{examLevel ? (zh ? "在这一级的考试动作里识别，并和这一级的标准动作比。" : "The run is recognised among this level's exam runs and compared with its pass demonstrations.")
+            : chosenSelection?.actionName === "auto" ? (zh ? "填上级别识别更准，会和高你一级的标准动作比。" : "Your level makes the recognition more accurate; you are compared with pass examples one level above yours.")
+            : (zh ? "会和高你一级的 CSIA 标准动作对比。" : "You are compared with CSIA pass examples one level above yours.")}</Hint>
         </div>}
       </div> : null}
+      <div className="space-y-2">
+        <p className="text-sm font-semibold">{zh ? "2. 分析档位" : "2. Analysis tier"}</p>
+        <TierPicker name={`analysis-tier-${bookingCode}`} value={tier} onChange={setTier} zh={zh} disabled={Boolean(busy)}
+          unlimited={Boolean(view?.unlimited)} remainingHalves={view?.quota.remainingHalves ?? null}
+          freeLeft={view?.quota.freeLimit ? view.quota.freeLimit - (view.quota.freeToday ?? 0) : null} />
+        <Hint>{zh ? "分析完成后也能改档位：免费档之间随便改，往上改只扣差价。" : "You can change the tier later: free tiers swap freely, and going up costs only the difference."}</Hint>
+      </div>
       <FieldError>{analyzeVideoId ? error : null}</FieldError>
       <div className="flex flex-wrap justify-end gap-2">
         <Button variant="ghost" onClick={() => setAnalyzeVideoId(null)}>{zh ? "取消" : "Cancel"}</Button>

@@ -106,6 +106,21 @@ export function motionMarks(motion: StandardMotion, to: number, mirrored: boolea
   });
 }
 
+/** Across and down the slope from one edge change to the next, for a right turn: where the next turn starts. */
+export function turnAdvance(motion: StandardMotion) {
+  const centre = (points: Float64Array) => {
+    const { left_ankle: l, right_ankle: r } = motion.index;
+    return [(points[l * 3] + points[r * 3]) / 2, (points[l * 3 + 1] + points[r * 3 + 1]) / 2];
+  };
+  const a = centre(motionPointsAt(motion, 0)), b = centre(motionPointsAt(motion, 1));
+  return { across: b[0] - a[0], down: b[1] - a[1] };
+}
+
+/** Where turn number `n` of linked turns starts on the slope. Odd turns are left turns, mirrored. */
+export function turnOrigin(n: number, advance: { across: number; down: number }): [number, number, number] {
+  return [((n % 2) + 2) % 2 === 1 ? advance.across : 0, n * advance.down, 0];
+}
+
 /** How high the snow is under the skier at a phase: only bumps are not flat. Metres above the slope's plane. */
 export function snowLevelAt(motion: StandardMotion, phase: number) {
   const curve = motion.curves.snowHeightM;
@@ -145,6 +160,17 @@ export type CameraAxes = ReturnType<typeof cameraAxes>;
 export function projectPoint(points: ArrayLike<number>, k: number, axes: CameraAxes): [number, number] {
   const x = points[k * 3], y = points[k * 3 + 1], z = points[k * 3 + 2];
   return [x * axes.right[0] + y * axes.right[1] + z * axes.right[2], -(x * axes.up[0] + y * axes.up[1] + z * axes.up[2])];
+}
+
+/**
+ * Where the student changed edges in a turn window FreeSki sent: from score card 8 on ("edge_change" segmentation) a
+ * window runs from one edge change to the next, so its start is the edge change and nothing is searched for; before
+ * that, FreeSki's own measurement inside the window when it found exactly one, otherwise null for the fit to find.
+ */
+export function windowEdge(manifest: { startMs: number; endMs: number; edgeChangeMs?: number | null; turnSegmentation?: string }): number | null {
+  if (manifest.turnSegmentation === "edge_change") return manifest.startMs / 1000;
+  const edge = manifest.edgeChangeMs;
+  return edge !== null && edge !== undefined && edge > manifest.startMs && edge < manifest.endMs ? edge / 1000 : null;
 }
 
 export type TurnTiming = { start: number; end: number; apex?: number | null; role?: "start" | "middle" | "end";

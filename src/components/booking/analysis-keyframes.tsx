@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { isCurrentMedia, keyframesSchema, type Keyframes } from "@/lib/freeski/scorecard";
 import { retryWhileStarting } from "@/lib/freeski/startup-retry";
 import { clientFetch } from "@/lib/client-fetch";
-import { referenceNote, type ReferenceTarget } from "./analysis-scorecard";
+import { referenceNote, standardNote, type ReferenceTarget } from "./analysis-scorecard";
 
 /**
  * Rendered still frames for one turn. Silently absent when the provider has none, unless `showEmpty`: opened on
@@ -37,7 +37,9 @@ export function AnalysisKeyframes({ base, turnId, zh, target = null, showEmpty =
   if (manifest.status === "unavailable" || !isCurrentMedia(manifest)) return none;
   if (manifest.status === "pending") return <p className="text-xs text-ink-3">{zh ? "关键帧图片生成中…" : "Generating key frames…"}</p>;
   if (!manifest.items.length) return none;
-  const note = referenceNote(manifest.items.flatMap(item => item.reference_status ?? []), zh, target);
+  const drawn = manifest.items.map(item => item.standard_id).find(Boolean);
+  const note = drawn ? standardNote(drawn, zh, manifest.items.some(item => !item.standard_id))
+    : referenceNote(manifest.items.flatMap(item => item.reference_status ?? []), zh, target);
   return <div className="space-y-2">
     <p className="text-sm font-semibold">{zh ? "关键帧对比" : "Key frames"}</p>
     {note && <p className="text-xs text-ink-3">{note}</p>}

@@ -30,22 +30,17 @@ function buttonNamed(html: string, text: string) {
 }
 
 describe("unified lesson video analysis panel", () => {
-  it.each(["zh", "en"] as const)("guides beginners from snowplow to parallel without offering unsupported analysis in %s", (locale) => {
+  it.each(["zh", "en"] as const)("asks for the action, then the tier, with each tier's price in %s", (locale) => {
     const html = render(initialView, { locale });
-    const stages = locale === "zh" ? ["犁式滑行 / 停止", "连续犁式转弯", "半犁式并腿", "平行式转弯"] : ["Snowplow gliding / stopping", "Linked snowplow turns", "Wedge-to-parallel", "Parallel turns"];
-    const stagePositions = stages.map((stage) => html.indexOf(stage));
-    expect(stagePositions.every((position) => position >= 0)).toBe(true);
-    expect(stagePositions).toEqual([...stagePositions].sort((left, right) => left - right));
-    expect(html.match(new RegExp(locale === "zh" ? "暂未开放分析" : "Analysis not available yet", "g"))).toHaveLength(3);
-    expect(html).toContain(locale === "zh" ? "技术提升 · 已开放" : "Improvement · Available");
-    expect(buttonNamed(html, locale === "zh" ? "选择平行式转弯分析" : "Choose parallel-turn analysis")?.split(">")[0]).not.toContain('disabled=""');
-    expect(html).not.toMatch(/<option[^>]*value="(?:snowplow|linking_snowplow|wedge_basic|intro_parallel)"/);
-    expect(html).toContain(locale === "zh" ? "日常练习请选择「技术提升」" : "Choose Improvement for everyday practice");
+    expect(html.indexOf(locale === "zh" ? "1. 视频里的动作" : "1. The action in the video")).toBeLessThan(html.indexOf(locale === "zh" ? "2. 分析档位" : "2. Analysis tier"));
+    for (const name of locale === "zh" ? ["简单", "标准", "深度", "完全"] : ["Simple", "Standard", "Deep", "Complete"]) expect(html).toContain(name);
+    expect(html).toContain('role="radiogroup"');
+    expect(html).not.toContain(locale === "zh" ? "犁式滑行" : "Snowplow gliding");
   });
-  it.each(["zh", "en"] as const)("keeps the beginner explanation private in the personal workspace in %s", (locale) => {
-    const html = render({ ...initialView, accountId: "student" }, { accountId: "student", locale });
-    expect(html).toContain(locale === "zh" ? "个人视频可以先上传保留，仍仅你本人可见" : "you can upload personal clips to keep them, visible only to you");
-    expect(html).not.toContain(locale === "zh" ? "上传给教练查看" : "for your coach to review");
+  it("shows a student's free allowance and closes the paid tiers without the credits for them", () => {
+    const html = render({ ...initialView, accountId: "student", quota: { ...initialView.quota, remaining: 0, remainingHalves: 0, freeToday: 2, freeLimit: 5 } }, { accountId: "student" });
+    expect(html).toContain("Free · 3 left today");
+    expect(html.match(/Not enough credits/g)).toHaveLength(2);
   });
   it("offers no beginner shortcut when parallel improvement is closed, even if certification is open", () => {
     const html = render({ ...initialView, actions: [{ ...initialView.actions[0], available: false },
@@ -56,12 +51,10 @@ describe("unified lesson video analysis panel", () => {
     expect(html).toContain('value="certification:level1:demonstration_parallel"');
     expect(buttonNamed(html, "Start analysis")?.split(">")[0]).toContain('disabled=""');
   });
-  it("requires an analyzable clip and service availability before choosing the beginner shortcut", () => {
+  it("keeps the analysis closed without an analysable clip or with the service offline", () => {
     const noVideo = render({ ...initialView, videos: [] });
     const offline = render({ ...initialView, service: { configured: true, available: false } });
-    for (const html of [noVideo, offline]) {
-      expect(buttonNamed(html, "Choose parallel-turn analysis")?.split(">")[0]).toContain('disabled=""');
-    }
+    for (const html of [noVideo, offline]) expect(buttonNamed(html, "Start analysis")?.split(">")[0]).toContain('disabled=""');
   });
   it.each(["zh", "en"] as const)("groups actions by FreeSki path and certification level in %s", (locale) => {
     const html = render({ ...initialView, actions: [initialView.actions[0],
@@ -108,7 +101,7 @@ describe("unified lesson video analysis panel", () => {
     const html = render({ ...initialView, accountId: "student", quota: { ...initialView.quota, freeTotal: 3, grantTotal: 5, remaining: 7 },
       videos: [{ ...initialView.videos[0], url: "/api/video-analysis/videos/v1" }] }, { accountId: "student", bookedHours: 0 });
     expect(html).toContain("My analyses"); expect(html).not.toContain("shared free analyses");
-    expect(html).toContain("Analyse a new video"); expect(html).toContain("visible only to you");
+    expect(html).toContain("Analyse a new video"); expect(html).toContain("Only you can see it");
     expect(html).not.toContain("shared free analyses"); expect(html).not.toContain("Extra analysis credits");
     expect(html).not.toContain("Create WeChat payment order");
   });

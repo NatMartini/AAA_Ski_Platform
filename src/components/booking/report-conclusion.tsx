@@ -3,7 +3,7 @@ import { ArrowRight, Check, Play, Target } from "lucide-react";
 import type { Scorecard, Teaching } from "@/lib/freeski/scorecard";
 import { metricDelta, metricStanding, standingCounts, worstTurnFor } from "@/lib/freeski/metric-insight";
 import { cn } from "@/lib/utils";
-import { exampleName, referenceTarget, turnLabel } from "./analysis-scorecard";
+import { comparesWithStandard, exampleName, PassReference, referenceTarget, turnLabel } from "./analysis-scorecard";
 import { splitCriterion } from "./analysis-teaching";
 
 export type ReportFocus = { turnId: string | null; metric: string | null };
@@ -31,11 +31,14 @@ export function ReportConclusion({ teaching, card, previous, zh, focus, teaching
   const counts = card ? standingCounts(card) : null;
   const target = card ? referenceTarget(card) : null;
   const measured = counts ? counts.good + counts.work : 0;
+  // Score card 8 compares with the generated standard: its range, not the demonstrations' usual level.
+  const standard = comparesWithStandard(card);
   const label = (key: string | null) => { const metric = card?.metrics.find(entry => entry.key === key); return metric ? zh ? metric.label_zh : metric.label_en : null; };
   const goodLabels = card?.metrics.filter(metric => metricStanding(metric) === "good").sort((a, b) => b.weight - a.weight).slice(0, 2)
     .map(metric => zh ? metric.label_zh : metric.label_en) ?? [];
   const strength = teaching?.strengths[0] ? splitCriterion(zh ? teaching.strengths[0].text_zh : teaching.strengths[0].text_en)[0]
-    : goodLabels.length ? zh ? `${goodLabels.join("、")}达到示范常见水平` : `${goodLabels.join(" and ")} at the examples' usual level` : null;
+    : goodLabels.length ? zh ? `${goodLabels.join("、")}${standard ? "达到标准动作范围" : "达到示范常见水平"}`
+      : `${goodLabels.join(" and ")} ${standard ? "within the standard's range" : "at the examples' usual level"}` : null;
   const primary = teaching?.improvements.find(item => item.priority === "primary") ?? teaching?.improvements[0];
   const focusLabel = label(focus.metric);
   const improvement: [string, string | null] | null = primary ? splitCriterion(zh ? primary.text_zh : primary.text_en)
@@ -45,11 +48,11 @@ export function ReportConclusion({ teaching, card, previous, zh, focus, teaching
   if (!measured && !strength && !improvement && !teachingPending) return null;
   let summary: string | null = null;
   if (counts && target && measured > 0) {
-    const [nameZh, nameEn] = exampleName(target);
+    const [nameZh, nameEn] = exampleName(target, card);
     summary = zh
-      ? [`${measured} 项里 ${counts.good} 项达到${nameZh.startsWith("CSIA") ? " " : ""}${nameZh}的常见水平`, counts.work && `${counts.work} 项需加强`,
+      ? [`${measured} 项里 ${counts.good} 项达到${nameZh.startsWith("CSIA") ? " " : ""}${nameZh}的${standard ? "范围" : "常见水平"}`, counts.work && `${counts.work} 项需加强`,
         counts.estimated && `另有 ${counts.estimated} 项视频估算，不计分`, counts.none && `${counts.none} 项这次没算出`].filter(Boolean).join(" · ")
-      : [`${counts.good} of ${measured} measurements are at the usual level of ${nameEn}`, counts.work && `${counts.work} need${counts.work === 1 ? "s" : ""} work`,
+      : [`${counts.good} of ${measured} measurements are ${standard ? `within the range of ${nameEn}` : `at the usual level of ${nameEn}`}`, counts.work && `${counts.work} need${counts.work === 1 ? "s" : ""} work`,
         counts.estimated && `${counts.estimated} more ${counts.estimated === 1 ? "is a video estimate" : "are video estimates"}, not scored`,
         counts.none && `${counts.none} not computed`].filter(Boolean).join(" · ");
   }
@@ -62,6 +65,7 @@ export function ReportConclusion({ teaching, card, previous, zh, focus, teaching
         {counts.estimated > 0 && <span className="bg-ink-3/40" style={{ flexGrow: counts.estimated }} />}
       </div>
       <p className="text-sm text-ink-2">{summary}</p>
+      {card && <PassReference card={card} zh={zh} />}
     </div>}
     {strength && <p className="flex gap-2 text-sm leading-relaxed"><Check className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />
       <span><span className="font-semibold">{zh ? "做得好：" : "Going well: "}</span>{strength}</span></p>}
@@ -72,7 +76,7 @@ export function ReportConclusion({ teaching, card, previous, zh, focus, teaching
         {delta !== null && delta !== 0 && <span className={cn("inline-block rounded-full px-2 py-0.5 text-xs font-semibold", delta > 0 ? "bg-success-bg text-success" : "bg-danger-bg text-danger")}>
           {zh ? `这项比上次${delta > 0 ? "进步" : "退步"} ${Math.abs(delta)} 分` : `${delta > 0 ? "Up" : "Down"} ${Math.abs(delta)} since last time`}</span>}
       </div></div>}
-    {!improvement && measured > 0 && counts?.work === 0 && <p className="text-sm text-ink-2">{zh ? "这次没有低于示范常见水平的项目。" : "Nothing measured falls short of the examples' usual level this time."}</p>}
+    {!improvement && measured > 0 && counts?.work === 0 && <p className="text-sm text-ink-2">{zh ? `这次没有低于${standard ? "标准动作范围" : "示范常见水平"}的项目。` : `Nothing measured falls short of ${standard ? "the standard's range" : "the examples' usual level"} this time.`}</p>}
     {teachingPending && <Spinner size="sm" className="text-xs text-ink-3" label={zh ? "动作解释生成中，评分和动态对比已经可以查看。" : "The explanation is being written; scores and turn playback are already available."} />}
     {onShow && (focus.turnId || focus.metric) && <button type="button" onClick={() => onShow(focus.turnId, focus.metric)}
       className="press inline-flex min-h-10 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-semibold text-accent-foreground">

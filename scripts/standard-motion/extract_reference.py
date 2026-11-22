@@ -5,6 +5,10 @@ group the median turn (edge change to edge change, 21 phases, hips at the origin
 heights, mirrored so every turn curves to the picture's left) and the per-turn metric distribution on
 those same cuts, with the spread floors FreeSki's scorecard uses.
 
+The cut is FreeSki's whole turns (engines.edge_change.whole_turns), which it keeps for sampling what a
+demonstration does through a turn. Its score card cuts runs its own way; a standard motion is one
+whole turn, so it is fitted to whole turns and verified on them (verify_motion.py).
+
     python scripts/standard-motion/extract_reference.py --freeski J:/Freeski/FreeSkiclaude/server
 """
 from __future__ import annotations
@@ -43,7 +47,9 @@ def turn_curve(keypoints, start, end, direction):
     if not height > 20:
         return None
     frames = (frames - hip[:, None, :]) / height
-    if direction == "right":
+    # FreeSki names a turn by the side the skier turns to. Filmed from the front, the skier's right turn already
+    # curves to the picture's left, so it is the left turns that are mirrored.
+    if direction == "left":
         frames[:, :, 0] *= -1
         frames = frames[:, SWAP]
     return frames
@@ -68,17 +74,19 @@ def pose_jitter(keypoints, fps):
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--freeski", type=Path, default=Path("J:/Freeski/FreeSkiclaude/server"))
+    parser.add_argument("--out", type=Path, default=HERE / "reference" / "gold_turns.json", help="where to write the sampled turns")
     args = parser.parse_args()
     logging.basicConfig(level=logging.ERROR)
     sys.path.insert(0, str(args.freeski))
     from engines import scorecard
+    from engines.edge_change import whole_turns
     from scripts.build_scorecard_calibration import load_gold
 
     groups = defaultdict(lambda: {"curves": [], "values": defaultdict(list), "clips": 0, "durations": [], "apex": [], "jitter": []})
     pooled = defaultdict(list)
     for clip in load_gold():
         jitter = pose_jitter(clip.keypoints, clip.fps)
-        turns = scorecard.shot_turns(clip.keypoints, clip.fps, clip.width, clip.decisions)
+        turns = whole_turns(clip.keypoints, clip.fps, clip.decisions)
         evidence = scorecard.turn_evidence(clip.keypoints, turns, width=clip.width, height=clip.height,
                                            decisions=clip.decisions, candidates=clip.candidates)
         times = np.arange(len(clip.keypoints)) / clip.fps
@@ -121,8 +129,8 @@ def main() -> int:
                               "jitter": round(float(np.median(group["jitter"])), 5) if group["jitter"] else None,
                               "metrics": metrics,
                               "curve": [[[None if np.isnan(v) else round(float(v), 4) for v in joint] for joint in frame] for frame in curve]}
-    (HERE / "reference").mkdir(exist_ok=True)
-    (HERE / "reference" / "gold_turns.json").write_text(json.dumps(out, separators=(",", ":")), encoding="utf-8")
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(json.dumps(out, separators=(",", ":")), encoding="utf-8")
     print("groups", len(out["groups"]))
     return 0
 

@@ -39,6 +39,11 @@ const metricScore = z.object({
     (metric.measurement === "direct" || metric.weight === 0 && metric.value === null && metric.unit === null && metric.reference === null),
   "Invalid metric presentation");
 
+/** Where the camera stood relative to the skier; FreeSki reads it off by fitting the standard motion. */
+export const CAMERA_VIEWS = ["front", "rear", "left_side", "right_side", "oblique_front_left", "oblique_front_right",
+  "oblique_rear_left", "oblique_rear_right", "unknown"] as const;
+const cameraView = z.enum(CAMERA_VIEWS);
+
 export const scorecardSchema = z.object({
   schema_version: z.literal("freeski_scorecard.v1"), experimental: z.literal(true),
   action: metricKey, level,
@@ -49,15 +54,25 @@ export const scorecardSchema = z.object({
   // reference_target names the example set actually compared (absent on scorecards from before it existed).
   calibration: z.object({ reference_generation: identifier, reference_clip_count: count, matched_reference_count: count,
     scoring_version: identifier.optional(), calibration_id: identifier.nullable().optional(),
-    reference_target: z.enum(["expert", "advanced", "level1", "level2", "level3", "level4", "all_pass_levels"]).nullable().optional() }),
+    reference_target: z.enum(["expert", "advanced", "level1", "level2", "level3", "level4", "all_pass_levels"]).nullable().optional(),
+    // Score card 8 on: compared with the generated standard motion of the action and level ("generated_standard"), turns
+    // cut from edge change to edge change. pass_demonstration is what the official pass demonstrations score against that
+    // standard, the reference a student's turn scores are read against; standard_own is the standard re-filmed.
+    reference_kind: z.string().max(40).optional().catch(undefined),
+    turn_cut: z.string().max(40).optional().catch(undefined),
+    standard: z.object({ id: z.string().max(80), action: metricKey, level: z.number().int().min(1).max(4),
+      source_clips: count.optional(), source_turns: count.optional(), other_level: z.boolean().optional() }).optional().catch(undefined),
+    pass_demonstration: z.object({ score: score.nullable(), clips: count, turns: count }).optional().catch(undefined),
+    standard_own: z.object({ score: score.nullable(), runs: count }).optional().catch(undefined) }),
   quality: z.enum(["valid", "approximate", "insufficient"]),
   quality_reasons: z.array(z.enum(["few_turns", "low_pose_confidence", "camera_motion",
     "no_matching_reference", "partial_metrics", "excluded_turns", "subject_reacquired"])).max(7),
   overall: z.object({ score: score.nullable(), aggregation: z.literal("middle_turns_mean"),
     turns_used: z.number().int().min(0).max(100), turns_total: count, turns_excluded: count.optional() }),
   metrics: z.array(metricScore).max(24),
-  turns: z.array(z.object({ turn_id: turnId, start_ms: seconds, end_ms: seconds,
+  turns: z.array(z.object({ turn_id: turnId, start_ms: seconds, end_ms: seconds, apex_ms: seconds.optional().catch(undefined),
     direction: z.enum(["left", "right", "unknown"]), role: z.enum(["start", "middle", "end"]),
+    camera_view: cameraView.optional().catch(undefined),
     score: score.nullable(), used_in_overall: z.boolean(),
     // Per-turn video quality gate: a turn without enough visual evidence is listed but never scored.
     // reacquired: the tracker re-locked onto a lone skier after losing them; scored, but identity is unverified.
@@ -66,6 +81,8 @@ export const scorecardSchema = z.object({
         "overlapping_person", "discontinuity"])).max(6), reacquired: z.boolean().optional() }).optional(),
     metrics: z.array(z.object({ key: metricKey, score: score.nullable(), band: band.nullable().optional() })).max(24) })).max(100),
   unavailable_metrics: z.array(metricKey).max(40),
+  // Where the camera stood, from fitting the standard to each whole turn; shown, never scored.
+  camera_view: cameraView.optional().catch(undefined),
 }).refine(card => {
   const weight = card.metrics.filter(metric => metric.score !== null).reduce((sum, metric) => sum + metric.weight, 0);
   return (card.quality === "insufficient") === (card.overall.score === null) &&
@@ -184,7 +201,9 @@ export const keyframesSchema = z.object({
     reference_time_sec: seconds.nullable(),
     width: z.number().int().min(1).max(4096), height: z.number().int().min(1).max(4096),
     focus_metric_key: metricKey.nullable(), caption_zh: prose(300), caption_en: prose(400),
-    fact_ids: citations, reference_status: referenceStatusSchema.optional() })).max(5),
+    fact_ids: citations, reference_status: referenceStatusSchema.optional(),
+    // v2: the generated standard drawn beside the student, e.g. "short_turn-l2"; null where none was drawn.
+    standard_id: z.string().max(80).nullable().optional().catch(undefined) })).max(5),
 }).refine(manifest => new Set(manifest.items.map(item => item.keyframe_id)).size === manifest.items.length, "Duplicate keyframe");
 export type Keyframes = z.infer<typeof keyframesSchema>;
 
@@ -203,6 +222,8 @@ export const explainerSchema = z.object({
   bytes: z.number().int().positive().optional(),
   reference: z.enum(["reviewed_platform_reference", "auto_matched_unreviewed", "not_available", "mixed"]).optional(),
   reference_status: z.record(turnId, referenceStatusSchema).optional(),
+  // v2: the generated standard drawn beside the student, and in which turns.
+  standard: z.object({ id: z.string().max(80), turns: z.record(turnId, z.boolean()) }).optional().catch(undefined),
   segments: z.array(explainerSegment).max(40).optional(),
 }).refine(explainer => explainer.status !== "ready" || explainer.width !== undefined && explainer.height !== undefined &&
   explainer.duration_sec !== undefined && explainer.segments !== undefined &&

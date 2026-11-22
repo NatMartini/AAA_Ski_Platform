@@ -1,3 +1,4 @@
+import type { ActionRecognition } from "./action-recognition";
 import type { FreeSkiActionId } from "./actions";
 import type { Scorecard } from "./scorecard";
 
@@ -23,6 +24,8 @@ export type FreeSkiAnalysisResult = {
   scorerVersion: string | null;
   /** Contract v1 scorecard, frozen at settlement; absent on legacy results. */
   scorecard?: Scorecard;
+  /** What FreeSki recognised, when the action was left open. */
+  actionRecognition?: ActionRecognition;
 };
 
 export type FreeSkiErrorCode =

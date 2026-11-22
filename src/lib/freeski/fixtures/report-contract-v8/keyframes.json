@@ -1,0 +1,52 @@
+{
+  "schema_version": "freeski_keyframes.v2",
+  "turn_id": "turn_3",
+  "status": "ready",
+  "items": [
+    {
+      "keyframe_id": "kf_8c41510c49e0c57f061b0a5cce1f4c07",
+      "phase": "initiation",
+      "time_sec": 4.0,
+      "reference_time_sec": null,
+      "width": 960,
+      "height": 540,
+      "focus_metric_key": "parallel_skis",
+      "caption_zh": "第4弯·入弯：双板平行 0 分，低于标准动作范围",
+      "caption_en": "Turn 4 · initiation: Parallel skis 0, below the standard's range",
+      "fact_ids": [
+        "f_parallel_skis_turn_3"
+      ],
+      "standard_id": "demonstration_parallel-l2"
+    },
+    {
+      "keyframe_id": "kf_7457ca2cca3250c2c045e5bc5071a8de",
+      "phase": "apex",
+      "time_sec": 4.267,
+      "reference_time_sec": null,
+      "width": 960,
+      "height": 540,
+      "focus_metric_key": "parallel_skis",
+      "caption_zh": "第4弯·弯顶：双板平行 0 分，低于标准动作范围",
+      "caption_en": "Turn 4 · apex: Parallel skis 0, below the standard's range",
+      "fact_ids": [
+        "f_parallel_skis_turn_3"
+      ],
+      "standard_id": "demonstration_parallel-l2"
+    },
+    {
+      "keyframe_id": "kf_faf340eb17eb4d8b9ddda3e13fee69a2",
+      "phase": "completion",
+      "time_sec": 4.5,
+      "reference_time_sec": null,
+      "width": 960,
+      "height": 540,
+      "focus_metric_key": "parallel_skis",
+      "caption_zh": "第4弯·收弯：双板平行 0 分，低于标准动作范围",
+      "caption_en": "Turn 4 · completion: Parallel skis 0, below the standard's range",
+      "fact_ids": [
+        "f_parallel_skis_turn_3"
+      ],
+      "standard_id": "demonstration_parallel-l2"
+    }
+  ]
+}

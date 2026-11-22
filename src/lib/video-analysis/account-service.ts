@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import type { ActiveUser } from "../auth/require-user";
 import { objectExists } from "../storage";
-import { isFreeSkiActionId, isSubmittableFreeSkiActionId, parseFreeSkiActionId } from "../freeski/actions";
+import { isFreeSkiActionId, isSubmittableFreeSkiActionId, parseFreeSkiActionId, isAutoAction } from "../freeski/actions";
 import type { FreeSkiAnalysisResult } from "../freeski/types";
 import { analysisResultUsable } from "../freeski/scorecard";
 import { getFreeSkiConfig, isFreeSkiConfigured } from "../freeski/config";
@@ -12,6 +12,9 @@ import { ensureBusinessAnalysisQueued } from "../freeski/dispatcher";
 import { withAnalysisQueueReasons } from "./scheduling";
 import { purgeExpiredVideos } from "./retention";
 import { AnalysisDomainError, ANALYSIS_LEASE_MINUTES, ANALYSIS_QUEUE_MINUTES, LESSON_ANALYSES } from "./quota";
+import { isPreparing, preparationAfterTierChange, readPrepareState } from "./prepare";
+import { chargedHalves, credits, FREE_ANALYSES_PER_DAY, isAnalysisTier, isFreeTier, paidAfter, resultForTier, startOfTorontoDay, storedTier, TIER_HALVES, upgradeHalves,
+  type AnalysisTier } from "./tiers";
 
 const grantInclude = { account: { select: { name: true, email: true } },
   coach: { select: { name: true, coachProfile: { select: { displayName: true } } } } } as const;
@@ -47,20 +50,31 @@ export const accountAllowance = (user: Pick<ActiveUser, "role">): AccountAllowan
  * What the student's lessons add: how many they completed, what they bought through them, and the analyses they
  * ran on lesson clips before credits moved to the account, which count as spent.
  */
-export type LessonCredits = { lessons: number; purchased: number; lessonJobs: readonly { status: string; refundedAt: Date | null }[] };
+type ChargedJob = { status: string; refundedAt: Date | null; paidTier?: string | null; preparedTier?: string | null };
+/** Scored, with its tier's outputs still being made: in progress, not yet a finished analysis. */
+const completing = (job: ChargedJob) => job.status === "SUCCEEDED" && job.preparedTier === null;
+export type LessonCredits = { lessons: number; purchased: number; lessonJobs: readonly ChargedJob[] };
 const NO_LESSONS: LessonCredits = { lessons: 0, purchased: 0, lessonJobs: [] };
 
-/** `remaining` counts credits; an unlimited account has none to count and is never refused for want of one. */
+/**
+ * `remaining` counts analyses, in halves where a deep analysis cost half of one; an unlimited account has none to count
+ * and is never refused for want of one. `freeToday` is how many free analyses were started today.
+ */
 export function accountAnalysisQuota(grants: readonly { quantity: number }[],
-  jobs: readonly { status: string; refundedAt: Date | null }[], allowance: AccountAllowance, lessons: LessonCredits = NO_LESSONS) {
+  jobs: readonly (ChargedJob & { createdAt?: Date })[], allowance: AccountAllowance, lessons: LessonCredits = NO_LESSONS, now = new Date()) {
   const grantTotal = grants.reduce((sum, grant) => sum + grant.quantity, 0);
   const lessonTotal = lessons.lessons * LESSON_ANALYSES, paidTotal = lessons.purchased;
   const charged = [...jobs, ...lessons.lessonJobs].filter((job) => !job.refundedAt);
-  const used = charged.filter((job) => job.status === "SUCCEEDED").length;
-  const reserved = charged.filter((job) => ["QUEUED", "RUNNING"].includes(job.status)).length;
+  const halves = (list: readonly ChargedJob[]) => list.reduce((sum, job) => sum + chargedHalves(job), 0);
+  const used = credits(halves(charged.filter((job) => job.status === "SUCCEEDED" && !completing(job))));
+  const reserved = credits(halves(charged.filter((job) => ["QUEUED", "RUNNING"].includes(job.status) || completing(job))));
   const earned = allowance.free + lessonTotal + grantTotal + paidTotal;
+  const remainingHalves = allowance.unlimited ? 0 : Math.max(0, earned * 2 - halves(charged));
+  const today = startOfTorontoDay(now);
+  const freeToday = jobs.filter((job) => !job.refundedAt && job.createdAt && job.createdAt >= today && isFreeTier(storedTier(job.paidTier))).length;
   return { active: true, unlimited: allowance.unlimited, freeTotal: allowance.free, lessonCount: lessons.lessons, lessonTotal, paidTotal,
-    grantTotal, earned, used, reserved, remaining: allowance.unlimited ? 0 : Math.max(0, earned - charged.length) };
+    grantTotal, earned, used, reserved, remaining: credits(remainingHalves), remainingHalves,
+    freeToday, freeLimit: allowance.unlimited ? null : FREE_ANALYSES_PER_DAY };
 }
 
 /** Completed lessons count for the booker and for every companion with an account. */
@@ -68,14 +82,51 @@ async function lessonCredits(tx: Prisma.TransactionClient, user: ActiveUser): Pr
   const lessons = await tx.booking.count({ where: { status: "COMPLETED",
     OR: [{ accountId: user.id }, { attendees: { some: { accountId: user.id } } }] } });
   const purchases = await tx.videoAnalysisPurchase.findMany({ where: { accountId: user.id, status: "CONFIRMED" }, select: { quantity: true } });
-  const lessonJobs = await tx.videoAnalysisJob.findMany({ where: { createdById: user.id }, select: { status: true, refundedAt: true } });
+  const lessonJobs = await tx.videoAnalysisJob.findMany({ where: { createdById: user.id }, select: { status: true, refundedAt: true, paidTier: true, preparedTier: true } });
   return { lessons, purchased: purchases.reduce((sum, purchase) => sum + purchase.quantity, 0), lessonJobs };
 }
-const mayAnalyse = (quota: ReturnType<typeof accountAnalysisQuota>) => quota.unlimited || quota.remaining > 0;
+type Quota = ReturnType<typeof accountAnalysisQuota>;
+/** Whether an analysis at this tier may start: a free one within the day's allowance, a paid one with the credit for it. */
+function tierRefusal(quota: Quota, tier: AnalysisTier, correction = false): string | null {
+  if (quota.unlimited) return null;
+  // Putting a recognised action right is not another analysis of the day.
+  if (isFreeTier(tier)) return !correction && quota.freeToday >= FREE_ANALYSES_PER_DAY ? "free-daily-limit" : null;
+  return quota.remainingHalves >= TIER_HALVES[tier] ? null : "quota-exhausted";
+}
+type Correction = { videoId: string; actionId: string; tier: AnalysisTier; replacesJobId?: string | null };
+/** The recognised analysis of this clip that a correction may replace: finished, still standing, and corrected by a chosen action. */
+function replaceable<T extends { id: string; videoId: string | null; actionId: string; status: string; refundedAt: Date | null; paidTier: string }>(
+  jobs: readonly T[], input: Correction): T | null {
+  const job = jobs.find((candidate) => candidate.id === input.replacesJobId);
+  return job && !job.refundedAt && job.status === "SUCCEEDED" && job.videoId === input.videoId && isAutoAction(job.actionId) && !isAutoAction(input.actionId) ? job : null;
+}
+/**
+ * Whether a correction may start. What was paid for the recognised run carries over, so only a costlier tier needs more:
+ * the quota is read as if that run were already closed, against the tier the correction ends up paid at.
+ */
+function correctionRefusal<T extends Parameters<typeof replaceable>[0][number]>(jobs: readonly T[], input: Correction, quotaOf: () => Quota): string | null {
+  const replaced = replaceable(jobs, input);
+  if (!replaced) return "not-replaceable";
+  const paid = paidAfter(storedTier(replaced.paidTier), input.tier), standing = replaced.refundedAt;
+  replaced.refundedAt = new Date();
+  try { return tierRefusal(quotaOf(), paid, true); } finally { replaced.refundedAt = standing; }
+}
+/** Whether anything can still be analysed: a free tier is always on offer within the day's allowance. */
+const mayAnalyse = (quota: Quota) => quota.unlimited || quota.freeToday < FREE_ANALYSES_PER_DAY || quota.remainingHalves > 0;
 
-const jobDto = (job: Prisma.AccountAnalysisJobGetPayload<object>) => ({ id: job.id,
-  videoId: job.videoId, actionId: job.actionId, status: job.status, createdAt: job.createdAt,
-  finishedAt: job.finishedAt, result: job.result, errorCode: job.errorCode });
+const jobDto = (job: Prisma.AccountAnalysisJobGetPayload<object>) => {
+  const preparing = isPreparing(job), tier = storedTier(job.tier);
+  return { id: job.id, videoId: job.videoId, actionId: job.actionId, createdAt: job.createdAt, errorCode: job.errorCode,
+    tier, paidTier: storedTier(job.paidTier),
+    // Until everything the tier shows is made, the analysis is still in progress for its owner and has no report.
+    status: preparing ? "RUNNING" : job.status, finishedAt: preparing ? null : job.finishedAt,
+    // A simple analysis shows no scores, so none reach the page.
+    result: preparing ? null : resultForTier(job.result, tier),
+    ...(preparing ? { phase: "preparing" as const, prepare: readPrepareState(job.prepareState) } : {}) };
+};
+/** A recognised analysis put right by another keeps no place in the lists: its correction stands for it. */
+const listed = (job: { errorCode: string | null }) => job.errorCode !== "replaced";
+const busy = (job: { status: string; refundedAt: Date | null; preparedTier: string | null }) => ["QUEUED", "RUNNING"].includes(job.status) || isPreparing(job);
 const supportedVideo = (video: { contentType: string; bytes: number }) =>
   ["video/mp4", "video/quicktime"].includes(video.contentType) && video.bytes > 0 && video.bytes <= 200 * 1024 * 1024;
 
@@ -107,11 +158,12 @@ export async function getAccountVideoAnalysisState(user: ActiveUser) {
       videos: videos.map((video) => ({ id: video.id, caption: video.caption, uploadedAt: video.uploadedAt,
         contentType: video.contentType, analysisSupported: supportedVideo(video),
         url: `/api/video-analysis/videos/${video.id}`,
-        canDelete: !jobs.some((job) => job.videoId === video.id && ["QUEUED", "RUNNING"].includes(job.status)) })),
-      jobs: jobs.map(jobDto), purchases: [],
+        canDelete: !jobs.some((job) => job.videoId === video.id && busy(job)) })),
+      jobs: jobs.filter(listed).map(jobDto), purchases: [],
       grants: grants.map((grant) => { const { id, quantity, note, createdAt, coach } = grantDto(grant); return { id, quantity, note, createdAt, coach }; }),
       payment: { coachName: "", wechatEnabled: false, wechatId: null, wechatQrUrl: null },
-      upstream: new Map(jobs.map((job) => [job.id,
+      // FreeSki's own job has finished once the tier's outputs are being made: nothing to ask it about.
+      upstream: new Map(jobs.filter((job) => !isPreparing(job)).map((job) => [job.id,
         { upstreamJobId: job.upstreamJobId, upstreamDeploymentId: job.upstreamDeploymentId }])) };
   });
   const [service, jobs, actions] = await Promise.all([
@@ -124,15 +176,18 @@ export async function getAccountVideoAnalysisState(user: ActiveUser) {
 }
 
 export async function requestAccountAnalysis(user: ActiveUser,
-  input: { videoId: string; actionId: string; requestKey: string; expectedAccountId: string }) {
+  input: { videoId: string; actionId: string; requestKey: string; expectedAccountId: string; tier: AnalysisTier;
+    /** A recognised analysis of the same clip this one corrects: what was paid for it carries over to this one. */
+    replacesJobId?: string | null }) {
   if (input.expectedAccountId !== user.id) throw new AnalysisDomainError("state-changed");
+  if (!isAnalysisTier(input.tier)) throw new AnalysisDomainError("invalid-tier");
   // Keep catalog/storage network reads outside row locks, and let an offline
   // duplicate reuse its original reservation without calling the catalog.
   const prepared = await lockedAccount(user.id, async (tx) => {
-    const { jobs, quota } = await accountLedger(tx, user);
+    const { jobs, grants, lessons, quota } = await accountLedger(tx, user);
     const existing = jobs.find((job) => job.requestKey === input.requestKey);
     if (existing) {
-      if (existing.videoId !== input.videoId || existing.actionId !== input.actionId) throw new AnalysisDomainError("request-conflict");
+      if (existing.videoId !== input.videoId || existing.actionId !== input.actionId || storedTier(existing.tier) !== input.tier) throw new AnalysisDomainError("request-conflict");
       return { kind: "existing" as const, reservation: { ok: true, job: jobDto(existing), quota } };
     }
     if (!isSubmittableFreeSkiActionId(input.actionId)) throw new AnalysisDomainError("unsupported-action");
@@ -140,11 +195,13 @@ export async function requestAccountAnalysis(user: ActiveUser,
     const video = await tx.accountAnalysisVideo.findFirst({ where: { id: input.videoId, accountId: user.id } });
     if (!video) throw new AnalysisDomainError("video-not-found");
     if (!supportedVideo(video)) throw new AnalysisDomainError("unsupported-video");
-    if (!mayAnalyse(quota)) throw new AnalysisDomainError("quota-exhausted");
+    const refusal = input.replacesJobId ? correctionRefusal(jobs, input, () => accountAnalysisQuota(grants, jobs, accountAllowance(user), lessons))
+      : tierRefusal(quota, input.tier);
+    if (refusal) throw new AnalysisDomainError(refusal);
     return { kind: "new" as const, storageKey: video.storageKey };
   });
   if (prepared.kind === "existing") {
-    await ensureBusinessAnalysisQueued("account", prepared.reservation.job.id);
+    void ensureBusinessAnalysisQueued("account", prepared.reservation.job.id).catch(() => {});
     return prepared.reservation;
   }
   const [actions, videoAvailable] = await Promise.all([
@@ -155,24 +212,58 @@ export async function requestAccountAnalysis(user: ActiveUser,
     const { jobs, grants, lessons, quota } = await accountLedger(tx, user);
     const existing = jobs.find((job) => job.requestKey === input.requestKey);
     if (existing) {
-      if (existing.videoId !== input.videoId || existing.actionId !== input.actionId) throw new AnalysisDomainError("request-conflict");
+      if (existing.videoId !== input.videoId || existing.actionId !== input.actionId || storedTier(existing.tier) !== input.tier) throw new AnalysisDomainError("request-conflict");
       return { ok: true, job: jobDto(existing), quota };
     }
     if (!actions) throw new AnalysisDomainError("service-unavailable");
+    // The recognised run a correction replaces: closed here, with what was paid for it carried to the new run.
+    const replaced = input.replacesJobId ? replaceable(jobs, input) : null;
+    if (input.replacesJobId && !replaced) throw new AnalysisDomainError("not-replaceable");
     const catalogId = parseFreeSkiActionId(input.actionId)?.catalogId;
     if (!actions.some((action) => action.id === catalogId && action.available === true)) throw new AnalysisDomainError("unsupported-action");
     if (!isFreeSkiConfigured()) throw new AnalysisDomainError("service-not-configured");
     const video = await tx.accountAnalysisVideo.findFirst({ where: { id: input.videoId, accountId: user.id } });
     if (!video || video.storageKey !== prepared.storageKey || !videoAvailable) throw new AnalysisDomainError("video-not-found");
     if (!supportedVideo(video)) throw new AnalysisDomainError("unsupported-video");
-    if (!mayAnalyse(quota)) throw new AnalysisDomainError("quota-exhausted");
+    const refusal = replaced ? correctionRefusal(jobs, input, () => accountAnalysisQuota(grants, jobs, accountAllowance(user), lessons))
+      : tierRefusal(quota, input.tier);
+    if (refusal) throw new AnalysisDomainError(refusal);
+    if (replaced) {
+      const now = new Date();
+      await tx.accountAnalysisJob.update({ where: { id: replaced.id }, data: { refundedAt: now, errorCode: "replaced" } });
+      replaced.refundedAt = now;
+      replaced.errorCode = "replaced";
+    }
+    const paidTier = replaced ? paidAfter(storedTier(replaced.paidTier), input.tier) : input.tier;
     const job = await tx.accountAnalysisJob.create({ data: { accountId: user.id, videoId: video.id,
-      createdById: user.id, requestKey: input.requestKey, actionId: input.actionId,
+      createdById: user.id, requestKey: input.requestKey, actionId: input.actionId, tier: input.tier, paidTier,
       queuedExpiresAt: new Date(Date.now() + ANALYSIS_QUEUE_MINUTES * 60_000) } });
     return { ok: true, job: jobDto(job), quota: accountAnalysisQuota(grants, [...jobs, job], accountAllowance(user), lessons) };
   });
-  await ensureBusinessAnalysisQueued("account", reservation.job.id);
+  // The hand-off uploads the whole clip to FreeSki, which may be asleep, starting or busy, so the answer does not wait
+  // for it: the reservation is durable and the analysis worker retries the hand-off every few seconds until it lands.
+  void ensureBusinessAnalysisQueued("account", reservation.job.id).catch(() => {});
   return reservation;
+}
+
+/**
+ * Moves an analysis to another tier: free between free tiers, the difference to what was paid when going up, and no
+ * refund going down, so returning to a tier already paid for costs nothing.
+ */
+export async function changeAccountAnalysisTier(user: ActiveUser, input: { jobId: string; tier: AnalysisTier; expectedAccountId: string }) {
+  if (input.expectedAccountId !== user.id) throw new AnalysisDomainError("state-changed");
+  if (!isAnalysisTier(input.tier)) throw new AnalysisDomainError("invalid-tier");
+  return lockedAccount(user.id, async (tx) => {
+    const { grants, jobs, lessons, quota } = await accountLedger(tx, user);
+    const job = jobs.find((candidate) => candidate.id === input.jobId);
+    if (!job || job.refundedAt || !["QUEUED", "RUNNING", "SUCCEEDED"].includes(job.status)) throw new AnalysisDomainError("not-found");
+    const paid = storedTier(job.paidTier), cost = quota.unlimited ? 0 : upgradeHalves(paid, input.tier);
+    if (cost > quota.remainingHalves) throw new AnalysisDomainError("quota-exhausted");
+    const updated = await tx.accountAnalysisJob.update({ where: { id: job.id },
+      data: { tier: input.tier, paidTier: paidAfter(paid, input.tier), ...preparationAfterTierChange(job, input.tier) } });
+    return { ok: true, job: jobDto(updated), charged: credits(cost),
+      quota: accountAnalysisQuota(grants, jobs.map((candidate) => candidate.id === updated.id ? updated : candidate), accountAllowance(user), lessons) };
+  });
 }
 
 type GrantInput = { recipientEmail: string; quantity: number; note?: string | null; requestKey: string; expectedCoachId: string };
@@ -278,6 +369,8 @@ export async function settleAccountAnalysisJob(id: string, leaseToken: string,
       ...unsubmittedGuard }, data: usable ? {
       status: "SUCCEEDED", result: outcome.ok ? outcome.result as unknown as Prisma.InputJsonValue : Prisma.DbNull,
       finishedAt: now, leaseToken: null, leaseExpiresAt: null,
+      // Scored; the report appears once everything its tier shows has been made (prepare.ts).
+      preparedTier: null, prepareStartedAt: now, preparedAt: null, prepareState: Prisma.DbNull,
     } : { status: "FAILED", refundedAt: now, finishedAt: now, leaseToken: null, leaseExpiresAt: null,
       result: outcome.ok ? { ...outcome.result, gradingStatus: "unavailable", score: null, scoreKind: null,
         gradingReason: outcome.result.gradingReason ?? "score-unavailable" } as unknown as Prisma.InputJsonValue : Prisma.DbNull,

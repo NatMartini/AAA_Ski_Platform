@@ -1,16 +1,15 @@
-import { ArrowRight, Video } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { Link } from "@/i18n/navigation";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { FreeSkiLogo } from "./freeski-brand";
 
 export function FreeSkiIntroCard({ copy }: { copy: {
   title: string; attribution: string; body: string; quotaPolicy: string; sharedPolicy: string; action: string;
 } }) {
   return (
     <Card className="flex flex-col gap-4 text-left sm:flex-row sm:items-center sm:gap-5">
-      <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-cat-video-soft text-cat-video">
-        <Video className="size-6" aria-hidden />
-      </span>
+      <span className="size-14 shrink-0"><FreeSkiLogo /></span>
       <div className="min-w-0 flex-1 space-y-1.5">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <CardTitle className="text-lg">{copy.title}</CardTitle>

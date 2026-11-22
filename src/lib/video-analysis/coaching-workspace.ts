@@ -7,6 +7,7 @@ import {isTrustedApiWrite} from "../request-origin";
 import {requestFreeSkiWorkspaceResource, requestFreeSkiReportResource, readFreeSkiReportJson} from "../freeski/adapter";
 import {coachingReportSchema} from "../freeski/report-v2";
 import {DynamicReportError,loadDynamicReportSource} from "./dynamic-report";
+import {storedTier,TIER_FEATURES} from "./tiers";
 
 const turn=z.string().regex(/^turn_\d{1,5}$/), hash=z.string().regex(/^[a-f0-9]{64}$/);
 const anchor=z.object({phase:z.enum(["start","initiation","apex","completion","end"]),time_sec:z.number().finite().nonnegative()}).strict();
@@ -53,6 +54,8 @@ export async function handleCoachingWorkspace(input:Input):Promise<Response> {
   if(!isTrustedApiWrite(request))throw new DynamicReportError(403,"invalid-origin");
   const job=await loadDynamicReportSource(input.scope,input.jobId,user);
   if(!job.upstreamJobId||!job.upstreamDeploymentId||job.upstreamApiVersion!==2)throw new DynamicReportError(409,"dynamic-report-unavailable");
+  // Annotations, references, exports and extra observations work on the turn media, which start at the deep tier.
+  if(!TIER_FEATURES[storedTier(job.tier)].media)throw new DynamicReportError(403,"tier-locked");
   const source={jobId:job.upstreamJobId,deploymentId:job.upstreamDeploymentId};
   const owned=input.scope==="account"||("bookingId" in job && !!await prisma.booking.findFirst({where:{id:job.bookingId,accountId:user.id},select:{id:true}}));
   if(!owned&&user.role!=="COACH")throw new DynamicReportError(404,"not-found");

@@ -5,6 +5,7 @@ import { requestFreeSkiReportResource, readFreeSkiReportJson, FreeSkiError } fro
 import { coachingReportSchema, decodeCompactPose, turnManifestSchema } from "../freeski/report-v2";
 import { explainerSchema, KEYFRAME_ID, keyframesSchema, MAX_EXPLAINER_BYTES, MAX_KEYFRAME_BYTES, thinkingLevelSchema,
   type ThinkingLevel } from "../freeski/scorecard";
+import { readableThinking, storedTier, TIER_FEATURES } from "./tiers";
 
 export class DynamicReportError extends Error {
   constructor(readonly status: number, readonly code: string) { super(code); }
@@ -50,6 +51,10 @@ export async function readDynamicReport(input: { scope: string; jobId: string; r
       ? resource[1] as "background" | "user-pose" | "reference-pose" | "standard-pose" : null;
   if (!kind || turnId && !/^turn_\d{1,5}$/.test(turnId)) throw new DynamicReportError(404, "not-found");
   if (thinking !== undefined && (kind !== "report" || !thinkingLevelSchema.safeParse(thinking).success)) throw new DynamicReportError(404, "not-found");
+  // What the analysis's tier pays for: turn media from deep up, and explanations no deeper than the tier's own.
+  const tier = storedTier(job.tier), features = TIER_FEATURES[tier], readable = readableThinking(tier);
+  if (kind !== "report" && !features.media) throw new DynamicReportError(403, "tier-locked");
+  if (thinking !== undefined && !readable.includes(thinking as ThinkingLevel)) throw new DynamicReportError(403, "tier-locked");
   const video = kind === "background" || kind === "explainer-video";
   let response: Response;
   try {
@@ -106,7 +111,11 @@ export async function readDynamicReport(input: { scope: string; jobId: string; r
     if (kind === "report") {
       const report = coachingReportSchema.parse(body);
       if (report.jobId !== job.upstreamJobId || report.deploymentId !== job.upstreamDeploymentId) throw new DynamicReportError(502, "invalid-provider-identity");
-      return Response.json(report, { headers });
+      // A simple analysis is the written conclusion alone; a standard one adds the scores; turn media start at deep.
+      return Response.json({ ...report,
+        scorecard: features.scores ? report.scorecard : null, modelAssessment: features.scores ? report.modelAssessment : null,
+        turns: features.media ? report.turns : [], explainerStatus: features.media ? report.explainerStatus : null,
+        teachingLevels: report.teachingLevels?.filter(item => readable.includes(item.level)) }, { headers });
     }
     if (kind === "turn") {
       const manifest = turnManifestSchema.parse(body);

@@ -88,6 +88,9 @@ export type DispatcherDependencies = {
   cleanup: (id: string) => Promise<boolean>;
   /** Asks ModelCtrl to start the on-demand provider; it never starts one itself. */
   wake?: () => Promise<unknown>;
+  /** Scored analyses whose tier is still being completed: how many wait, and one round of asking FreeSki for their outputs. */
+  preparing?: () => Promise<number>;
+  prepare?: (signal?: AbortSignal) => Promise<number>;
 };
 
 /** Lightweight queue/lease reconciler. It never starts a model or waits on GPU work. */
@@ -97,8 +100,9 @@ export class AnalysisDispatcher {
 
   async tick(signal?: AbortSignal): Promise<{ observed: number; settled: number }> {
     const jobs = await this.deps.list();
-    // Live work keeps the provider awake; an idle queue lets ModelCtrl stop it.
-    if (jobs.length > 0 && !signal?.aborted) await this.deps.wake?.();
+    const completing = this.deps.preparing ? await this.deps.preparing().catch(() => 0) : 0;
+    // Live work keeps the provider awake; an idle queue lets ModelCtrl stop it. Writing an explanation is live work too.
+    if ((jobs.length > 0 || completing > 0) && !signal?.aborted) await this.deps.wake?.();
     let settled = 0;
     // Submit the complete durable backlog before polling any running item.
     for (const job of jobs) {
@@ -159,7 +163,9 @@ export class AnalysisDispatcher {
         this.owned.delete(key);
       }
     }
-    return { observed: jobs.length, settled };
+    // A scored analysis is finished for its owner only once everything its tier shows has been made.
+    if (completing > 0 && !signal?.aborted) await this.deps.prepare?.(signal).catch(() => 0);
+    return { observed: jobs.length + completing, settled };
   }
 
   async close(): Promise<void> {
@@ -172,6 +178,7 @@ export class AnalysisDispatcher {
 export async function createBusinessAnalysisDispatcher(jobId?: string): Promise<AnalysisDispatcher> {
   const booking = await import("../video-analysis/service");
   const account = await import("../video-analysis/account-service");
+  const outputs = await import("../video-analysis/prepare");
   return new AnalysisDispatcher({
     list: async () => {
       await booking.recoverExpiredAnalysisJobs();
@@ -194,5 +201,7 @@ export async function createBusinessAnalysisDispatcher(jobId?: string): Promise<
     cleanup: cleanupFreeSkiJob,
     // The background dispatcher may wait for a cold start; pages never do.
     wake: () => wakeFreeSkiProvider({ reason: "aaa dispatcher", waitSeconds: 30 }),
+    preparing: () => outputs.countPreparing(jobId),
+    prepare: (signal) => outputs.prepareDueOutputs({ signal, jobId }),
   });
 }

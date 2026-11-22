@@ -1,6 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { isFreeSkiActionId, normalizeFreeSkiCatalog, parseFreeSkiActionId,
-  type FreeSkiActionId, type FreeSkiActionOption, type FreeSkiActionSelection } from "./actions";
+  type FreeSkiActionId, type FreeSkiActionOption, type FreeSkiActionSelection, AUTO_ACTION, KNOWN_ACTION_NAMES, upstreamLevels } from "./actions";
+import { actionRecognitionSchema } from "./action-recognition";
 import { getFreeSkiConfig, type FreeSkiConfig } from "./config";
 import type { FreeSkiAnalysisResult, FreeSkiErrorCode, FreeSkiGradingReason } from "./types";
 import { ResumableUploadError, submitResumableVideo } from "./resumable-upload";
@@ -41,6 +42,8 @@ function bridgeIdentity(value: Mapping, config: FreeSkiConfig): boolean {
 }
 
 function expectedActionNames(selection: FreeSkiActionSelection, result: boolean): string[] {
+  // A recognised action is whichever FreeSki named; the job itself still says "auto".
+  if (selection.actionName === AUTO_ACTION) return [AUTO_ACTION, ...KNOWN_ACTION_NAMES];
   // Improvement requests/jobs use "parallel", while FreeSki normalizes the
   // scored result to demonstration_parallel. Keep the old result spelling
   // readable without broadening compatibility to other parallel-family moves.
@@ -64,17 +67,19 @@ function assertActionIdentity(data: Mapping, selection: FreeSkiActionSelection, 
     }
     // Job.level echoes the requested CSIA level. Result.level instead is the
     // measured beginner/intermediate/advanced/expert score band (or null).
-    if (!result && source.level !== undefined && source.level !== selection.level) {
+    if (!result && selection.actionName !== AUTO_ACTION && source.level !== undefined && source.level !== selection.level) {
       throw new FreeSkiError("analysis-invalid-response");
     }
     // The skier's level picks the improvement examples. Jobs from before it was
     // sent omit it; an echoed value must match what this job asked for.
-    if (source.current_level !== undefined && (source.current_level ?? null) !== selection.currentLevel) {
+    // An exam run left open is sent its exam level instead; jobs from before that carry the level as the current one.
+    if (source.current_level !== undefined && (source.current_level ?? null) !== selection.currentLevel
+        && (source.current_level ?? null) !== upstreamLevels(selection).currentLevel) {
       throw new FreeSkiError("analysis-invalid-response");
     }
   }
   const selectedLevel = mapping(data.level_assessment).selected_level;
-  if (result && selectedLevel !== undefined && selectedLevel !== selection.level) {
+  if (result && selection.actionName !== AUTO_ACTION && selectedLevel !== undefined && selectedLevel !== selection.level) {
     throw new FreeSkiError("analysis-invalid-response");
   }
 }
@@ -102,9 +107,14 @@ export function normalizeFreeSkiResult(raw: unknown, actionId: FreeSkiActionId):
   const card = data.scorecard === undefined ? null : scorecardSchema.safeParse(data.scorecard);
   // A malformed scorecard, or one for another action or level, is dropped rather than relabelled.
   // Scorecards from before current_level existed omit it; a present one must be this request's.
+  // A recognised run is scored at the level FreeSki compared it with: any level on the certification path.
+  const levelMatches = (level: string | null) => selection.actionName === AUTO_ACTION && selection.pathType === "certification" ? level !== null : level === selection.level;
   const scorecard = card?.success && expectedActionNames(selection, true).includes(card.data.action) &&
-    card.data.level === selection.level &&
-    (card.data.current_level === undefined || card.data.current_level === selection.currentLevel) ? card.data : null;
+    levelMatches(card.data.level) &&
+    // On the certification path the skier's level is only a hint for the recognition: FreeSki's score card carries none.
+    (card.data.current_level === undefined || card.data.current_level === selection.currentLevel ||
+      selection.actionName === AUTO_ACTION && selection.pathType === "certification" && card.data.current_level === null) ? card.data : null;
+  const recognition = selection.actionName === AUTO_ACTION ? actionRecognitionSchema.safeParse(data.action_recognition).data ?? null : null;
   return {
     version: 1,
     provider: "freeski",
@@ -120,6 +130,7 @@ export function normalizeFreeSkiResult(raw: unknown, actionId: FreeSkiActionId):
       /^[a-z][a-z0-9_]{0,63}$/.test(key) ? [{ key, score: score(value) }] : []) : [],
     scorerVersion: safeText(data.scorer_version, 80),
     ...(scorecard ? { scorecard } : {}),
+    ...(recognition ? { actionRecognition: recognition } : {}),
   };
 }
 
@@ -356,10 +367,12 @@ export async function submitFreeSkiAnalysis(input: {
   const form = new FormData();
   form.append("file", new Blob([new Uint8Array(bytes)], { type: extension === ".mov" ? "video/quicktime" : "video/mp4" }), `lesson${extension}`);
   form.append("action_name", selection.actionName);
-  form.append("skill_family", selection.skillFamily);
+  // A recognised action's family is FreeSki's to work out.
+  if (selection.actionName !== AUTO_ACTION) form.append("skill_family", selection.skillFamily);
   form.append("path_type", selection.pathType);
-  if (selection.level) form.append("level", selection.level);
-  if (selection.currentLevel) form.append("current_level", selection.currentLevel);
+  const levels = upstreamLevels(selection);
+  if (levels.level) form.append("level", levels.level);
+  if (levels.currentLevel) form.append("current_level", levels.currentLevel);
   form.append("rubric", "csia");
   form.append("async_mode", "true");
   if (input.requestKey) form.append("request_key", input.requestKey);
@@ -563,4 +576,36 @@ export async function requestFreeSkiWorkspaceResource(input: { jobId: string; de
   }
   return authenticated(config, endpoint, { method: route === "workspace/annotations" ? "PUT" : input.method,
     headers, ...(input.body !== undefined ? {body: JSON.stringify(input.body)} : {}) }, input.signal);
+}
+
+export type FreeSkiSeasonRequest = { resource: "materials" } | { resource: "rebuild"; stage: "references" | "recognizer"; requestKey: string }
+  | { resource: "run"; runId: string };
+
+/**
+ * The season API (FreeSki's backend/season.py): what material the season has, and the two rebuilds that need FreeSki's
+ * own compute identity and Python. Null where this deployment does not offer it (the season's videos are elsewhere).
+ */
+export async function requestFreeSkiSeason(input: FreeSkiSeasonRequest, signal?: AbortSignal): Promise<{ status: number; body: unknown } | null> {
+  const config = getFreeSkiConfig();
+  if (!config?.deploymentId) throw new FreeSkiError("analysis-unavailable");
+  if ((input.resource === "run" && !JOB_ID.test(input.runId)) || (input.resource === "rebuild" && !/^[A-Za-z0-9._:-]{1,200}$/.test(input.requestKey)))
+    throw new FreeSkiError("analysis-invalid-response");
+  const caps = await authenticated(config, "/api/integrations/v2/capabilities", {}, signal);
+  if (!caps.ok) {
+    await caps.body?.cancel();
+    throw new FreeSkiError("analysis-unavailable");
+  }
+  const capability = mapping(await readJson(caps));
+  if (capability.apiVersion !== 2 || capability.deploymentId !== config.deploymentId || capability.profile !== "platform-integration")
+    throw new FreeSkiError("analysis-invalid-response");
+  if (mapping(capability.features).seasonRebuild !== true) return null;
+  const response = input.resource === "materials" ? await authenticated(config, "/api/aaa/season/materials", {}, signal)
+    : input.resource === "run" ? await authenticated(config, `/api/aaa/season/rebuild/${input.runId}`, {}, signal)
+    : await authenticated(config, "/api/aaa/season/rebuild", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stage: input.stage, requestKey: input.requestKey }) }, signal);
+  if (response.status >= 500) {
+    await response.body?.cancel();
+    throw new FreeSkiError("analysis-unavailable");
+  }
+  return { status: response.status, body: await readJson(response) };
 }

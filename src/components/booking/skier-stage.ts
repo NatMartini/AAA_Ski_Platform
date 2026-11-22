@@ -6,6 +6,7 @@ import {
 } from "three";
 import { clientFetch } from "@/lib/client-fetch";
 import { boneFrames, RIG_BONE_COUNT, skinMatrices, type BoneFrame, type RigBone, type Vec3 } from "@/lib/freeski/skier-rig";
+import { OverlayLayer, type PathLine, type StageOverlay } from "./stage-overlays";
 
 /**
  * The 3D stage: a skier in ski clothes on a snow slope, in sunlight, drawn with WebGL. World coordinates
@@ -276,6 +277,7 @@ const SNOW_SHADER = {
     uniform vec3 uSun;
     uniform float uGroomed;
     uniform vec2 uBumps;
+    uniform vec3 uPiste;
     varying vec3 vWorld;
     const mat2 TURN_A = mat2(.80, .60, -.60, .80);
     const mat2 TURN_B = mat2(.38, .92, -.92, .38);
@@ -292,6 +294,9 @@ const SNOW_SHADER = {
       vec4 middle = texture2D(uTile, TURN_A * w / 3.1 + .37);
       vec4 fine = texture2D(uTile, TURN_B * w / .73 + .71);
       vec2 slope = (broad.rg - .5) * .5 + ((middle.rg - .5) * TURN_A) * .34 + ((fine.rg - .5) * TURN_B) * .22;
+      // Beyond a piste's edges the snow is not groomed: rougher, and without anyone's tracks.
+      float offPiste = uPiste.z * smoothstep(uPiste.y - .2, uPiste.y + 1.4, abs(vWorld.x - uPiste.x));
+      slope += ((middle.rg - .5) * TURN_A) * .55 * offPiste;
       // Moguls in staggered rows, so the snow's relief passes under the skis as they ride them.
       if (uBumps.x > 0.) {
         float k = 6.28318 / uBumps.x, lateral = k * .62;
@@ -301,7 +306,7 @@ const SNOW_SHADER = {
       // A groomed slope's corduroy, fading before it can shimmer.
       float pitch = .036;
       float pixel = fwidth(w.x) + fwidth(w.y);
-      float showCord = uGroomed * (1. - smoothstep(pitch * .2, pitch * .55, pixel)) * (.55 + .45 * middle.b);
+      float showCord = uGroomed * (1. - offPiste) * (1. - smoothstep(pitch * .2, pitch * .55, pixel)) * (.55 + .45 * middle.b);
       slope.x += sin((w.x + (broad.b - .5) * .05) * 6.28318 / pitch) * .05 * showCord;
       // Tracks of skiers who came earlier.
       float tracks = 0.;
@@ -310,12 +315,13 @@ const SNOW_SHADER = {
       tracks = max(tracks, oldTrack(w, 16.8, 2.8, .37, .4, .02));
       tracks = max(tracks, oldTrack(w, -2.2, 6.4, .17, 4.2, .024));
       tracks = max(tracks, oldTrack(w, -19., 3.9, .26, 5.3, .02));
-      tracks *= uGroomed * (1. - smoothstep(.05, .35, pixel)) * (.35 + .65 * middle.b);
+      tracks *= uGroomed * (1. - offPiste) * (1. - smoothstep(.05, .35, pixel)) * (.35 + .65 * middle.b);
       vec3 n = normalize(vec3(-slope, 1.));
       float sun = clamp(dot(n, uSun) / max(uSun.z, .35), 0., 1.25);
       vec3 shade = vec3(.70, .79, .94) * .9, lit = vec3(1., .985, .955);
       vec3 color = mix(shade, lit, sun * .86) * (.955 + .045 * broad.b);
       color = mix(color, color * vec3(.82, .88, .96), tracks * .7);
+      color = mix(color, color * vec3(.84, .9, .98), offPiste * .7);
       // Ice crystals catching the sun.
       vec3 toEye = normalize(cameraPosition - vWorld);
       float glint = texture2D(uTile, TURN_A * w / .23 + toEye.xy * .07).a;
@@ -353,7 +359,7 @@ const TRACK_SHADER = {
     }`,
 };
 
-const MAX_TRACK_VERTICES = 4000;
+const MAX_TRACK_VERTICES = 12000;
 
 /** A ski's mark on the snow: centre line and half width per point, faded as a whole. */
 export type Ribbon = { points: readonly (readonly [number, number, number])[]; alpha: number };
@@ -376,6 +382,16 @@ export type Shot = {
   /** Bumps: how high the snow is under the skier right now, and the bumps' spacing down the slope, shading the snow. */
   snowLevel?: number;
   bumps?: { spacing: number; height: number } | null;
+  /** How far the camera is from the focus; the default suits one skier. Further away it keeps the same lens. */
+  distance?: number;
+  /** Where the sun's shadows are sharpest: the skier, when the camera looks elsewhere. */
+  shadowAt?: Vec3;
+  /** Arrows, the centre of mass, spirals and rings drawn over the skier. */
+  overlays?: readonly StageOverlay[];
+  /** Coloured lines painted on the snow, around the scene's origin. */
+  paths?: readonly PathLine[];
+  /** A piste down the fall line: the scene x of its middle and its half width; poles mark its edges. */
+  piste?: { centre: number; halfWidth: number } | null;
 };
 
 const CAMERA_DISTANCE = 8;
@@ -383,10 +399,11 @@ const CAMERA_DISTANCE = 8;
 /** A scene point's position in canvas pixels for a shot. */
 export function shotToCanvas(shot: Shot, width: number, height: number) {
   const { right, up, forward } = shot.axes;
-  const half = shot.frameHeight / 2 / CAMERA_DISTANCE;
+  const distance = shot.distance ?? CAMERA_DISTANCE;
+  const half = shot.frameHeight / 2 / distance;
   const rect = { x: shot.rect.x * width, y: shot.rect.y * height, width: shot.rect.width * width, height: shot.rect.height * height };
   const aspect = rect.width / rect.height;
-  const camera: Vec3 = [shot.focus[0] - forward[0] * CAMERA_DISTANCE, shot.focus[1] - forward[1] * CAMERA_DISTANCE, shot.focus[2] - forward[2] * CAMERA_DISTANCE];
+  const camera: Vec3 = [shot.focus[0] - forward[0] * distance, shot.focus[1] - forward[1] * distance, shot.focus[2] - forward[2] * distance];
   return (x: number, y: number, z: number): [number, number] => {
     const qx = x - camera[0], qy = y - camera[1], qz = z - camera[2];
     const depth = qx * forward[0] + qy * forward[1] + qz * forward[2];
@@ -409,6 +426,7 @@ export class SkierStage {
   private readonly tracks: Mesh;
   private readonly trackGeometry = new BufferGeometry();
   private readonly figures: SkierFigure[] = [];
+  private readonly overlays: OverlayLayer;
   private readonly snowMaterial: ShaderMaterial;
   private readonly backdropMaterial: ShaderMaterial;
   private readonly trackMaterial: ShaderMaterial;
@@ -470,7 +488,8 @@ export class SkierStage {
     this.scene.add(this.backdrop);
 
     this.snowMaterial = new ShaderMaterial({ ...SNOW_SHADER, toneMapped: false,
-      uniforms: { uTile: { value: this.tile }, uSnowAt: { value: new Float32Array(2) }, uSun: { value: new Vector3(0, 0, 1) }, uGroomed: { value: 1 }, uBumps: { value: new Float32Array(2) } } });
+      uniforms: { uTile: { value: this.tile }, uSnowAt: { value: new Float32Array(2) }, uSun: { value: new Vector3(0, 0, 1) }, uGroomed: { value: 1 }, uBumps: { value: new Float32Array(2) },
+        uPiste: { value: new Vector3(0, 0, 0) } } });
     const ground = new PlaneGeometry(9000, 9000);
     this.snow = new Mesh(ground, this.snowMaterial);
     this.snow.frustumCulled = false;
@@ -492,6 +511,7 @@ export class SkierStage {
     this.tracks.frustumCulled = false;
     this.tracks.renderOrder = 10;
     this.scene.add(this.tracks);
+    this.overlays = new OverlayLayer(this.scene);
   }
 
   /** A stage filling this element on a canvas of its own, or null where WebGL is not available. */
@@ -560,17 +580,18 @@ export class SkierStage {
   private aim(shot: Shot, width: number, height: number) {
     const { right, up, forward } = shot.axes;
     const rectWidth = shot.rect.width * width, rectHeight = shot.rect.height * height;
-    const camera = this.camera;
-    camera.fov = 2 * Math.atan(shot.frameHeight / 2 / CAMERA_DISTANCE) * 180 / Math.PI;
+    const camera = this.camera, distance = shot.distance ?? CAMERA_DISTANCE;
+    camera.fov = 2 * Math.atan(shot.frameHeight / 2 / distance) * 180 / Math.PI;
     camera.aspect = rectWidth / rectHeight;
-    camera.position.set(shot.focus[0] - forward[0] * CAMERA_DISTANCE, shot.focus[1] - forward[1] * CAMERA_DISTANCE, shot.focus[2] - forward[2] * CAMERA_DISTANCE);
+    camera.position.set(shot.focus[0] - forward[0] * distance, shot.focus[1] - forward[1] * distance, shot.focus[2] - forward[2] * distance);
     camera.up.set(up[0], up[1], up[2]);
     camera.lookAt(shot.focus[0], shot.focus[1], shot.focus[2]);
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
     // The sun stays over the camera's shoulder, so the skier is well lit from every side.
     const sun = new Vector3(right[0] * -.5 + up[0] * .72 - forward[0] * .48, right[1] * -.5 + up[1] * .72 - forward[1] * .48, right[2] * -.5 + up[2] * .72 - forward[2] * .48).normalize();
-    this.sun.target.position.set(shot.focus[0], shot.focus[1], Math.max(.5, shot.focus[2] - .3));
+    const shadow = shot.shadowAt ?? shot.focus;
+    this.sun.target.position.set(shadow[0], shadow[1], Math.max(.5, shadow[2] - .3));
     this.sun.position.copy(this.sun.target.position).addScaledVector(sun, 14);
     this.sun.target.updateMatrixWorld();
     this.sun.updateMatrixWorld();
@@ -584,6 +605,7 @@ export class SkierStage {
     this.snowMaterial.uniforms.uGroomed.value = shot.groomed === false ? 0 : 1;
     (this.snowMaterial.uniforms.uBumps.value as Float32Array).set(shot.bumps ? [shot.bumps.spacing, shot.bumps.height] : [0, 0]);
     this.snow.position.z = this.snowShadow.position.z = this.tracks.position.z = shot.snowLevel ?? 0;
+    (this.snowMaterial.uniforms.uPiste.value as Vector3).set(shot.piste?.centre ?? 0, shot.piste?.halfWidth ?? 0, shot.piste ? 1 : 0);
   }
 
   /** A slower device gets fewer pixels rather than a jerky picture. */
@@ -614,11 +636,19 @@ export class SkierStage {
       for (const figure of this.figures) figure.show(shot.figures.includes(figure));
       this.backdrop.visible = this.snow.visible = this.snowShadow.visible = true;
       this.tracks.visible = Boolean(shot.ribbons?.length);
+      const level = shot.snowLevel ?? 0;
+      this.overlays.begin();
+      this.overlays.show(shot.overlays ?? []);
+      this.overlays.setPaths(shot.paths ?? [], level);
+      this.overlays.setPoles(shot.piste ? { ...shot.piste, offset: shot.snowAt[1] } : null, level);
       this.renderer.render(this.scene, this.camera);
       if (shot.ghost) {
         this.renderer.clearDepth();
         for (const figure of this.figures) figure.show(figure === shot.ghost);
         this.backdrop.visible = this.snow.visible = this.snowShadow.visible = this.tracks.visible = false;
+        this.overlays.begin();
+        this.overlays.paths.visible = false;
+        this.overlays.poles.count = 0;
         this.renderer.render(this.scene, this.camera);
       }
     }
@@ -638,6 +668,7 @@ export class SkierStage {
     this.shadowMaterial.dispose();
     this.trackGeometry.dispose();
     this.trackMaterial.dispose();
+    this.overlays.dispose();
     this.sun.shadow.map?.dispose();
     this.renderer.dispose();
     this.renderer.forceContextLoss();

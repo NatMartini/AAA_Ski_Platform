@@ -1,0 +1,184 @@
+{
+  "schema_version": "freeski_explainer.v2",
+  "experimental": true,
+  "width": 1280,
+  "height": 720,
+  "fps": 60,
+  "duration_sec": 27.335,
+  "standard": {
+    "id": "demonstration_parallel-l2",
+    "turns": {
+      "turn_3": true,
+      "turn_4": true,
+      "turn_5": true
+    }
+  },
+  "segments": [
+    {
+      "kind": "title",
+      "start_sec": 0.0,
+      "end_sec": 2.0,
+      "turn_id": null,
+      "speed": null,
+      "focus_metric_key": null,
+      "fact_ids": [],
+      "caption_zh": "动作对比讲解（试验性）· 示范平行弯",
+      "caption_en": "Technique comparison (experimental) · Demonstration parallel"
+    },
+    {
+      "kind": "realtime",
+      "start_sec": 2.0,
+      "end_sec": 3.0,
+      "speed": 1.0,
+      "turn_id": "turn_3",
+      "source_start_sec": 3.733,
+      "source_end_sec": 4.733,
+      "focus_metric_key": "parallel_skis",
+      "fact_ids": [
+        "f_parallel_skis_turn_3"
+      ],
+      "caption_zh": "第4弯 · 原速",
+      "caption_en": "Turn 4 · real time"
+    },
+    {
+      "kind": "slow",
+      "start_sec": 3.0,
+      "end_sec": 7.0,
+      "speed": 0.25,
+      "turn_id": "turn_3",
+      "source_start_sec": 3.733,
+      "source_end_sec": 4.733,
+      "focus_metric_key": "parallel_skis",
+      "fact_ids": [
+        "f_parallel_skis_turn_3"
+      ],
+      "caption_zh": "第4弯 · 0.25 倍慢动作：橙色是你，绿色是CSIA 2 级标准动作",
+      "caption_en": "Turn 4 · 0.25x slow motion: orange is you, green is the CSIA Level 2 standard motion"
+    },
+    {
+      "kind": "freeze",
+      "start_sec": 7.0,
+      "end_sec": 9.5,
+      "speed": 0.0,
+      "turn_id": "turn_3",
+      "source_start_sec": 3.733,
+      "source_end_sec": 4.733,
+      "focus_metric_key": "parallel_skis",
+      "fact_ids": [
+        "f_parallel_skis_turn_3"
+      ],
+      "keyframe_id": "kf_7457ca2cca3250c2c045e5bc5071a8de",
+      "freeze_at_sec": 4.267,
+      "caption_zh": "第4弯·弯顶：双板平行 0 分，低于标准动作范围",
+      "caption_en": "Turn 4 · apex: Parallel skis 0, below the standard's range"
+    },
+    {
+      "kind": "realtime",
+      "start_sec": 9.5,
+      "end_sec": 10.534,
+      "speed": 1.0,
+      "turn_id": "turn_4",
+      "source_start_sec": 4.733,
+      "source_end_sec": 5.767,
+      "focus_metric_key": "turn_tempo",
+      "fact_ids": [
+        "f_turn_tempo"
+      ],
+      "caption_zh": "第5弯 · 原速",
+      "caption_en": "Turn 5 · real time"
+    },
+    {
+      "kind": "slow",
+      "start_sec": 10.534,
+      "end_sec": 14.67,
+      "speed": 0.25,
+      "turn_id": "turn_4",
+      "source_start_sec": 4.733,
+      "source_end_sec": 5.767,
+      "focus_metric_key": "turn_tempo",
+      "fact_ids": [
+        "f_turn_tempo"
+      ],
+      "caption_zh": "第5弯 · 0.25 倍慢动作：橙色是你，绿色是CSIA 2 级标准动作",
+      "caption_en": "Turn 5 · 0.25x slow motion: orange is you, green is the CSIA Level 2 standard motion"
+    },
+    {
+      "kind": "freeze",
+      "start_sec": 14.67,
+      "end_sec": 17.17,
+      "speed": 0.0,
+      "turn_id": "turn_4",
+      "source_start_sec": 4.733,
+      "source_end_sec": 5.767,
+      "focus_metric_key": "turn_tempo",
+      "fact_ids": [
+        "f_turn_tempo"
+      ],
+      "keyframe_id": "kf_57d8016e2ab163567684bcd967da40a5",
+      "freeze_at_sec": 5.167,
+      "caption_zh": "第5弯·弯顶：换弯节奏 0 分，高于标准动作范围",
+      "caption_en": "Turn 5 · apex: Turn tempo 0, above the standard's range"
+    },
+    {
+      "kind": "realtime",
+      "start_sec": 17.17,
+      "end_sec": 18.103,
+      "speed": 1.0,
+      "turn_id": "turn_5",
+      "source_start_sec": 5.767,
+      "source_end_sec": 6.7,
+      "focus_metric_key": "parallel_skis",
+      "fact_ids": [
+        "f_parallel_skis"
+      ],
+      "caption_zh": "第6弯 · 原速",
+      "caption_en": "Turn 6 · real time"
+    },
+    {
+      "kind": "slow",
+      "start_sec": 18.103,
+      "end_sec": 21.835,
+      "speed": 0.25,
+      "turn_id": "turn_5",
+      "source_start_sec": 5.767,
+      "source_end_sec": 6.7,
+      "focus_metric_key": "parallel_skis",
+      "fact_ids": [
+        "f_parallel_skis"
+      ],
+      "caption_zh": "第6弯 · 0.25 倍慢动作：橙色是你，绿色是CSIA 2 级标准动作",
+      "caption_en": "Turn 6 · 0.25x slow motion: orange is you, green is the CSIA Level 2 standard motion"
+    },
+    {
+      "kind": "freeze",
+      "start_sec": 21.835,
+      "end_sec": 24.335,
+      "speed": 0.0,
+      "turn_id": "turn_5",
+      "source_start_sec": 5.767,
+      "source_end_sec": 6.7,
+      "focus_metric_key": "parallel_skis",
+      "fact_ids": [
+        "f_parallel_skis"
+      ],
+      "keyframe_id": "kf_758498dccacdcfecc20a54f1c2df0c6a",
+      "freeze_at_sec": 6.3,
+      "caption_zh": "第6弯·弯顶：双板平行 0 分，低于标准动作范围",
+      "caption_en": "Turn 6 · apex: Parallel skis 0, below the standard's range"
+    },
+    {
+      "kind": "outro",
+      "start_sec": 24.335,
+      "end_sec": 27.335,
+      "turn_id": null,
+      "speed": null,
+      "focus_metric_key": "turn_tempo",
+      "fact_ids": [
+        "f_turn_tempo"
+      ],
+      "caption_zh": "最需要改进：换弯节奏（0 分）。详细解释和练习见报告。",
+      "caption_en": "Main thing to work on: Turn tempo (0). See the report for notes and drills."
+    }
+  ],
+  "status": "ready"
+}
